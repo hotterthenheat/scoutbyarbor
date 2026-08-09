@@ -1,0 +1,542 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SCOUT — source watchlist (§29, §36)
+#
+# This file is the whole source list. Add or remove an account here and run
+# `npm run sources:sync` — no application code changes (§36).
+#
+# Curation rule (§5, §30): optimise for signal density, not account count. An
+# account posting 20 times a day with 18 useful posts beats one posting 100
+# times with 5. Anything whose primary function is telling people what to think
+# rather than reporting information does not belong in this file.
+#
+# `enabled: false` entries are staged but not polled. Run
+# `npm run sources:verify` to confirm every handle and feed URL actually
+# resolves before enabling it — do not trust a handle just because a list
+# somewhere claims it exists (§29).
+#
+# Scores are seeds. The pipeline updates useful_post_ratio and noise from
+# observed behaviour, and `npm run scout source:report` shows the drift (§28).
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+
+sources:
+  # ══════════════════════════════════════════════════════════════════════════
+  # TIER 1 — CORE NEWSWIRE (§6)
+  # The highest-priority feeds. These are the accounts Scout is built around.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: x:deltaone
+    name: Walter Bloomberg
+    handle: "@DeItaone"
+    sourceType: x
+    category: MIXED
+    priority: 100
+    enabled: true
+    qualityScore: 98
+    noiseScore: 2
+    macroScore: 95
+    microScore: 90
+    geopoliticalScore: 85
+    filterProfile: standard
+    expectedIntervalMs: 900000
+    notes: >-
+      Breaking macro, Fed, geopolitical and corporate headlines. One of Scout's
+      highest-priority feeds. Note the handle uses a capital I, not an l.
+
+  - id: x:firstsquawk
+    name: First Squawk
+    handle: "@FirstSquawk"
+    sourceType: x
+    category: MIXED
+    priority: 100
+    enabled: true
+    qualityScore: 97
+    noiseScore: 3
+    macroScore: 95
+    microScore: 85
+    geopoliticalScore: 95
+    filterProfile: standard
+    expectedIntervalMs: 900000
+    notes: >-
+      Financial news service covering markets, macro, geopolitics and politics
+      across equities, commodities and fixed income. Use heavily.
+
+  - id: x:financialjuice
+    name: Financial Juice
+    handle: "@financialjuice"
+    sourceType: x
+    category: MIXED
+    priority: 95
+    enabled: true
+    qualityScore: 95
+    noiseScore: 5
+    macroScore: 96
+    microScore: 70
+    geopoliticalScore: 85
+    filterProfile: standard
+    expectedIntervalMs: 900000
+    notes: Macro, economic releases, central banks, geopolitics. Trader squawk source.
+
+  - id: x:livesquawk
+    name: LiveSquawk
+    handle: "@LiveSquawk"
+    sourceType: x
+    category: MIXED
+    priority: 95
+    enabled: true
+    qualityScore: 94
+    noiseScore: 6
+    macroScore: 94
+    microScore: 75
+    geopoliticalScore: 85
+    filterProfile: standard
+    expectedIntervalMs: 900000
+    notes: High-speed market-news layer.
+
+  - id: x:tier10k
+    name: db (tier10k)
+    handle: "@tier10k"
+    sourceType: x
+    category: MIXED
+    priority: 90
+    enabled: true
+    qualityScore: 92
+    noiseScore: 8
+    macroScore: 70
+    microScore: 95
+    geopoliticalScore: 60
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+    notes: SEC filings, earnings, corporate events. Filter hard on materiality.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MAJOR FINANCIAL NEWSROOMS (§7)
+  # Reporting accounts only — never personality accounts.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: x:bloomberg-business
+    name: Bloomberg Business
+    handle: "@business"
+    sourceType: x
+    category: MIXED
+    priority: 85
+    enabled: true
+    qualityScore: 90
+    noiseScore: 12
+    macroScore: 85
+    microScore: 85
+    geopoliticalScore: 70
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+
+  - id: x:bloomberg-markets
+    name: Bloomberg Markets
+    handle: "@markets"
+    sourceType: x
+    category: MARKET
+    priority: 85
+    enabled: true
+    qualityScore: 90
+    noiseScore: 12
+    macroScore: 88
+    microScore: 80
+    geopoliticalScore: 60
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+
+  - id: x:bloomberg-economics
+    name: Bloomberg Economics
+    handle: "@economics"
+    sourceType: x
+    category: ECONOMIC
+    priority: 82
+    enabled: true
+    qualityScore: 89
+    noiseScore: 12
+    macroScore: 92
+    microScore: 40
+    geopoliticalScore: 55
+    filterProfile: standard
+    expectedIntervalMs: 3600000
+
+  - id: x:bloomberg-technology
+    name: Bloomberg Technology
+    handle: "@technology"
+    sourceType: x
+    category: EQUITY
+    priority: 75
+    enabled: true
+    qualityScore: 86
+    noiseScore: 16
+    macroScore: 25
+    microScore: 88
+    geopoliticalScore: 35
+    filterProfile: standard
+    expectedIntervalMs: 3600000
+
+  - id: x:bloomberg-politics
+    name: Bloomberg Politics
+    handle: "@politics"
+    sourceType: x
+    category: GEOPOLITICAL
+    priority: 70
+    enabled: false
+    qualityScore: 80
+    noiseScore: 25
+    macroScore: 40
+    microScore: 20
+    geopoliticalScore: 80
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: >-
+      Staged, not enabled. Political coverage carries a high commentary ratio;
+      turn on only after reviewing the accept rate in #scout-raw.
+
+  - id: x:reuters
+    name: Reuters
+    handle: "@Reuters"
+    sourceType: x
+    category: MIXED
+    priority: 85
+    enabled: true
+    qualityScore: 92
+    noiseScore: 10
+    macroScore: 80
+    microScore: 75
+    geopoliticalScore: 92
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+
+  - id: x:reuters-business
+    name: Reuters Business
+    handle: "@ReutersBiz"
+    sourceType: x
+    category: MIXED
+    priority: 85
+    enabled: true
+    qualityScore: 91
+    noiseScore: 10
+    macroScore: 85
+    microScore: 88
+    geopoliticalScore: 60
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+
+  - id: x:ap
+    name: The Associated Press
+    handle: "@AP"
+    sourceType: x
+    category: GEOPOLITICAL
+    priority: 80
+    enabled: true
+    qualityScore: 90
+    noiseScore: 14
+    macroScore: 45
+    microScore: 35
+    geopoliticalScore: 92
+    filterProfile: standard
+    expectedIntervalMs: 1800000
+    notes: Geopolitics, government action, elections, wars, disasters.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MACRO — HIGH SIGNAL BUT MIXED WITH COMMENTARY (§8)
+  # These run the strict filter profile: the factuality gate must return
+  # FACTUAL_NEWS or the post is dropped. Do not ingest these blindly.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: x:kobeissiletter
+    name: The Kobeissi Letter
+    handle: "@KobeissiLetter"
+    sourceType: x
+    category: MACRO
+    priority: 65
+    enabled: true
+    qualityScore: 76
+    noiseScore: 30
+    macroScore: 82
+    microScore: 45
+    geopoliticalScore: 40
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: >-
+      Mixes reporting with commentary and chart-driven analysis. Strict profile
+      required — commentary must not reach the wire.
+
+  - id: x:zerohedge
+    name: ZeroHedge
+    handle: "@zerohedge"
+    sourceType: x
+    category: MACRO
+    priority: 55
+    enabled: true
+    qualityScore: 70
+    noiseScore: 42
+    macroScore: 78
+    microScore: 50
+    geopoliticalScore: 65
+    filterProfile: strict
+    expectedIntervalMs: 1800000
+    notes: >-
+      Fast on breaking headlines but heavy on opinion and framing. Strict
+      profile. Review the accept ratio monthly; drop below a 0.25 useful ratio
+      and this account should come out (§5, §28).
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # OFFICIAL DATA LAYER (§9)
+  # Primary sources, delivered by RSS rather than X. These are the authoritative
+  # release feeds — no intermediary, no commentary, highest credibility. They
+  # need no API key, so this layer works on day one.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: rss:fed-press-all
+    name: Federal Reserve — All Press Releases
+    url: https://www.federalreserve.gov/feeds/press_all.xml
+    sourceType: rss
+    category: FED
+    priority: 100
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 100
+    microScore: 20
+    geopoliticalScore: 10
+    expectedIntervalMs: 86400000
+
+  - id: rss:fed-monetary
+    name: Federal Reserve — Monetary Policy
+    url: https://www.federalreserve.gov/feeds/press_monetary.xml
+    sourceType: rss
+    category: FED
+    priority: 100
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 100
+    microScore: 10
+    geopoliticalScore: 5
+    expectedIntervalMs: 604800000
+    notes: FOMC statements and implementation notes. Highest-priority feed in Scout.
+
+  - id: rss:fed-speeches
+    name: Federal Reserve — Speeches
+    url: https://www.federalreserve.gov/feeds/speeches.xml
+    sourceType: rss
+    category: FED
+    priority: 92
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 95
+    microScore: 5
+    geopoliticalScore: 5
+    expectedIntervalMs: 604800000
+
+  - id: rss:fed-testimony
+    name: Federal Reserve — Testimony
+    url: https://www.federalreserve.gov/feeds/testimony.xml
+    sourceType: rss
+    category: FED
+    priority: 90
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 95
+    microScore: 5
+    geopoliticalScore: 5
+    expectedIntervalMs: 2592000000
+
+  - id: rss:bls-latest
+    name: Bureau of Labor Statistics — Latest Releases
+    url: https://www.bls.gov/feed/bls_latest.rss
+    sourceType: rss
+    category: ECONOMIC
+    priority: 100
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 100
+    microScore: 5
+    geopoliticalScore: 0
+    expectedIntervalMs: 604800000
+    notes: CPI, PPI, employment situation, JOLTS, real earnings.
+
+  - id: rss:bea-news
+    name: Bureau of Economic Analysis — News Releases
+    url: https://www.bea.gov/rss.xml
+    sourceType: rss
+    category: ECONOMIC
+    priority: 100
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 100
+    microScore: 5
+    geopoliticalScore: 0
+    expectedIntervalMs: 604800000
+    notes: GDP, PCE, personal income and outlays.
+
+  - id: rss:treasury-press
+    name: U.S. Treasury — Press Releases
+    url: https://home.treasury.gov/rss/press.xml
+    sourceType: rss
+    category: MACRO
+    priority: 92
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 95
+    microScore: 10
+    geopoliticalScore: 60
+    expectedIntervalMs: 604800000
+    notes: Auctions, debt management, sanctions designations.
+
+  - id: rss:sec-press
+    name: SEC — Press Releases
+    url: https://www.sec.gov/news/pressreleases.rss
+    sourceType: rss
+    category: EQUITY
+    priority: 85
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 20
+    microScore: 90
+    geopoliticalScore: 5
+    expectedIntervalMs: 604800000
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # CENTRAL BANK LAYER (§10)
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: rss:ecb-press
+    name: European Central Bank — Press
+    url: https://www.ecb.europa.eu/rss/press.html
+    sourceType: rss
+    category: FED
+    priority: 88
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 95
+    microScore: 5
+    geopoliticalScore: 20
+    expectedIntervalMs: 604800000
+
+  - id: rss:boe-news
+    name: Bank of England — News
+    url: https://www.bankofengland.co.uk/rss/news
+    sourceType: rss
+    category: FED
+    priority: 82
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 90
+    microScore: 5
+    geopoliticalScore: 15
+    expectedIntervalMs: 604800000
+
+  - id: rss:boj-news
+    name: Bank of Japan — What's New
+    url: https://www.boj.or.jp/en/rss/whatsnew.xml
+    sourceType: rss
+    category: FED
+    priority: 82
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 90
+    microScore: 5
+    geopoliticalScore: 15
+    expectedIntervalMs: 604800000
+
+  - id: rss:boc-press
+    name: Bank of Canada — Press Releases
+    url: https://www.bankofcanada.ca/content_type/press-releases/feed/
+    sourceType: rss
+    category: FED
+    priority: 72
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 82
+    microScore: 5
+    geopoliticalScore: 10
+    expectedIntervalMs: 604800000
+
+  - id: rss:rba-media
+    name: Reserve Bank of Australia — Media Releases
+    url: https://www.rba.gov.au/rss/rss-cb-media-releases.xml
+    sourceType: rss
+    category: FED
+    priority: 68
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 78
+    microScore: 5
+    geopoliticalScore: 10
+    expectedIntervalMs: 604800000
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # SEC FILINGS ENGINE (§16)
+  # EDGAR "current events" atom feeds. Materiality is classified before
+  # anything reaches a channel — most filings never alert.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: edgar:8k
+    name: SEC EDGAR — 8-K Current Reports
+    url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=100&output=atom
+    sourceType: edgar
+    category: EQUITY
+    priority: 88
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 5
+    microScore: 100
+    geopoliticalScore: 0
+    expectedIntervalMs: 3600000
+    notes: Material corporate events. Item codes drive the materiality classifier.
+
+  - id: edgar:13d
+    name: SEC EDGAR — SC 13D Activist Stakes
+    url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=SC+13D&company=&dateb=&owner=include&count=100&output=atom
+    sourceType: edgar
+    category: EQUITY
+    priority: 82
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 0
+    microScore: 95
+    geopoliticalScore: 0
+    expectedIntervalMs: 86400000
+
+  - id: edgar:4
+    name: SEC EDGAR — Form 4 Insider Transactions
+    url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&company=&dateb=&owner=include&count=100&output=atom
+    sourceType: edgar
+    category: EQUITY
+    priority: 45
+    enabled: false
+    official: true
+    qualityScore: 100
+    noiseScore: 0
+    macroScore: 0
+    microScore: 70
+    geopoliticalScore: 0
+    expectedIntervalMs: 3600000
+    notes: >-
+      Staged off by default. Form 4 volume is enormous and only large insider
+      transactions in priority names clear the materiality bar. Enable once the
+      filings classifier has been tuned against real volume.

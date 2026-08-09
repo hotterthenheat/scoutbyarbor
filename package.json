@@ -1,0 +1,39 @@
+{
+  "name": "scoutbyarbor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scout by Arbor Capital - real-time financial news intelligence for Discord",
+  "type": "module",
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "scout": "tsx src/cli/index.ts",
+    "sources:verify": "tsx src/cli/index.ts sources:verify",
+    "sources:sync": "tsx src/cli/index.ts sources:sync",
+    "db:migrate": "tsx src/cli/index.ts db:migrate",
+    "discord:setup": "tsx src/cli/index.ts discord:setup",
+    "replay": "tsx src/cli/index.ts replay"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.7",
+    "fast-xml-parser": "^4.5.1",
+    "yaml": "^2.6.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
