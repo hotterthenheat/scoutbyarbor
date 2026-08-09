@@ -100,6 +100,9 @@ CREATE INDEX IF NOT EXISTS idx_raw_posts_source ON raw_posts(source_id, event_ti
 -- ── Event clusters (§18) ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS events (
   id               TEXT PRIMARY KEY,
+  -- Human-readable event key, e.g. iran-us-deal-2026-05-28. Stable for the
+  -- life of the cluster so downstream systems can refer to an event by name.
+  slug             TEXT NOT NULL DEFAULT '',
   headline         TEXT NOT NULL,
   category         TEXT NOT NULL,
   subcategory      TEXT,
@@ -120,6 +123,7 @@ CREATE TABLE IF NOT EXISTS events (
   created_at       TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_events_slug   ON events(slug);
 CREATE INDEX IF NOT EXISTS idx_events_open   ON events(status, last_updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_cat    ON events(category, last_updated_at DESC);
 
@@ -248,3 +252,72 @@ CREATE TABLE IF NOT EXISTS latency_samples (
 );
 
 CREATE INDEX IF NOT EXISTS idx_latency_recorded ON latency_samples(recorded_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 24/7 URL INGESTION
+--
+-- Scout watches configured Discord channels for X post URLs and processes them
+-- as they arrive. These tables are what make that survive a restart: the
+-- processed-post set must never live only in RAM, or a redeploy would repost
+-- the last several hundred items.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- One row per resolved post, keyed by the platform-native id (`x:<post_id>`),
+-- so the same post arriving through five channels collapses to one row.
+CREATE TABLE IF NOT EXISTS posts (
+  post_id          TEXT PRIMARY KEY,   -- canonical, e.g. x:2058552301120360937
+  author           TEXT,
+  author_handle    TEXT,
+  text             TEXT NOT NULL DEFAULT '',
+  -- NULL when the genuine publication time is unavailable. The Discord receive
+  -- time is NEVER substituted here.
+  published_at     TEXT,
+  canonical_url    TEXT,
+  retrieval_source TEXT NOT NULL DEFAULT 'unknown',
+  discord_received_at TEXT,
+  created_at       TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at DESC);
+
+-- Per-destination delivery log, so a partial Discord outage is visible and
+-- retryable rather than silent.
+CREATE TABLE IF NOT EXISTS deliveries (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id           TEXT NOT NULL,
+  destination        TEXT NOT NULL,   -- channel key, or 'sprout'
+  status             TEXT NOT NULL,   -- PENDING | SENT | FAILED | SKIPPED
+  discord_message_id TEXT,
+  sent_at            TEXT,
+  error              TEXT,
+  created_at         TEXT NOT NULL,
+  UNIQUE (event_id, destination)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status, created_at);
+
+-- The work queue. Persisted so in-flight work resumes after a restart instead
+-- of being lost or duplicated.
+CREATE TABLE IF NOT EXISTS processing_jobs (
+  job_id          TEXT PRIMARY KEY,
+  post_id         TEXT NOT NULL,
+  url             TEXT NOT NULL,
+  source_channel  TEXT,
+  source_kind     TEXT NOT NULL DEFAULT 'news',  -- news | truth_social | admin
+  status          TEXT NOT NULL DEFAULT 'QUEUED',
+                    -- QUEUED | RUNNING | DONE | FAILED | FAILED_RETRIEVAL | SKIPPED
+  attempts        INTEGER NOT NULL DEFAULT 0,
+  last_error      TEXT,
+  next_attempt_at TEXT,
+  created_at      TEXT NOT NULL,
+  completed_at    TEXT,
+  UNIQUE (post_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON processing_jobs(status, next_attempt_at);
+
+-- Calendar reminders already sent, so a restart does not refire them.
+CREATE TABLE IF NOT EXISTS calendar_fired (
+  key      TEXT PRIMARY KEY,   -- "<eventId>:<leadMinutes>"
+  fired_at TEXT NOT NULL
+);

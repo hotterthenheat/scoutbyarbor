@@ -425,6 +425,8 @@ export interface ScoreBreakdown {
  */
 export interface EventCluster {
   id: string;
+  /** Human-readable event key, e.g. `iran-us-deal-2026-05-28`. */
+  slug: string;
   /** Current best headline; updated when a higher-scoring development lands. */
   headline: string;
   category: Category;
@@ -551,6 +553,12 @@ export interface RawChannelPayload {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ChannelKey =
+  // The three primary channels. `news` is the canonical complete feed;
+  // `tradingFloor` and `spx` always move together and only carry events that
+  // clear the market-impact bar.
+  | 'news'
+  | 'tradingFloor'
+  | 'spx'
   | 'breaking'
   | 'macro'
   | 'fed'
@@ -584,6 +592,8 @@ export interface PipelineOutcome {
   supersedes: boolean;
   route: RouteDecision | null;
   alert: RenderableAlert | null;
+  /** Why this did or did not reach the trading channels. */
+  impact: import('../pipeline/marketImpact.js').MarketImpactVerdict | null;
   raw: RawChannelPayload;
   signals: string[];
 }

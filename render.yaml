@@ -1,0 +1,81 @@
+# Render blueprint for Scout.
+#
+# Scout is a always-on worker with an HTTP health surface, not a request/response
+# service — it holds gateway connections and timers, so it must not be deployed
+# anywhere that sleeps on idle. On Render that means a paid instance type: the
+# free tier spins down after inactivity, and a wire that is asleep at 3am is
+# exactly the failure this design exists to avoid.
+#
+# The database lives on a persistent disk. Without one, every deploy would wipe
+# the processed-post set and Scout would repost recent history on boot.
+
+services:
+  - type: web
+    name: scout
+    runtime: node
+    plan: starter # NOT free — free instances sleep, and Scout must not
+    region: oregon
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+
+    disk:
+      name: scout-data
+      mountPath: /var/data
+      sizeGB: 1
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_PATH
+        value: /var/data/scout.db
+      - key: PORT
+        value: "10000"
+      - key: LOG_LEVEL
+        value: info
+
+      # ── Secrets: set these in the Render dashboard, never in this file ──
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_GUILD_ID
+        sync: false
+      - key: X_BEARER_TOKEN
+        sync: false
+
+      # ── Primary channels ──
+      - key: DISCORD_CHANNEL_NEWS
+        sync: false
+      - key: DISCORD_CHANNEL_TRADING_FLOOR
+        sync: false
+      - key: DISCORD_CHANNEL_SPX
+        sync: false
+      - key: DISCORD_CHANNEL_RAW
+        sync: false
+      - key: DISCORD_CHANNEL_SYSTEM
+        sync: false
+
+      # ── Watched input channels for URL ingestion ──
+      - key: NEWS_SOURCE_CHANNEL_IDS
+        sync: false
+      - key: TRUTH_SOCIAL_CHANNEL_IDS
+        sync: false
+      - key: ADMIN_INPUT_CHANNEL_IDS
+        sync: false
+      - key: ALLOWED_X_ACCOUNTS
+        sync: false
+
+      - key: SEC_USER_AGENT
+        sync: false
+
+      # ── Tuning ──
+      - key: RESOLVE_TIMEOUT_SECONDS
+        value: "10"
+      - key: INGEST_CONCURRENCY
+        value: "4"
+      - key: SPROUT_MAX_AGE_MINUTES
+        value: "30"
+      - key: MIN_PUBLISH_SCORE
+        value: "60"
+      - key: MIN_BREAKING_SCORE
+        value: "90"

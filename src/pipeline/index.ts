@@ -27,6 +27,7 @@ import { extractEarnings, isEarningsPost, buildEarningsHeadline } from './classi
 import { classifyFiling } from './classify/filings.js';
 import { findCluster, createCluster, applyUpdate, computeNovelty } from './cluster.js';
 import { scoreEvent } from './score.js';
+import { assessMarketImpact } from './marketImpact.js';
 import { routeAlert } from '../discord/router.js';
 import { buildAlert } from '../render/alert.js';
 import { computeLatency } from '../health/latency.js';
@@ -47,6 +48,7 @@ import { isoNow, msBetween } from '../util/time.js';
  */
 
 export interface PipelineConfig {
+  categoryChannelsEnabled?: boolean;
   minPublishScore: number;
   minBreakingScore: number;
   dedupeWindowMinutes: number;
@@ -314,6 +316,19 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     ctx.cluster = cluster;
 
     // ── FORMAT (§3, §26, §33) ───────────────────────────────────────────────
+    // Whether this reaches the trading channels is decided by the event, never
+    // by which account posted it.
+    const impact = assessMarketImpact({
+      category,
+      subcategory: verdict.subcategory,
+      band: score.band,
+      score: score.total,
+      entities,
+      text: post.cleanText,
+      securities,
+    });
+    signals.push(...impact.reasons.map((r) => `impact:${r}`));
+
     const route = routeAlert({
       category,
       secondary: verdict.secondary,
@@ -322,6 +337,8 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       minBreakingScore: config.minBreakingScore,
       subcategory: verdict.subcategory,
       tickers: entities.tickers.map((t) => t.ticker),
+      impact,
+      categoryChannelsEnabled: config.categoryChannelsEnabled,
     });
 
     const alert = buildAlert({
@@ -373,6 +390,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       supersedes,
       route,
       alert,
+      impact,
       raw: buildRawPayload(ctx, 'ACCEPTED', null, score, entities.tickers, signals),
       signals,
     };
@@ -446,6 +464,7 @@ function reject(
     supersedes: false,
     route: null,
     alert: null,
+    impact: null,
     raw: buildRawPayload(
       ctx,
       status === 'DUPLICATE' ? 'DUPLICATE' : 'REJECTED',

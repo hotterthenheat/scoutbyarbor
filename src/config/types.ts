@@ -104,6 +104,9 @@ export interface TaxonomyFile {
 // ── Runtime settings from env ────────────────────────────────────────────────
 
 export interface DiscordChannelConfig {
+  news: string;
+  tradingFloor: string;
+  spx: string;
   breaking: string;
   macro: string;
   fed: string;
@@ -124,6 +127,12 @@ export interface ScoutEnv {
     guildId: string;
     channels: DiscordChannelConfig;
     rawChannelEnabled: boolean;
+    /** Emit the per-category channels alongside the three primary ones. */
+    categoryChannelsEnabled: boolean;
+    /** Discord channels Scout watches for X post URLs. */
+    newsSourceChannelIds: string[];
+    truthSocialChannelIds: string[];
+    adminInputChannelIds: string[];
   };
   x: {
     bearerToken: string;
@@ -137,6 +146,20 @@ export interface ScoutEnv {
   rss: {
     pollIntervalMs: number;
   };
+  /** 24/7 URL-ingestion worker settings. */
+  ingestion: {
+    resolveTimeoutMs: number;
+    maxAttempts: number;
+    concurrency: number;
+    /** Only these X accounts enter the production pipeline. Empty = allow all. */
+    allowedXAccounts: string[];
+  };
+  sprout: {
+    /** A post older than this is archived, never sent as a fresh trading event. */
+    maxAgeMinutes: number;
+  };
+  /** HTTP port for /health, /ready and /metrics. */
+  port: number;
   databasePath: string;
   pipeline: {
     minPublishScore: number;

@@ -1,22 +1,31 @@
 import type { Category, ChannelKey, ImportanceBand, RouteDecision } from '../core/types.js';
+import type { MarketImpactVerdict } from '../pipeline/marketImpact.js';
 
 /**
- * CHANNEL ROUTING (§26).
+ * CHANNEL ROUTING.
  *
- * Events fan out to the channels that care, rather than broadcasting
- * everywhere. The spec's two worked examples are the acceptance criteria:
+ * The channel hierarchy:
  *
- *   a critical Fed event   → breaking, macro, fed
- *   an NVDA earnings event → breaking, equities, earnings
+ *   #scout-news      the complete qualified Scout feed — every accepted event
+ *   #trading-floor   every major market-moving event
+ *   #spx-trading     the same major events, for anything that can move SPX
  *
- * Pure function, no I/O.
+ * The core rule is that the trading channels move together: there must be no
+ * situation where a critical macro/geopolitical/Fed/government event lands in
+ * #scout-news while the trading channels miss it. `marketMoving` is decided by
+ * the market-impact classifier, and if it is true both trading channels get the
+ * event — never one without the other.
+ *
+ * Routing is decided by the event, never by the source. The same account can
+ * produce a #scout-news-only post and an all-channels post minutes apart.
+ *
+ * The per-category channels from the original spec are still supported and are
+ * emitted as an additional fan-out when enabled.
  */
 
-const HOME: Record<Category, ChannelKey[]> = {
+const CATEGORY_HOME: Record<Category, ChannelKey[]> = {
   MACRO: ['macro'],
   FED: ['fed'],
-  // An economic release is macro news; it only reaches markets when it is the
-  // kind of print that repriceses the curve.
   ECONOMIC: ['macro'],
   GEOPOLITICAL: ['geopolitics'],
   MARKET: ['markets'],
@@ -27,7 +36,6 @@ const HOME: Record<Category, ChannelKey[]> = {
   CRYPTO: ['crypto'],
 };
 
-/** Releases that move rates and therefore belong in #scout-markets too. */
 const RATE_MOVING = new Set([
   'CPI_RELEASE',
   'PCE_RELEASE',
@@ -45,62 +53,65 @@ export interface RouteInput {
   minBreakingScore: number;
   subcategory: string | null;
   tickers: string[];
+  impact: MarketImpactVerdict;
+  /** Emit the per-category channels alongside the three primary ones. */
+  categoryChannelsEnabled?: boolean;
 }
 
 export function routeAlert(input: RouteInput): RouteDecision {
   const channels = new Set<ChannelKey>();
   const reasons: string[] = [];
 
-  for (const channel of HOME[input.category] ?? []) {
-    channels.add(channel);
-    reasons.push(`${channel}: home channel for ${input.category}`);
-  }
+  // 1. Every accepted event goes to the canonical feed.
+  channels.add('news');
+  reasons.push('news: the complete qualified Scout feed');
 
-  // A Fed decision is macro news as well as Fed news.
-  if (input.category === 'FED') {
-    channels.add('macro');
-    reasons.push('macro: Fed policy is macro');
-  }
-
-  if (input.category === 'ECONOMIC' && input.subcategory && RATE_MOVING.has(input.subcategory)) {
-    channels.add('markets');
-    reasons.push(`markets: ${input.subcategory} reprices the curve`);
-  }
-
-  // An earnings event is equity news too — the spec routes NVDA earnings to
-  // both #scout-equities and #scout-earnings.
-  if (input.category === 'EARNINGS') {
-    channels.add('equities');
-    reasons.push('equities: earnings is company news');
-  }
-
-  for (const secondary of input.secondary) {
-    for (const channel of HOME[secondary] ?? []) {
-      if (!channels.has(channel)) {
-        channels.add(channel);
-        reasons.push(`${channel}: secondary category ${secondary}`);
-      }
-    }
-  }
-
-  if (input.score >= input.minBreakingScore || input.band === 'CRITICAL') {
-    channels.add('breaking');
+  // 2. The trading channels move together, or not at all.
+  if (input.impact.marketMoving) {
+    channels.add('tradingFloor');
+    channels.add('spx');
+    reasons.push(`trading-floor + spx-trading: ${input.impact.reasons[0] ?? 'major market event'}`);
+    for (const reason of input.impact.reasons.slice(1, 3)) reasons.push(`  · ${reason}`);
+  } else {
     reasons.push(
-      input.band === 'CRITICAL'
-        ? 'breaking: CRITICAL band'
-        : `breaking: score ${Math.round(input.score)} >= ${input.minBreakingScore}`,
+      `held out of the trading channels: ${input.impact.reasons.at(-1) ?? 'below the market-impact bar'}`,
     );
   }
 
-  // The admin channels are never a routing target; the publisher handles them.
+  // 3. Optional per-category fan-out.
+  if (input.categoryChannelsEnabled) {
+    for (const channel of CATEGORY_HOME[input.category] ?? []) {
+      channels.add(channel);
+      reasons.push(`${channel}: home channel for ${input.category}`);
+    }
+    if (input.category === 'FED') channels.add('macro');
+    if (input.category === 'EARNINGS') channels.add('equities');
+    if (input.category === 'ECONOMIC' && input.subcategory && RATE_MOVING.has(input.subcategory)) {
+      channels.add('markets');
+    }
+    for (const secondary of input.secondary) {
+      for (const channel of CATEGORY_HOME[secondary] ?? []) channels.add(channel);
+    }
+    if (input.score >= input.minBreakingScore || input.band === 'CRITICAL') {
+      channels.add('breaking');
+      reasons.push('breaking: CRITICAL band or above the breaking threshold');
+    }
+  }
+
+  // The admin channels are never a routing target.
   channels.delete('raw');
   channels.delete('system');
 
-  if (channels.size === 0) {
-    const fallback = HOME[input.category]?.[0] ?? 'markets';
-    channels.add(fallback);
-    reasons.push(`${fallback}: fallback, an accepted alert always lands somewhere`);
-  }
-
   return { channels: [...channels], reasons };
+}
+
+/**
+ * A scheduled calendar reminder goes straight to the trading channels — the
+ * point of "CPI IN 15 MINUTES" is that a desk sees it where it is trading.
+ */
+export function routeCalendarReminder(): RouteDecision {
+  return {
+    channels: ['news', 'tradingFloor', 'spx'],
+    reasons: ['scheduled calendar event: news + both trading channels'],
+  };
 }

@@ -540,3 +540,27 @@ sources:
       Staged off by default. Form 4 volume is enormous and only large insider
       transactions in priority names clear the materiality bar. Enable once the
       filings classifier has been tuned against real volume.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # RELAYED URLS (24/7 URL ingestion)
+  # Posts that arrive as X links in the watched Discord channels are attributed
+  # here. Routing is decided by the event, never by this source — the same relay
+  # produces a #scout-news-only post and an all-channels post minutes apart.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: relay:discord-urls
+    name: Relayed X Posts
+    sourceType: manual
+    category: MIXED
+    priority: 90
+    enabled: true
+    qualityScore: 90
+    noiseScore: 10
+    macroScore: 85
+    microScore: 85
+    geopoliticalScore: 90
+    filterProfile: standard
+    expectedIntervalMs: 3600000
+    notes: >-
+      URLs detected in NEWS_SOURCE_CHANNEL_IDS / TRUTH_SOCIAL_CHANNEL_IDS /
+      ADMIN_INPUT_CHANNEL_IDS. Constrain which accounts are accepted with
+      ALLOWED_X_ACCOUNTS rather than by trusting whoever pasted the link.

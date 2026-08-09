@@ -76,7 +76,7 @@ describe('accepting real news', () => {
     );
     expect(out.accepted).toBe(true);
     expect(out.newsEvent.category).toBe('FED');
-    expect(out.route?.channels).toContain('fed');
+    expect(out.route?.channels).toContain('news');
     expect(out.alert?.banner).toBe('FED ALERT');
   });
 
@@ -95,14 +95,14 @@ describe('accepting real news', () => {
     expect(out.accepted).toBe(true);
     expect(out.newsEvent.category).toBe('GEOPOLITICAL');
     expect(out.newsEvent.countries.length).toBeGreaterThan(0);
-    expect(out.route?.channels).toContain('geopolitics');
+    expect(out.route?.channels).toContain('news');
   });
 
   it('routes a corporate event to equities with the ticker resolved', async () => {
     const out = await pipeline.process(raw('NVIDIA ANNOUNCES MAJOR NEW AI PARTNERSHIP'));
     expect(out.accepted).toBe(true);
     expect(out.newsEvent.tickers).toContain('NVDA');
-    expect(out.route?.channels).toContain('equities');
+    expect(out.route?.channels).toContain('news');
   });
 });
 

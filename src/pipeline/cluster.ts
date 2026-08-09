@@ -136,6 +136,7 @@ export interface CreateClusterInput {
 export function createCluster(input: CreateClusterInput): EventCluster {
   return {
     id: input.id,
+    slug: buildEventSlug(input.headline, [...input.countries, ...input.tickers], input.occurredAt),
     headline: input.headline,
     category: input.category,
     subcategory: input.subcategory,
@@ -225,6 +226,36 @@ export function computeNovelty(input: {
   const value = 100 - corroborationPenalty - timePenalty + divergenceCredit;
   return clamp(value, 0, 100);
 }
+
+/**
+ * A stable, human-readable key for an event: `iran-us-deal-2026-05-28`.
+ * Downstream systems refer to an event by this rather than by a UUID, and it
+ * stays fixed for the life of the cluster even as the headline is superseded.
+ */
+export function buildEventSlug(headline: string, entities: string[], occurredAt: string): string {
+  const date = (occurredAt || '').slice(0, 10) || 'undated';
+
+  const entityPart = [...new Set(entities.map((e) => e.toLowerCase()))]
+    .filter(Boolean)
+    .slice(0, 3)
+    .join('-');
+
+  const words = headline
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !SLUG_STOPWORDS.has(w))
+    .slice(0, 4)
+    .join('-');
+
+  return [entityPart, words, date].filter(Boolean).join('-').replace(/-+/g, '-').slice(0, 90);
+}
+
+const SLUG_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'that', 'this', 'says', 'said', 'has',
+  'have', 'are', 'was', 'were', 'will', 'its', 'his', 'her', 'their', 'after',
+  'over', 'into', 'amid', 'more', 'than', 'about',
+]);
 
 function strongEntitiesOf(entities: ExtractedEntities): Set<string> {
   const out = new Set<string>();

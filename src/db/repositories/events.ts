@@ -33,6 +33,7 @@ interface EventRow {
   countries: string;
   entities: string;
   source_ids: string;
+  slug: string;
   importance: number;
   band: string;
   source_count: number;
@@ -45,7 +46,7 @@ interface EventRow {
 }
 
 const COLUMNS = `
-  id, headline, category, subcategory, tickers, countries, entities, source_ids, importance,
+  id, slug, headline, category, subcategory, tickers, countries, entities, source_ids, importance,
   band, source_count, post_count, first_seen_at, last_updated_at, status,
   discord_messages, created_at`;
 
@@ -59,6 +60,7 @@ function toCluster(row: EventRow): EventCluster {
     countries: parseJsonArray<string>(row.countries),
     entities: parseJsonArray<string>(row.entities),
     sourceIds: parseJsonArray<string>(row.source_ids),
+    slug: toText(row.slug),
     importance: toNumber(row.importance),
     band: toText(row.band, 'LOW') as ImportanceBand,
     sourceCount: toNumber(row.source_count, 1),
@@ -74,6 +76,7 @@ function toCluster(row: EventRow): EventCluster {
 function toParams(c: EventCluster): Bind[] {
   return [
     c.id,
+    c.slug ?? '',
     c.headline,
     c.category,
     c.subcategory,
@@ -103,8 +106,9 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
       // and Discord message log with it.
       stmts.get(`
         INSERT INTO events (${COLUMNS})
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
+          slug = excluded.slug,
           headline = excluded.headline,
           category = excluded.category,
           subcategory = excluded.subcategory,
@@ -125,11 +129,12 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
     update(cluster: EventCluster): void {
       stmts.get(`
         UPDATE events SET
-          headline = ?, category = ?, subcategory = ?, tickers = ?, countries = ?,
+          slug = ?, headline = ?, category = ?, subcategory = ?, tickers = ?, countries = ?,
           entities = ?, source_ids = ?, importance = ?, band = ?, source_count = ?, post_count = ?,
           first_seen_at = ?, last_updated_at = ?, status = ?, discord_messages = ?
         WHERE id = ?
       `).run(
+        cluster.slug ?? '',
         cluster.headline,
         cluster.category,
         cluster.subcategory,

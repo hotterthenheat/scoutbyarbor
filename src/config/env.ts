@@ -27,9 +27,24 @@ const bool = (fallback: boolean) =>
       return /^(1|true|yes|on)$/i.test(v.trim());
     });
 
+/** Comma/whitespace separated list → trimmed non-empty entries. */
+const list = () =>
+  z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? '')
+        .split(/[,\s]+/)
+        .map((x) => x.trim())
+        .filter(Boolean),
+    );
+
 const schema = z.object({
   DISCORD_BOT_TOKEN: z.string().default(''),
   DISCORD_GUILD_ID: z.string().default(''),
+  DISCORD_CHANNEL_NEWS: z.string().default(''),
+  DISCORD_CHANNEL_TRADING_FLOOR: z.string().default(''),
+  DISCORD_CHANNEL_SPX: z.string().default(''),
   DISCORD_CHANNEL_BREAKING: z.string().default(''),
   DISCORD_CHANNEL_MACRO: z.string().default(''),
   DISCORD_CHANNEL_FED: z.string().default(''),
@@ -42,6 +57,11 @@ const schema = z.object({
   DISCORD_CHANNEL_CRYPTO: z.string().default(''),
   DISCORD_CHANNEL_RAW: z.string().default(''),
   DISCORD_CHANNEL_SYSTEM: z.string().default(''),
+
+  CATEGORY_CHANNELS_ENABLED: bool(false),
+  NEWS_SOURCE_CHANNEL_IDS: list(),
+  TRUTH_SOCIAL_CHANNEL_IDS: list(),
+  ADMIN_INPUT_CHANNEL_IDS: list(),
 
   X_BEARER_TOKEN: z.string().default(''),
   X_POLL_INTERVAL_MS: numeric(20_000),
@@ -60,6 +80,13 @@ const schema = z.object({
   CLUSTER_WINDOW_MINUTES: numeric(240),
   DEDUPE_SIMILARITY: numeric(0.82),
 
+  RESOLVE_TIMEOUT_SECONDS: numeric(10),
+  RESOLVE_MAX_ATTEMPTS: numeric(4),
+  INGEST_CONCURRENCY: numeric(4),
+  ALLOWED_X_ACCOUNTS: list(),
+  SPROUT_MAX_AGE_MINUTES: numeric(30),
+  PORT: numeric(10000),
+
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   RAW_CHANNEL_ENABLED: bool(true),
   DRY_RUN: bool(false),
@@ -74,6 +101,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       token: parsed.DISCORD_BOT_TOKEN,
       guildId: parsed.DISCORD_GUILD_ID,
       channels: {
+        news: parsed.DISCORD_CHANNEL_NEWS,
+        tradingFloor: parsed.DISCORD_CHANNEL_TRADING_FLOOR,
+        spx: parsed.DISCORD_CHANNEL_SPX,
         breaking: parsed.DISCORD_CHANNEL_BREAKING,
         macro: parsed.DISCORD_CHANNEL_MACRO,
         fed: parsed.DISCORD_CHANNEL_FED,
@@ -88,7 +118,21 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
         system: parsed.DISCORD_CHANNEL_SYSTEM,
       },
       rawChannelEnabled: parsed.RAW_CHANNEL_ENABLED,
+      categoryChannelsEnabled: parsed.CATEGORY_CHANNELS_ENABLED,
+      newsSourceChannelIds: parsed.NEWS_SOURCE_CHANNEL_IDS,
+      truthSocialChannelIds: parsed.TRUTH_SOCIAL_CHANNEL_IDS,
+      adminInputChannelIds: parsed.ADMIN_INPUT_CHANNEL_IDS,
     },
+    ingestion: {
+      resolveTimeoutMs: parsed.RESOLVE_TIMEOUT_SECONDS * 1000,
+      maxAttempts: parsed.RESOLVE_MAX_ATTEMPTS,
+      concurrency: parsed.INGEST_CONCURRENCY,
+      allowedXAccounts: parsed.ALLOWED_X_ACCOUNTS.map((a) => a.replace(/^@/, '').toLowerCase()),
+    },
+    sprout: {
+      maxAgeMinutes: parsed.SPROUT_MAX_AGE_MINUTES,
+    },
+    port: parsed.PORT,
     x: {
       bearerToken: parsed.X_BEARER_TOKEN,
       pollIntervalMs: parsed.X_POLL_INTERVAL_MS,

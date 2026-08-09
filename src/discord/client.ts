@@ -22,6 +22,9 @@ const MESSAGE_LIMIT = 2000;
 const MAX_ATTEMPTS = 4;
 
 export const CHANNEL_NAMES: Record<ChannelKey, string> = {
+  news: 'scout-news',
+  tradingFloor: 'trading-floor',
+  spx: 'spx-trading',
   breaking: 'scout-breaking',
   macro: 'scout-macro',
   fed: 'scout-fed',

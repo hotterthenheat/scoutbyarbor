@@ -8,12 +8,15 @@ It is not a feed mirror, an aggregator, a chatbot, or a signal generator. The
 product is the filtering.
 
 ```
-X / RSS / EDGAR
-      ↓
-   INGEST → NORMALIZE → DEDUPLICATE → CLASSIFY → FILTER
-                                                    ↓
-                          DISCORD ← FORMAT ← RANK ← CLUSTER
+X URLs relayed into Discord ─┐
+X timelines / RSS / EDGAR ───┴─→ INGEST → NORMALIZE → DEDUPE → CLASSIFY → FILTER
+                                                                            ↓
+                                    DISCORD ← ROUTE ← FORMAT ← RANK ← CLUSTER
 ```
+
+Scout runs continuously — premarket, overnight, weekends, holidays. There is no
+market-hours gate anywhere in the pipeline, because policy and geopolitical news
+does not wait for the open.
 
 ---
 
@@ -87,7 +90,8 @@ The first renders a `FED ALERT`. The second is rejected as `NOISE_MARKET_CHATTER
 | **Filter** | Ten noise classes, plus a factuality gate that separates reporting from commentary on the accounts that mix them. | §20, §8 |
 | **Cluster** | Related developments join one event. A bigger development supersedes the previous alert by editing it in place instead of posting again. | §18 |
 | **Rank** | Six weighted components → 0–100 → CRITICAL / HIGH / MODERATE / LOW / IGNORE. Internal only; never shown. | §19 |
-| **Route** | Category home channel, plus `#scout-breaking` above the breaking threshold, plus secondary channels. | §26 |
+| **Assess impact** | Could this move SPX / rates / the dollar / broad risk? Decides trading-channel eligibility. | — |
+| **Route** | `#scout-news` always; both trading channels together when the event clears the market-impact bar. | — |
 
 ### Deduplication in practice
 
@@ -165,9 +169,11 @@ should not be trusted just because a list somewhere claims it exists.
 every feed URL, marks each row verified or not, and prints what failed. Run it
 before enabling anything, and after any upstream reorganisation.
 
-See `docs/source-verification.md` for the results of the verification pass run
-against this configuration, including which feed URLs were confirmed live and
-which could not be checked.
+**The shipped list has not been network-verified.** The X handles are the ones
+named in the specification and the feed URLs are the documented endpoints for
+each agency, but neither has been confirmed against the live services in this
+repository — run `npm run sources:verify` before trusting any of them, and set
+`enabled: false` for anything that does not resolve.
 
 ### Curation
 
@@ -189,21 +195,108 @@ considers important is a bot you cannot reason about.
 ## Channels
 
 ```
-#scout-breaking     score ≥ 90 or band CRITICAL
-#scout-macro        #scout-fed        #scout-geopolitics
-#scout-markets      #scout-equities   #scout-earnings
-#scout-commodities  #scout-options    #scout-crypto
-#scout-raw          admin — every decision, accepted or rejected
-#scout-system       admin — source health, latency, reports
+#scout-news       the complete qualified feed — every accepted event
+#trading-floor    every major market-moving event
+#spx-trading      the same major events, for anything that can move SPX
+#scout-raw        admin — every decision, accepted or rejected
+#scout-system     admin — source health, latency, reports
 ```
 
-Events fan out rather than broadcast. A critical Fed decision goes to
-`#scout-breaking`, `#scout-macro`, and `#scout-fed`. An NVDA earnings beat goes to
-`#scout-breaking`, `#scout-equities`, and `#scout-earnings`.
+**The core rule: the two trading channels move together.** There is no
+configuration in which a critical macro, Fed, geopolitical or government event
+lands in `#scout-news` while the trading channels miss it, and none in which one
+trading channel receives an event the other does not. A test asserts both.
+
+Whether an event clears that bar is decided by `assessMarketImpact` — could this
+realistically move SPX / SPY / ES / NDX / QQQ, US rates, the dollar, or broad risk
+sentiment? By severity:
+
+| Band | Routing |
+|---|---|
+| **CRITICAL** | always `#scout-news` + both trading channels |
+| **HIGH** | both trading channels when market-wide or SPX-relevant |
+| **MODERATE** | trading channels only on genuine broad relevance |
+| **LOW** | `#scout-news` only |
+
+**The event decides, never the source.** The same relay account produces both
+outcomes minutes apart:
+
+```
+"Trump says happy birthday to someone"   → #scout-news
+"TRUMP ANNOUNCES 25% TARIFF ON STEEL"    → #scout-news + #trading-floor + #spx-trading
+```
+
+There is deliberately no `DeItaone → trading-floor` rule anywhere in the code.
+
+The original per-category channels (`#scout-macro`, `#scout-fed`, …) are still
+supported as an extra fan-out — set `CATEGORY_CHANNELS_ENABLED=true`.
 
 `#scout-raw` is the debugging surface and the only place the hidden fields
 appear — source, handle, URL, ingestion time, the full score breakdown, the
 tickers with their evidence, and the exact rule that rejected a post.
+
+### Scheduled reminders
+
+`config/calendar.yaml` drives reminders ahead of known releases, at one day, one
+hour, and fifteen minutes out:
+
+```
+SCOUT REMINDER
+
+CPI TOMORROW
+
+8:30 AM ET
+
+EXPECTED IMPACT: CRITICAL
+```
+
+These go to `#scout-news` and both trading channels. Fired reminders are
+persisted, so a restart does not repeat them.
+
+---
+
+## 24/7 URL ingestion
+
+Scout watches configured Discord channels for X post URLs and processes them as
+they arrive — event-driven, never polling channel history.
+
+```
+Discord message → detect URL → normalise → dedupe → resolve → classify → route
+```
+
+Both domains normalise to one id, which is the deduplication key:
+
+```
+https://x.com/DeItaone/status/2058552301120360937        ─┐
+https://twitter.com/DeItaone/status/2058552301120360937  ─┼→  x:2058552301120360937
+https://x.com/DeItaone/status/2058552301120360937/photo/1 ─┘
+```
+
+The same post relayed through five channels, twice in one channel, or again after
+a redeploy produces exactly one event.
+
+**Retrieval** goes through a `PostResolver` abstraction so the provider can be
+swapped without touching the pipeline. Two ship: the X API v2, and a fallback
+that uses text the relaying message already carried. There is deliberately
+nothing here that works around authentication, rate limits, CAPTCHAs or paid-tier
+restrictions — when the configured method cannot retrieve a post, the job ends as
+`FAILED_RETRIEVAL`.
+
+**Reliability.** A bounded worker pool (`INGEST_CONCURRENCY`) means a hundred URLs
+arriving at once cannot let one slow retrieval block the wire. Every external
+call has a timeout. Retries follow a fixed schedule — immediate, 1s, 3s, 10s —
+and then stop. The queue is persisted, so jobs a crashed process left mid-flight
+are picked up on boot rather than lost or duplicated.
+
+**Publication time is never faked.** If the genuine publication time is
+unavailable, `published_at` stays `NULL`; the Discord receive time is recorded
+separately and never promoted into it. The downstream trading feed enforces its
+own freshness window (`SPROUT_MAX_AGE_MINUTES`) against publication time alone,
+so a recycled headline cannot manufacture a fresh trading event.
+
+**Source filtering.** `ALLOWED_X_ACCOUNTS` restricts which accounts enter the
+production pipeline, so a URL pasted by an arbitrary user does not become a
+trading alert.
 
 ---
 
@@ -227,6 +320,17 @@ expected cadence, and any transition into a bad state raises a
 sources report `DISCONNECTED` rather than silently returning nothing. Anything
 consuming Scout downstream can therefore distinguish "no news" from "no feed".
 
+**HTTP surface** for a hosted deployment:
+
+```
+GET /health    liveness
+GET /ready     503 when a dependency ingestion needs is down
+GET /metrics   queue depth, latency percentiles, feed health, throughput
+```
+
+`/ready` failing is the deployment-level version of the same principle as source
+health: being unable to receive news must never look like there being no news.
+
 **Replay** re-runs stored raw posts through the current classifier, so a filter
 change can be measured against real traffic before it ships:
 
@@ -249,9 +353,16 @@ src/
   core/types.ts          every shared contract, including RenderableAlert
   config/                env + config loading, zod-validated
   db/                    schema and repositories (better-sqlite3)
-  ingest/                adapters: x, rss, edgar, manual + the poll manager
+  ingest/                adapters (x, rss, edgar, manual) + the poll manager
+    urls.ts              URL detection and x:<post_id> normalisation
+    resolver.ts          PostResolver abstraction + providers
+    queue.ts             persisted, bounded-concurrency job queue
+    discordListener.ts   event-driven URL detection
+    urlWorker.ts         resolve → persist → pipeline, + freshness gate
+  calendar/              scheduled release reminders
+  server/                /health, /ready, /metrics
   pipeline/
-    normalize.ts dedupe.ts cluster.ts score.ts
+    normalize.ts dedupe.ts cluster.ts score.ts marketImpact.ts
     classify/            category, noise, factuality, earnings, filings
     extract/             tickers, entities
   render/                alert.ts (austere) and raw.ts (everything)
@@ -274,3 +385,18 @@ that all matter beat five hundred that mostly do not, and every default in this
 repository is set accordingly. If Scout is too quiet, raise `MIN_PUBLISH_SCORE`
 downward; if it is too noisy, the source report will usually name the account
 responsible before the thresholds need touching.
+
+
+---
+
+## Deployment
+
+`render.yaml` is a working blueprint. Two things it will not let you get wrong:
+
+- **Not the free instance type.** Free instances sleep on idle, and a wire that
+  is asleep at 3am is precisely the failure this design exists to prevent.
+- **A persistent disk for the database.** Without one, every deploy would wipe
+  the processed-post set and Scout would repost recent history on boot.
+
+Set `DATABASE_PATH` to a path on the mounted disk, point `healthCheckPath` at
+`/health`, and put every credential in the dashboard rather than in the file.

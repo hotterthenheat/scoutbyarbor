@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SCOUT — scheduled economic calendar
+#
+# Scout fires a reminder into #scout-news, #trading-floor and #spx-trading at
+# three lead times before each event: the day before, an hour before, and
+# fifteen minutes before. The release itself is then picked up by the normal
+# pipeline from the official feed (BLS, BEA, the Fed).
+#
+#   SCOUT REMINDER
+#
+#   CPI TOMORROW
+#
+#   8:30 AM ET
+#
+#   EXPECTED IMPACT: CRITICAL
+#
+# `scheduledAt` MUST carry an explicit UTC offset — -04:00 during EDT, -05:00
+# during EST. Writing a bare local time is how a reminder ends up an hour out
+# across a daylight-saving boundary.
+#
+# Keep this file current; entries in the past are simply ignored.
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+timeZone: America/New_York
+
+events:
+  # Example entries. Replace with the real schedule — these dates are
+  # placeholders and will be skipped once they are in the past.
+  - id: cpi-2026-08
+    name: CPI
+    scheduledAt: "2026-08-12T08:30:00-04:00"
+    expectedImpact: CRITICAL
+    note: July consumer price index, Bureau of Labor Statistics.
+
+  - id: ppi-2026-08
+    name: PPI
+    scheduledAt: "2026-08-13T08:30:00-04:00"
+    expectedImpact: HIGH
+
+  - id: nfp-2026-09
+    name: NONFARM PAYROLLS
+    scheduledAt: "2026-09-04T08:30:00-04:00"
+    expectedImpact: CRITICAL
+    note: August employment situation, Bureau of Labor Statistics.
+
+  - id: fomc-2026-09
+    name: FOMC DECISION
+    scheduledAt: "2026-09-16T14:00:00-04:00"
+    expectedImpact: CRITICAL
+    note: Statement at 2:00 PM, press conference at 2:30 PM.
+
+  - id: pce-2026-08
+    name: CORE PCE
+    scheduledAt: "2026-08-28T08:30:00-04:00"
+    expectedImpact: HIGH
+
+  - id: gdp-q2-2026
+    name: Q2 GDP (SECOND ESTIMATE)
+    scheduledAt: "2026-08-27T08:30:00-04:00"
+    expectedImpact: MODERATE

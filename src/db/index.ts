@@ -12,6 +12,9 @@ import { createSourceHealthRepo, type SourceHealthRepo } from './repositories/so
 import { createSecurityRepo, type SecurityRepo } from './repositories/securities.js';
 import { createMetricsRepo, type MetricsRepo } from './repositories/metrics.js';
 import { createDiscordMessageRepo, type DiscordMessageRepo } from './repositories/discordMessages.js';
+import { createJobRepo, type JobRepo } from './repositories/jobs.js';
+import { createPostRepo, type PostRepo } from './repositories/posts.js';
+import { createDeliveryRepo, type DeliveryRepo } from './repositories/deliveries.js';
 
 /**
  * Storage layer (§24). One SQLite file, WAL mode, repositories over prepared
@@ -38,6 +41,9 @@ export type { SourceHealthRepo } from './repositories/sourceHealth.js';
 export type { SecurityRepo } from './repositories/securities.js';
 export type { MetricsRepo, LatencyStats, LatencySample } from './repositories/metrics.js';
 export type { DiscordMessageRepo, DiscordMessageRow } from './repositories/discordMessages.js';
+export type { JobRepo } from './repositories/jobs.js';
+export type { PostRepo, StoredPost } from './repositories/posts.js';
+export type { DeliveryRepo, DeliveryRecord, DeliveryStatus } from './repositories/deliveries.js';
 
 export interface ScoutDb {
   raw: SqliteDatabase;
@@ -50,6 +56,9 @@ export interface ScoutDb {
   securities: SecurityRepo;
   metrics: MetricsRepo;
   discordMessages: DiscordMessageRepo;
+  jobs: JobRepo;
+  posts: PostRepo;
+  deliveries: DeliveryRepo;
   migrate(): void;
   close(): void;
 }
@@ -201,6 +210,9 @@ export function openDatabase(path: string): ScoutDb {
     securities: createSecurityRepo(db),
     metrics: createMetricsRepo(db),
     discordMessages: createDiscordMessageRepo(db),
+    jobs: createJobRepo(db),
+    posts: createPostRepo(db),
+    deliveries: createDeliveryRepo(db),
     migrate(): void {
       // schema.sql is entirely CREATE ... IF NOT EXISTS, so this is idempotent
       // and safe to run on every boot.

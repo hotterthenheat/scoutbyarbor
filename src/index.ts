@@ -7,13 +7,21 @@ import { createRssAdapter } from './ingest/adapters/rss.js';
 import { createEdgarAdapter } from './ingest/adapters/edgar.js';
 import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
+import { createDiscordListener } from './ingest/discordListener.js';
+import { createJobQueue } from './ingest/queue.js';
+import { createUrlWorker, isFreshForTrading } from './ingest/urlWorker.js';
+import { createXApiResolver, createRelayResolver, createChainResolver } from './ingest/resolver.js';
 import { createDiscordClient } from './discord/client.js';
 import { createPublisher } from './discord/publisher.js';
 import { createHealthMonitor } from './health/monitor.js';
 import { createStatsCollector } from './health/stats.js';
+import { createScoutServer } from './server/http.js';
+import { loadCalendar, createCalendarScheduler } from './calendar/scheduler.js';
+import { routeCalendarReminder } from './discord/router.js';
 import { createLogger, setLogLevel } from './util/logger.js';
 import { isoNow } from './util/time.js';
 import type { RawPost } from './core/types.js';
+import type { RelayedMessage } from './ingest/discordListener.js';
 
 /**
  * Scout runtime wiring.
@@ -21,13 +29,21 @@ import type { RawPost } from './core/types.js';
  * Everything above this file is a pure-ish module with injected dependencies;
  * this is the one place that knows about the real database, the real network
  * and the real gateway.
+ *
+ * Scout is an always-on wire. There is no market-hours gate anywhere in here —
+ * geopolitical, policy and overnight-session news breaks at every hour, so the
+ * pipeline runs identically at 3am on a Sunday as it does at the open.
  */
 
 const log = createLogger('scout');
 
+/** Source id that relayed X posts are attributed to. */
+const RELAY_SOURCE_ID = 'relay:discord-urls';
+
 export async function main(): Promise<void> {
   const cfg = env();
   setLogLevel(cfg.logLevel);
+  const startedAt = new Date();
 
   log.info('starting', { dryRun: cfg.dryRun, db: cfg.databasePath });
 
@@ -35,7 +51,7 @@ export async function main(): Promise<void> {
   const db = openDatabase(cfg.databasePath);
   db.migrate();
 
-  // ── Config → DB (§36: the source list is data, not code) ──────────────────
+  // ── Config → DB (the source list is data, not code) ───────────────────────
   const sourcesFile = loadSourcesFile();
   const now = isoNow();
   db.sources.upsertMany(sourcesFile.sources.map((s) => toSource(s, now)));
@@ -48,10 +64,9 @@ export async function main(): Promise<void> {
     sources: sourcesFile.sources.length,
     enabled: db.sources.enabled().length,
     securities: securities.length,
-    taxonomyVersion: taxonomy.version,
   });
 
-  // ── Discord ────────────────────────────────────────────────────────────────
+  // ── Discord (publishing) ───────────────────────────────────────────────────
   const discord = createDiscordClient({
     token: cfg.discord.token,
     guildId: cfg.discord.guildId,
@@ -68,12 +83,12 @@ export async function main(): Promise<void> {
     rawChannelEnabled: cfg.discord.rawChannelEnabled,
   });
 
-  // ── Health & stats (§22, §23, §28) ────────────────────────────────────────
+  // ── Health & stats ─────────────────────────────────────────────────────────
   const health = createHealthMonitor({
     db,
     logger: log.child('health'),
+    // Feed warnings go to the admin channel, never to the trading channels.
     onWarning: async (msg) => {
-      // A broken feed is an operational event, not a quiet news day.
       await publisher.publishSystem(msg);
     },
   });
@@ -84,39 +99,127 @@ export async function main(): Promise<void> {
     db,
     taxonomy,
     securities,
-    config: cfg.pipeline,
+    config: { ...cfg.pipeline, categoryChannelsEnabled: cfg.discord.categoryChannelsEnabled },
     logger: log.child('pipeline'),
   });
 
-  async function onPosts(posts: RawPost[]): Promise<void> {
-    for (const raw of posts) {
-      try {
-        const outcome = await pipeline.process(raw);
+  async function processPost(raw: RawPost): Promise<void> {
+    try {
+      const outcome = await pipeline.process(raw);
 
-        stats.recordReceived(raw.sourceId);
-        if (outcome.accepted) {
-          stats.recordAccepted(raw.sourceId, outcome.newsEvent.importance);
-          await publisher.publish(outcome);
-        } else if (outcome.rejection?.startsWith('DUPLICATE')) {
-          stats.recordDuplicate(raw.sourceId);
-        } else if (outcome.rejection) {
-          stats.recordRejected(raw.sourceId, outcome.rejection);
+      stats.recordReceived(raw.sourceId);
+      if (outcome.accepted) {
+        stats.recordAccepted(raw.sourceId, outcome.newsEvent.importance);
+        const result = await publisher.publish(outcome);
+
+        // Freshness is judged on publication time alone. An old headline may
+        // still appear in #scout-news, but it is not a fresh trading event.
+        const publishedAt =
+          typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : raw.eventTime;
+        const freshness = isFreshForTrading(publishedAt, cfg.sprout.maxAgeMinutes);
+
+        for (const channel of result.channels) {
+          db.deliveries.record({
+            eventId: outcome.cluster?.id ?? outcome.newsEvent.id,
+            destination: channel,
+            status: 'SENT',
+            discordMessageId: result.messageIds[channel] ?? null,
+            sentAt: isoNow(),
+            error: null,
+            createdAt: isoNow(),
+          });
         }
 
-        // Every decision — accepted or not — is visible in the admin channel.
-        await publisher.publishRaw(outcome.raw);
-      } catch (err) {
-        // One malformed post must never stop the wire.
-        log.error('pipeline failure', {
-          sourceId: raw.sourceId,
-          sourcePostId: raw.sourcePostId,
-          err: err as Error,
+        db.deliveries.record({
+          eventId: outcome.cluster?.id ?? outcome.newsEvent.id,
+          destination: 'sprout',
+          status: freshness.fresh && outcome.impact?.marketMoving ? 'PENDING' : 'SKIPPED',
+          discordMessageId: null,
+          sentAt: null,
+          error: freshness.fresh ? null : freshness.reason,
+          createdAt: isoNow(),
         });
+      } else if (outcome.rejection?.startsWith('DUPLICATE')) {
+        stats.recordDuplicate(raw.sourceId);
+      } else if (outcome.rejection) {
+        stats.recordRejected(raw.sourceId, outcome.rejection);
       }
+
+      await publisher.publishRaw(outcome.raw);
+    } catch (err) {
+      // One malformed post must never stop the wire.
+      log.error('pipeline failure', {
+        sourceId: raw.sourceId,
+        sourcePostId: raw.sourcePostId,
+        err: err as Error,
+      });
     }
   }
 
-  // ── Ingestion ──────────────────────────────────────────────────────────────
+  // ── 24/7 URL ingestion ─────────────────────────────────────────────────────
+  // A pending relay payload is looked up by canonical id so the resolver chain
+  // can use content that already arrived with the link.
+  const pendingRelays = new Map<string, RelayedMessage>();
+
+  const resolver = createChainResolver(
+    [
+      createXApiResolver({
+        bearerToken: cfg.x.bearerToken,
+        timeoutMs: cfg.ingestion.resolveTimeoutMs,
+        logger: log.child('resolver'),
+      }),
+      createRelayResolver((url) => {
+        const relay = pendingRelays.get(url.canonicalId);
+        if (!relay?.relayedText) return null;
+        // No publishedAt: the relay's own message time is not the post's.
+        return { text: relay.relayedText, authorHandle: `@${url.username}` };
+      }),
+    ],
+    log.child('resolver'),
+  );
+
+  let urlWorkerRef: ReturnType<typeof createUrlWorker> | null = null;
+
+  const queue = createJobQueue({
+    db,
+    logger: log.child('queue'),
+    concurrency: cfg.ingestion.concurrency,
+    maxAttempts: cfg.ingestion.maxAttempts,
+    handler: async (job) => {
+      if (!urlWorkerRef) throw new Error('url worker not initialised');
+      await urlWorkerRef.handle(job);
+    },
+  });
+
+  const urlWorker = createUrlWorker({
+    db,
+    queue,
+    resolver,
+    logger: log.child('url-worker'),
+    allowedAccounts: cfg.ingestion.allowedXAccounts,
+    relaySourceId: RELAY_SOURCE_ID,
+    onPost: async (post) => {
+      await processPost(post);
+    },
+  });
+  urlWorkerRef = urlWorker;
+
+  const listener = createDiscordListener({
+    token: cfg.discord.token,
+    newsChannelIds: cfg.discord.newsSourceChannelIds,
+    truthSocialChannelIds: cfg.discord.truthSocialChannelIds,
+    adminChannelIds: cfg.discord.adminInputChannelIds,
+    logger: log.child('listener'),
+    onUrl: (message) => {
+      pendingRelays.set(message.url.canonicalId, message);
+      urlWorker.submit(message);
+    },
+  });
+
+  await listener.start();
+  queue.start();
+
+  // ── Polling ingestion (RSS / EDGAR / X timelines) ─────────────────────────
   const manual = createManualAdapter();
   const ingest = createIngestManager({
     db,
@@ -137,13 +240,74 @@ export async function main(): Promise<void> {
       x: cfg.x.pollIntervalMs,
       manual: 5_000,
     },
-    onPosts,
+    onPosts: async (posts) => {
+      for (const post of posts) await processPost(post);
+    },
+    onOutcome: (outcome) => health.recordPoll(outcome),
   });
 
   ingest.start();
   health.start(60_000);
 
-  log.info('scout is live');
+  // ── Scheduled calendar reminders ──────────────────────────────────────────
+  const calendar = loadCalendar();
+  const scheduler = createCalendarScheduler({
+    events: calendar.events,
+    timeZone: calendar.timeZone,
+    logger: log.child('calendar'),
+    hasFired: (key) =>
+      Boolean(db.raw.prepare('SELECT 1 FROM calendar_fired WHERE key = ?').get(key)),
+    markFired: (key) =>
+      void db.raw
+        .prepare('INSERT OR IGNORE INTO calendar_fired (key, fired_at) VALUES (?, ?)')
+        .run(key, isoNow()),
+    publish: async (rendered) => {
+      for (const channel of routeCalendarReminder().channels) {
+        await discord.send(channel, rendered);
+      }
+    },
+  });
+  scheduler.start(60_000);
+  log.info('calendar loaded', { events: calendar.events.length });
+
+  // ── Operational endpoints ──────────────────────────────────────────────────
+  const server = createScoutServer({
+    db,
+    logger: log.child('http'),
+    port: cfg.port,
+    startedAt,
+    readiness: () => [
+      { name: 'database', ok: databaseReachable(), detail: cfg.databasePath },
+      {
+        name: 'discord-publisher',
+        ok: cfg.dryRun || discord.isReady(),
+        detail: cfg.dryRun ? 'dry run' : undefined,
+      },
+      {
+        // Only a hard requirement when input channels are configured; a
+        // deployment running purely on RSS/EDGAR is legitimately ready.
+        name: 'url-listener',
+        ok: listener.watching().length === 0 || listener.isReady(),
+        detail: `${listener.watching().length} channels watched`,
+      },
+    ],
+  });
+
+  function databaseReachable(): boolean {
+    try {
+      db.raw.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  await server.start();
+
+  log.info('scout is live', {
+    watching: listener.watching().length,
+    tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),
+  });
 
   // ── Shutdown ───────────────────────────────────────────────────────────────
   let shuttingDown = false;
@@ -152,8 +316,12 @@ export async function main(): Promise<void> {
     shuttingDown = true;
     log.info('shutting down', { signal });
     ingest.stop();
+    queue.stop();
+    scheduler.stop();
     health.stop();
+    await listener.stop();
     await discord.stop();
+    await server.stop();
     db.close();
     process.exit(0);
   };
@@ -165,7 +333,6 @@ export async function main(): Promise<void> {
   });
 }
 
-// Only auto-start when executed directly, so the CLI can import this module.
 const invokedDirectly =
   process.argv[1] !== undefined && /(?:^|[\\/])index\.(?:ts|js)$/.test(process.argv[1]);
 

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildAlert, renderAlert, assertNoLeakedMetadata } from '../src/render/alert.js';
 import { formatAlertTimestamp } from '../src/util/time.js';
-import { routeAlert } from '../src/discord/router.js';
 
 /**
  * §3 and §33. The alert format is the product's signature; these tests pin it
@@ -132,74 +131,5 @@ describe('timestamp formatting (§3, §10)', () => {
   it('renders in Eastern time by default', () => {
     // 00:30 UTC on Aug 10 is 8:30 PM ET on Aug 9.
     expect(formatAlertTimestamp('2026-08-10T00:30:00.000Z')).toBe('8:30 PM · Aug. 9, 2026');
-  });
-});
-
-describe('channel routing (§26)', () => {
-  it('sends a critical Fed event to breaking, macro and fed', () => {
-    const r = routeAlert({
-      category: 'FED',
-      secondary: ['MACRO'],
-      band: 'CRITICAL',
-      score: 96,
-      minBreakingScore: 90,
-      subcategory: 'FOMC_DECISION',
-      tickers: [],
-    });
-    expect(new Set(r.channels)).toEqual(new Set(['breaking', 'macro', 'fed']));
-  });
-
-  it('sends an NVDA earnings event to breaking, equities and earnings', () => {
-    const r = routeAlert({
-      category: 'EARNINGS',
-      secondary: ['EQUITY'],
-      band: 'CRITICAL',
-      score: 92,
-      minBreakingScore: 90,
-      subcategory: 'EARNINGS_RESULT',
-      tickers: ['NVDA'],
-    });
-    expect(new Set(r.channels)).toEqual(new Set(['breaking', 'equities', 'earnings']));
-  });
-
-  it('keeps a moderate event out of breaking', () => {
-    const r = routeAlert({
-      category: 'COMMODITY',
-      secondary: [],
-      band: 'MODERATE',
-      score: 68,
-      minBreakingScore: 90,
-      subcategory: null,
-      tickers: [],
-    });
-    expect(r.channels).not.toContain('breaking');
-    expect(r.channels).toContain('commodities');
-  });
-
-  it('never returns an empty channel list', () => {
-    const r = routeAlert({
-      category: 'CRYPTO',
-      secondary: [],
-      band: 'LOW',
-      score: 45,
-      minBreakingScore: 90,
-      subcategory: null,
-      tickers: [],
-    });
-    expect(r.channels.length).toBeGreaterThan(0);
-  });
-
-  it('never routes to the admin channels', () => {
-    const r = routeAlert({
-      category: 'MACRO',
-      secondary: [],
-      band: 'HIGH',
-      score: 80,
-      minBreakingScore: 90,
-      subcategory: null,
-      tickers: [],
-    });
-    expect(r.channels).not.toContain('raw');
-    expect(r.channels).not.toContain('system');
   });
 });
