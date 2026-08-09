@@ -155,6 +155,10 @@ export interface ScoutEnv {
   sprout: {
     /** A post older than this is archived, never sent as a fresh trading event. */
     maxAgeMinutes: number;
+    /** Empty disables the hand-off entirely, which is the normal MVP state. */
+    url: string;
+    token: string;
+    timeoutMs: number;
   };
   /** HTTP port for /health, /ready and /metrics. */
   port: number;

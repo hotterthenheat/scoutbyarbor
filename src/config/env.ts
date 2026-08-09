@@ -85,6 +85,9 @@ const schema = z.object({
   INGEST_CONCURRENCY: numeric(4),
   ALLOWED_X_ACCOUNTS: list(),
   SPROUT_MAX_AGE_MINUTES: numeric(30),
+  SPROUT_URL: z.string().default(''),
+  SPROUT_TOKEN: z.string().default(''),
+  SPROUT_TIMEOUT_MS: numeric(10_000),
   PORT: numeric(10000),
 
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
@@ -94,8 +97,63 @@ const schema = z.object({
 
 let cached: ScoutEnv | null = null;
 
+/**
+ * Deployment-friendly aliases. The canonical names are on the left; the ones on
+ * the right are what a Render blueprint or a colleague's notes are likely to
+ * use. First non-empty value wins, so either spelling works and neither
+ * silently overrides a value that is already set.
+ */
+const ALIASES: Record<string, string[]> = {
+  DISCORD_BOT_TOKEN: ['DISCORD_TOKEN'],
+  NEWS_SOURCE_CHANNEL_IDS: ['DISCORD_SOURCE_CHANNEL_IDS'],
+  DISCORD_CHANNEL_NEWS: ['SCOUT_NEWS_CHANNEL_ID'],
+  DISCORD_CHANNEL_TRADING_FLOOR: ['TRADING_FLOOR_CHANNEL_ID'],
+  DISCORD_CHANNEL_SPX: ['SPX_TRADING_CHANNEL_ID'],
+  DISCORD_CHANNEL_RAW: ['SCOUT_RAW_CHANNEL_ID'],
+  DISCORD_CHANNEL_SYSTEM: ['SCOUT_SYSTEM_CHANNEL_ID'],
+};
+
+function applyAliases(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const merged: NodeJS.ProcessEnv = { ...source };
+  for (const [canonical, alternatives] of Object.entries(ALIASES)) {
+    if (merged[canonical]?.trim()) continue;
+    for (const alt of alternatives) {
+      if (source[alt]?.trim()) {
+        merged[canonical] = source[alt];
+        break;
+      }
+    }
+  }
+  return merged;
+}
+
+/**
+ * DATABASE_URL is accepted for the same reason, but only when it points at a
+ * SQLite file. Storage is SQLite on a persistent disk; a postgres:// URL would
+ * need a different storage layer, and failing loudly here beats connecting to
+ * nothing and looking healthy.
+ */
+export function databasePathFrom(source: NodeJS.ProcessEnv): string | null {
+  const url = source.DATABASE_URL?.trim();
+  if (!url) return null;
+
+  if (/^postgres(?:ql)?:\/\//i.test(url)) {
+    throw new Error(
+      'DATABASE_URL points at Postgres, which this build does not support. Scout stores ' +
+        'state in SQLite on a persistent disk — set DATABASE_PATH (e.g. /var/data/scout.db) instead.',
+    );
+  }
+  const withoutScheme = url.replace(/^(?:sqlite|file):\/\/?/i, '');
+  return withoutScheme || null;
+}
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
-  const parsed = schema.parse(source);
+  const withAliases = applyAliases(source);
+  const aliasedDbPath = databasePathFrom(withAliases);
+  if (aliasedDbPath && !withAliases.DATABASE_PATH?.trim()) {
+    withAliases.DATABASE_PATH = aliasedDbPath;
+  }
+  const parsed = schema.parse(withAliases);
   return {
     discord: {
       token: parsed.DISCORD_BOT_TOKEN,
@@ -131,6 +189,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
     },
     sprout: {
       maxAgeMinutes: parsed.SPROUT_MAX_AGE_MINUTES,
+      url: parsed.SPROUT_URL,
+      token: parsed.SPROUT_TOKEN,
+      timeoutMs: parsed.SPROUT_TIMEOUT_MS,
     },
     port: parsed.PORT,
     x: {

@@ -63,10 +63,19 @@ npm run discord:setup         # create the channels, print their ids for .env
 npm run dev                   # or: npm run build && npm start
 ```
 
-Scout runs without an X API key. The RSS and EDGAR layers — the Fed, BLS, BEA,
-Treasury, the SEC, and the central banks — need no credentials, and they are the
-highest-credibility sources in the system. Add `X_BEARER_TOKEN` to turn on the
-newswire accounts.
+**Scout needs no X API key.** The primary path reads the content a permitted
+relay already posted alongside the link, so a relayed post is resolved with no
+credential and no second request. On boot you will see:
+
+```
+X API: NOT CONFIGURED — URL/RELAY INGESTION: ENABLED
+```
+
+That is a normal configuration, not a fault. `X_BEARER_TOKEN` is optional and
+adds exactly two things: a fallback for links relayed *without* their text, and
+polling of the X accounts in `config/sources.yaml`. The RSS and EDGAR layers —
+the Fed, BLS, BEA, Treasury, the SEC and the central banks — never needed a
+credential either.
 
 Try the classifier before pointing it at anything live:
 
@@ -264,23 +273,51 @@ they arrive — event-driven, never polling channel history.
 Discord message → detect URL → normalise → dedupe → resolve → classify → route
 ```
 
-Both domains normalise to one id, which is the deduplication key:
+Every supported domain normalises to one id, which is the deduplication key:
 
 ```
-https://x.com/DeItaone/status/2058552301120360937        ─┐
-https://twitter.com/DeItaone/status/2058552301120360937  ─┼→  x:2058552301120360937
+https://x.com/DeItaone/status/2058552301120360937         ─┐
+https://twitter.com/DeItaone/status/2058552301120360937   ─┼→ x:2058552301120360937
 https://x.com/DeItaone/status/2058552301120360937/photo/1 ─┘
+
+https://truthsocial.com/@realDonaldTrump/posts/113456789  ──→ truth:113456789
 ```
 
 The same post relayed through five channels, twice in one channel, or again after
 a redeploy produces exactly one event.
 
-**Retrieval** goes through a `PostResolver` abstraction so the provider can be
-swapped without touching the pipeline. Two ship: the X API v2, and a fallback
-that uses text the relaying message already carried. There is deliberately
-nothing here that works around authentication, rate limits, CAPTCHAs or paid-tier
-restrictions — when the configured method cannot retrieve a post, the job ends as
-`FAILED_RETRIEVAL`.
+### Retrieval
+
+`PostResolver` is an interface, and nothing outside `src/ingest/resolver.ts`
+mentions a credential. Provider order is deliberate:
+
+1. **The relay itself.** A permitted relay usually posts the content with the
+   link, and the parser reads attribution, headline and body straight out of it.
+   No request, no credential — this is the primary MVP path.
+2. **X API v2**, only if configured, and only for links relayed without text.
+
+```
+Macro Alert (@DeItaone):          →  author       Macro Alert
+                                     handle       @DeItaone
+NO NUCLEAR IRAN                   →  headline     NO NUCLEAR IRAN
+                                     body         Trump called the deal…
+Trump called the deal…               published_at null  (none was stated)
+https://x.com/DeItaone/status/…   →  post id      x:2058552301120360937
+```
+
+The parser will not invent a publication time. If the relay did not state one,
+`published_at` stays `NULL` — the relay's message time is when Scout *heard*
+about the post, and treating it as publication time is how a recycled headline
+becomes a fresh trading signal.
+
+There is deliberately nothing here that works around authentication, rate
+limits, CAPTCHAs or paid-tier restrictions. When no configured method can
+retrieve a post, the job ends as `FAILED_RETRIEVAL` and the event is preserved
+for retry and diagnostics.
+
+**Truth Social runs the identical path.** `truthsocial.com/@user/posts/<id>`
+normalises to `truth:<id>` and flows through the same detector, dedupe,
+classifier and router. It is a platform, not a special case.
 
 **Reliability.** A bounded worker pool (`INGEST_CONCURRENCY`) means a hundred URLs
 arriving at once cannot let one slow retrieval block the wire. Every external
@@ -391,6 +428,24 @@ repository is set accordingly. If Scout is too quiet, raise `MIN_PUBLISH_SCORE`
 downward; if it is too noisy, the source report will usually name the account
 responsible before the thresholds need touching.
 
+
+---
+
+## Sprout
+
+Scout is the information layer; Sprout consumes normalized events for
+news-aware trading restrictions. Set `SPROUT_URL` (and `SPROUT_TOKEN`) to turn
+the hand-off on — unset is the normal MVP state, and every Sprout delivery is
+then recorded as `SKIPPED`.
+
+Only events that pass the freshness gate are sent. A post whose publication time
+is unknown or outside `SPROUT_MAX_AGE_MINUTES` may still appear in
+`#scout-news`, but handing it to a trading system would let a recycled story
+open a new blackout. Sprout being unreachable never blocks the Discord wire; the
+delivery is recorded as `FAILED` and the alert goes out regardless.
+
+Unlike a Discord alert, the Sprout payload *does* carry severity and market
+relevance — a trading system is exactly who those are for.
 
 ---
 

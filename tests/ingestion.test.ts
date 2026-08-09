@@ -381,7 +381,7 @@ describe('the URL worker', () => {
     sourceChannelId: channel,
     sourceKind: 'news',
     receivedAt: '2026-08-09T18:05:00.000Z',
-    relayedText: null,
+    rawMessage: 'FED CUTS RATES BY 25 BPS https://x.com/DeItaone/status/999',
   });
 
   it('resolves a URL into a pipeline post', async () => {

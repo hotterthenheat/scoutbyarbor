@@ -118,11 +118,21 @@ async function sourcesVerify(path: string): Promise<void> {
   ];
 
   const results: SourceVerification[] = [];
-  const skipped: string[] = [];
+  const skipped: Array<{ id: string; reason: string }> = [];
+
+  // An absent X credential is a normal configuration, not a failure. Verifying
+  // what cannot be verified would report every X source as broken and make the
+  // command look like a deployment blocker, which it is not.
+  const xConfigured = Boolean(cfg.x.bearerToken);
+
   for (const source of db.sources.all()) {
     if (source.sourceType === 'manual') {
       // Nothing remote to check: a relay source is fed by Discord, not polled.
-      skipped.push(source.id);
+      skipped.push({ id: source.id, reason: 'relay source, fed by Discord' });
+      continue;
+    }
+    if (source.sourceType === 'x' && !xConfigured) {
+      skipped.push({ id: source.id, reason: 'X_BEARER_TOKEN not configured' });
       continue;
     }
     const adapter = adapters.find((a) => a.type === source.sourceType);
@@ -146,20 +156,43 @@ async function sourcesVerify(path: string): Promise<void> {
 
   const ok = results.filter((r) => r.ok);
   const bad = results.filter((r) => !r.ok);
+
+  // Ingestion posture first: which paths are actually live.
+  const relayChannels =
+    cfg.discord.newsSourceChannelIds.length +
+    cfg.discord.truthSocialChannelIds.length +
+    cfg.discord.adminInputChannelIds.length;
+
+  process.stdout.write(
+    `\nX API verification: ${xConfigured ? 'ENABLED' : 'SKIPPED'}\n` +
+      (xConfigured ? '' : 'Reason: X_BEARER_TOKEN not configured\n') +
+      `\nDiscord relay verification: ${relayChannels > 0 ? 'ENABLED' : 'NOT CONFIGURED'}\n` +
+      (relayChannels > 0
+        ? `  ${relayChannels} input channel(s) configured\n` +
+          `  ${cfg.discord.token ? 'bot token present' : 'DISCORD_BOT_TOKEN is NOT set — the listener cannot start'}\n`
+        : '  Set NEWS_SOURCE_CHANNEL_IDS to enable URL ingestion\n'),
+  );
+
   process.stdout.write(`\nVERIFIED  ${ok.length}\n`);
   for (const r of ok) process.stdout.write(`  ok    ${r.sourceId}  ${r.resolvedName ?? ''}\n`);
+
+  if (skipped.length) {
+    process.stdout.write(`\nSKIPPED  ${skipped.length}\n`);
+    for (const sk of skipped) process.stdout.write(`  --    ${sk.id}  (${sk.reason})\n`);
+  }
+
   process.stdout.write(`\nUNVERIFIED  ${bad.length}\n`);
   for (const r of bad) process.stdout.write(`  FAIL  ${r.sourceId}  ${r.detail}\n`);
-  if (skipped.length) {
-    process.stdout.write(`\nSKIPPED  ${skipped.length} (nothing remote to verify)\n`);
-    for (const id of skipped) process.stdout.write(`  --    ${id}\n`);
-  }
+
   if (bad.length) {
     process.stdout.write(
       `\nUnverified sources stay in the config but should not be trusted until they resolve.\n` +
         `Set enabled: false in config/sources.yaml for anything that cannot be confirmed.\n`,
     );
   }
+
+  // Deliberately does NOT set a non-zero exit code. A source that could not be
+  // reached is information for an operator, never a reason to fail a deploy.
   db.close();
 }
 

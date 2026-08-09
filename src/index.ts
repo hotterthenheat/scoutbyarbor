@@ -17,6 +17,7 @@ import { createHealthMonitor } from './health/monitor.js';
 import { createStatsCollector } from './health/stats.js';
 import { createScoutServer } from './server/http.js';
 import { createRetentionJob } from './db/retention.js';
+import { createSproutClient, toSproutEvent } from './sprout/client.js';
 import { loadCalendar, createCalendarScheduler } from './calendar/scheduler.js';
 import { routeCalendarReminder } from './discord/router.js';
 import { createLogger, setLogLevel } from './util/logger.js';
@@ -94,6 +95,15 @@ export async function main(): Promise<void> {
   });
   const stats = createStatsCollector({ db });
 
+  // Scout is the information layer; Sprout consumes normalized events. With no
+  // SPROUT_URL this is inert, which is the normal MVP state.
+  const sprout = createSproutClient({
+    url: cfg.sprout.url,
+    token: cfg.sprout.token,
+    timeoutMs: cfg.sprout.timeoutMs,
+    logger: log.child('sprout'),
+  });
+
   // ── Pipeline ───────────────────────────────────────────────────────────────
   const pipeline = createPipeline({
     db,
@@ -130,15 +140,7 @@ export async function main(): Promise<void> {
           });
         }
 
-        db.deliveries.record({
-          eventId: outcome.cluster?.id ?? outcome.newsEvent.id,
-          destination: 'sprout',
-          status: freshness.fresh && outcome.impact?.marketMoving ? 'PENDING' : 'SKIPPED',
-          discordMessageId: null,
-          sentAt: null,
-          error: freshness.fresh ? null : freshness.reason,
-          createdAt: isoNow(),
-        });
+        await deliverToSprout(outcome, publishedAt, freshness);
       } else if (outcome.rejection?.startsWith('DUPLICATE')) {
         stats.recordDuplicate(raw.sourceId);
       } else if (outcome.rejection) {
@@ -156,27 +158,95 @@ export async function main(): Promise<void> {
     }
   }
 
+  /**
+   * Hands a normalized event to Sprout, but only when it passes the freshness
+   * gate. Sprout being down must never stop the Discord wire, so every outcome
+   * is recorded and nothing here throws.
+   */
+  async function deliverToSprout(
+    outcome: Awaited<ReturnType<typeof pipeline.process>>,
+    publishedAt: string | null,
+    freshness: { fresh: boolean; reason: string },
+  ): Promise<void> {
+    const eventId = outcome.cluster?.id ?? outcome.newsEvent.id;
+
+    const record = (
+      status: 'SENT' | 'FAILED' | 'SKIPPED',
+      error: string | null,
+      sentAt: string | null,
+    ): void => {
+      db.deliveries.record({
+        eventId,
+        destination: 'sprout',
+        status,
+        discordMessageId: null,
+        sentAt,
+        error,
+        createdAt: isoNow(),
+      });
+    };
+
+    if (!sprout.enabled) {
+      record('SKIPPED', 'SPROUT_URL not configured', null);
+      return;
+    }
+    if (!freshness.fresh) {
+      // Still in #scout-news, deliberately not a trading event.
+      record('SKIPPED', freshness.reason, null);
+      return;
+    }
+
+    try {
+      const result = await sprout.send(
+        toSproutEvent({
+          newsEvent: outcome.newsEvent,
+          cluster: outcome.cluster,
+          impact: outcome.impact,
+          publishedAt,
+        }),
+      );
+      if (result.ok) {
+        record('SENT', null, isoNow());
+      } else {
+        record(result.skipped ? 'SKIPPED' : 'FAILED', result.error ?? result.reason, null);
+        log.warn('sprout delivery failed', { eventId, reason: result.reason, error: result.error });
+      }
+    } catch (err) {
+      record('FAILED', (err as Error).message, null);
+      log.error('sprout delivery threw', { eventId, err: err as Error });
+    }
+  }
+
   // ── 24/7 URL ingestion ─────────────────────────────────────────────────────
   // One bounded store shared by the worker and the relay resolver, so a payload
   // is written once, read once, and evicted — rather than accumulating in two
   // maps for the life of the process.
   const relayStore = createRelayStore(500);
 
+  // Relay content FIRST. When the permitted relay already carries the text,
+  // that is both faster than an upstream request and needs no credential — it
+  // is the primary path, not a fallback. The API resolver is tried only when
+  // the relay carried nothing usable, and only when it is configured at all.
   const resolver = createChainResolver(
     [
+      createRelayResolver((url) => {
+        const relay = relayStore.get(url.canonicalId);
+        return relay ? { rawMessage: relay.rawMessage } : null;
+      }),
       createXApiResolver({
         bearerToken: cfg.x.bearerToken,
         timeoutMs: cfg.ingestion.resolveTimeoutMs,
         logger: log.child('resolver'),
       }),
-      createRelayResolver((url) => {
-        const relay = relayStore.get(url.canonicalId);
-        if (!relay?.relayedText) return null;
-        // No publishedAt: the relay's own message time is not the post's.
-        return { text: relay.relayedText, authorHandle: `@${url.username}` };
-      }),
     ],
     log.child('resolver'),
+  );
+
+  // An absent X credential is a normal configuration, not a fault.
+  log.info(
+    cfg.x.bearerToken
+      ? 'X API: CONFIGURED (fallback resolver) — URL/RELAY INGESTION: ENABLED'
+      : 'X API: NOT CONFIGURED — URL/RELAY INGESTION: ENABLED',
   );
 
   let urlWorkerRef: ReturnType<typeof createUrlWorker> | null = null;
@@ -351,6 +421,7 @@ export async function main(): Promise<void> {
 
   log.info('scout is live', {
     watching: listener.watching().length,
+    sprout: sprout.enabled ? 'configured' : 'not configured',
     tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),
   });
 

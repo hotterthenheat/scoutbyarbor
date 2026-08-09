@@ -20,11 +20,12 @@ export interface RelayedMessage {
   /** When Scout saw it. NOT the post's publication time. */
   receivedAt: string;
   /**
-   * Text that accompanied the link in the relaying message, if any. Some relays
-   * post the headline alongside the URL, which the resolver can use without any
-   * retrieval at all.
+   * The relaying message verbatim — its own text plus anything Discord expanded
+   * into an embed. The relay parser reads attribution, headline and body out of
+   * this, which is how Scout builds an event with no upstream request and no
+   * credential.
    */
-  relayedText: string | null;
+  rawMessage: string;
 }
 
 export interface DiscordListener {
@@ -80,7 +81,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
         sourceChannelId: message.channelId,
         sourceKind: kind,
         receivedAt,
-        relayedText: relayedTextFor(message.content, embedText, url),
+        rawMessage: haystack,
       });
     }
 
@@ -165,18 +166,4 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
   };
 }
 
-/**
- * The relaying message's own words, with the URL removed. Returns null when
- * nothing but the link was posted, so the caller knows there is no relayed
- * content to fall back on.
- */
-function relayedTextFor(content: string, embedText: string, url: DetectedUrl): string | null {
-  const stripped = (content ?? '')
-    .replace(url.rawUrl, ' ')
-    .replace(/https?:\/\/\S+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 
-  const combined = [stripped, embedText].filter((s) => s && s.length > 0).join(' — ').trim();
-  return combined.length >= 8 ? combined : null;
-}

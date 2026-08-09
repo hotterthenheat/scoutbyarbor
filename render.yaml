@@ -35,11 +35,18 @@ services:
       - key: LOG_LEVEL
         value: info
 
-      # ── Secrets: set these in the Render dashboard, never in this file ──
+      # ── Required. Set these in the Render dashboard, never in this file ──
       - key: DISCORD_BOT_TOKEN
         sync: false
       - key: DISCORD_GUILD_ID
         sync: false
+
+      # ── OPTIONAL. Scout runs fully without this ──
+      # The primary ingestion path reads the content the permitted relay already
+      # posted alongside the link, which needs no credential. An X API resolver
+      # is only a fallback for links relayed without their text. Leaving this
+      # unset is a normal configuration, not a fault, and Scout logs
+      # "X API: NOT CONFIGURED — URL/RELAY INGESTION: ENABLED" on boot.
       - key: X_BEARER_TOKEN
         sync: false
 
@@ -66,6 +73,13 @@ services:
         sync: false
 
       - key: SEC_USER_AGENT
+        sync: false
+
+      # ── Sprout hand-off. Optional; unset means Scout publishes to Discord
+      # only and records every Sprout delivery as SKIPPED. ──
+      - key: SPROUT_URL
+        sync: false
+      - key: SPROUT_TOKEN
         sync: false
 
       # ── Tuning ──

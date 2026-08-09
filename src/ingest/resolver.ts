@@ -1,18 +1,27 @@
 import type { Logger } from '../util/logger.js';
 import type { DetectedUrl } from './urls.js';
+import { parseRelayContent, hasUsableContent } from './relayParser.js';
 
 /**
  * PostResolver — the retrieval abstraction.
  *
- * The rest of Scout does not care how a post's content was obtained, which is
- * what lets the provider be swapped later without touching the pipeline.
+ * The rest of Scout does not care how a post's content was obtained, and no
+ * module outside this file mentions an API credential. That is what lets the
+ * provider change without touching the pipeline.
  *
- * On access: this only retrieves posts through the platform's own documented
- * API, using credentials the operator supplies. There is deliberately nothing
- * here that works around authentication, CAPTCHAs, rate limits, robots rules or
- * paid-tier restrictions — when the configured method cannot retrieve a post,
- * the job is marked FAILED_RETRIEVAL and that is the end of it. Retrieval stays
- * subject to whatever terms govern the method actually in use.
+ * Provider order is deliberate: the relay's own content comes FIRST. When a
+ * permitted relay already carries the text, using it is faster than a second
+ * upstream request and needs no credential at all — which is why Scout runs
+ * fully on the relay path and treats an API resolver as an optional fallback
+ * rather than a prerequisite.
+ *
+ * On access: any API provider here uses only the platform's documented
+ * interface with credentials the operator supplies. There is deliberately
+ * nothing that works around authentication, CAPTCHAs, rate limits, robots rules
+ * or paid-tier restrictions — when the configured method cannot retrieve a
+ * post, the job ends as FAILED_RETRIEVAL and the event is preserved for retry
+ * and diagnostics. Retrieval stays subject to whatever terms govern the method
+ * actually in use.
  */
 
 export interface ResolvedPost {
@@ -171,32 +180,44 @@ async function resolveWithin(
  * receive time.
  */
 export interface RelayPayload {
-  text: string;
-  authorName?: string | null;
-  authorHandle?: string | null;
-  /** Only set when this is genuinely the original publication time. */
-  publishedAt?: string | null;
+  /** The relaying message exactly as it arrived, headers and all. */
+  rawMessage: string;
 }
 
+/**
+ * The primary resolver. Reads the content the permitted relay already posted
+ * alongside the link, so no upstream request happens at all.
+ */
 export function createRelayResolver(lookup: (url: DetectedUrl) => RelayPayload | null): PostResolver {
   return {
-    name: 'discord-relay-embed',
+    name: 'discord-relay',
     available: () => true,
 
     async resolve(url: DetectedUrl): Promise<ResolvedPost> {
       const payload = lookup(url);
-      if (!payload || !payload.text.trim()) {
-        throw new RetrievalError('no relayed content accompanied the link', false);
+      if (!payload?.rawMessage?.trim()) {
+        // Not retriable: a message that carried only a bare link will never
+        // carry more. The next provider in the chain gets its turn.
+        throw new RetrievalError('the relay message carried only a link', false);
       }
+
+      const parsed = parseRelayContent(payload.rawMessage, url);
+      if (!hasUsableContent(parsed)) {
+        throw new RetrievalError('the relay message carried no usable text', false);
+      }
+
       return {
         postId: url.canonicalId,
-        author: payload.authorName ?? null,
-        authorHandle: payload.authorHandle ?? `@${url.username}`,
-        text: payload.text,
-        publishedAt: payload.publishedAt ?? null,
+        author: parsed.author,
+        authorHandle: parsed.authorHandle,
+        text: parsed.text,
+        // Null unless the relay genuinely stated a publication time. The relay's
+        // own message time is when Scout heard about the post, not when it was
+        // published.
+        publishedAt: parsed.publishedAt,
         canonicalUrl: url.canonicalUrl,
         media: [],
-        retrievalSource: 'discord-relay-embed',
+        retrievalSource: 'discord-relay',
       };
     },
   };
