@@ -533,6 +533,90 @@ describe('concurrent runs cannot double-deliver', () => {
 });
 
 /**
+ * A delivery that started and never reported back.
+ *
+ * The outcome row is written when the Sprout request settles, which during an
+ * outage means ten seconds later. Kill the process inside that window — a
+ * deploy, an OOM, a crash — and no FAILED row is ever written, so the replay
+ * would be blind to exactly the events the outage produced. A PENDING row left
+ * behind is the durable evidence that a delivery was attempted.
+ */
+describe('deliveries interrupted mid-flight', () => {
+  /** Writes the row the runtime writes immediately before calling Sprout. */
+  function seedInterrupted(eventId: string, createdAt: string): void {
+    db.deliveries.record({
+      eventId,
+      destination: 'sprout',
+      status: 'PENDING',
+      discordMessageId: null,
+      sentAt: null,
+      error: null,
+      createdAt,
+    });
+  }
+
+  it('recovers an abandoned PENDING delivery', async () => {
+    const eventId = await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:7001',
+      publishedAt: minutesAgo(2),
+    });
+    // The process died between the request going out and the outcome landing.
+    seedInterrupted(eventId, minutesAgo(20));
+
+    const report = await replayFailedDeliveries(deps());
+
+    expect(report.delivered).toBe(1);
+    expect(sproutCalls).toHaveLength(1);
+    expect(db.deliveries.forEvent(eventId)[0]?.status).toBe('SENT');
+  });
+
+  it('leaves a PENDING delivery that could still be in flight alone', async () => {
+    const eventId = await seedFailedDelivery({
+      text: 'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      postId: 'x:7002',
+      publishedAt: minutesAgo(2),
+    });
+    // Written seconds ago — the request may well still be open.
+    seedInterrupted(eventId, new Date().toISOString());
+
+    const report = await replayFailedDeliveries(deps());
+
+    expect(report.candidates).toBe(0);
+    expect(sproutCalls).toHaveLength(0);
+  });
+
+  it('can be told to consider FAILED rows only', async () => {
+    const eventId = await seedFailedDelivery({
+      text: 'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      postId: 'x:7003',
+      publishedAt: minutesAgo(2),
+    });
+    seedInterrupted(eventId, minutesAgo(60));
+
+    const report = await replayFailedDeliveries(deps(), { stalePendingMinutes: 0 });
+
+    expect(report.candidates).toBe(0);
+  });
+
+  it('still re-runs the freshness gate on a recovered PENDING row', async () => {
+    // Recovery is not a licence to deliver stale news to a trading system.
+    const eventId = await seedFailedDelivery({
+      text: 'OPEC+ AGREES TO EXTEND PRODUCTION CUTS THROUGH Q2',
+      postId: 'x:7004',
+      publishedAt: minutesAgo(300),
+    });
+    seedInterrupted(eventId, minutesAgo(20));
+
+    const report = await replayFailedDeliveries(deps());
+
+    expect(report.skippedStale).toBe(1);
+    expect(report.delivered).toBe(0);
+    expect(sproutCalls).toHaveLength(0);
+  });
+});
+
+/**
  * The counts have to outlive the log line. "How much did the replay actually
  * recover this week" is the number that says whether Sprout is reliable, and it
  * cannot be answered from whichever log happens to still be in the scrollback.

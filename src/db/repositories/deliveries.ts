@@ -44,6 +44,16 @@ export interface DeliveryRepo {
 export interface DeliveryQuery {
   destination: string;
   status?: DeliveryStatus;
+  /**
+   * Also match PENDING rows created before this time.
+   *
+   * A PENDING row is a delivery that started and never reported back — the
+   * process died between the request going out and the outcome being written.
+   * Once it is older than any request could still be in flight, it is a failure
+   * that never got the chance to say so, and it must be replayable or the event
+   * is lost with nothing anywhere recording that it was.
+   */
+  stalePendingBefore?: string;
   sinceIso?: string;
   /** Restrict to these event ids. */
   eventIds?: string[];
@@ -74,6 +84,26 @@ function toRecord(row: DeliveryRow): DeliveryRecord {
   };
 }
 
+/**
+ * The status filter, shared by `find` and `claimForReplay` so the two can never
+ * disagree about what is replayable.
+ */
+function pushStatusPredicate(
+  where: string[],
+  params: Array<string | number>,
+  query: DeliveryQuery,
+): void {
+  if (!query.status) return;
+
+  if (query.stalePendingBefore) {
+    where.push(`(status = ? OR (status = 'PENDING' AND created_at < ?))`);
+    params.push(query.status, query.stalePendingBefore);
+    return;
+  }
+  where.push('status = ?');
+  params.push(query.status);
+}
+
 export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
   const stmts = createStatementCache(db);
 
@@ -87,6 +117,13 @@ export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
              discord_message_id = excluded.discord_message_id,
              sent_at = excluded.sent_at,
              error = excluded.error,
+             -- created_at tracks the LATEST state change, not the first one.
+             -- Both windows that read this column want that: "--since 30m"
+             -- means deliveries that failed in the last thirty minutes, and a
+             -- re-attempt written as PENDING against a row created hours ago
+             -- would otherwise look instantly abandoned and be replayed out
+             -- from under the request still in flight.
+             created_at = excluded.created_at,
              -- A recorded outcome ends the claim.
              claimed_at = NULL,
              claimed_by = NULL`,
@@ -149,10 +186,7 @@ export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
         const where: string[] = ['destination = ?', '(claimed_at IS NULL OR claimed_at < ?)'];
         const params: Array<string | number> = [query.destination, staleClaimBefore];
 
-        if (query.status) {
-          where.push('status = ?');
-          params.push(query.status);
-        }
+        pushStatusPredicate(where, params, query);
         if (query.sinceIso) {
           where.push('created_at >= ?');
           params.push(query.sinceIso);
@@ -202,10 +236,7 @@ export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
       const where: string[] = ['destination = ?'];
       const params: Array<string | number> = [query.destination];
 
-      if (query.status) {
-        where.push('status = ?');
-        params.push(query.status);
-      }
+      pushStatusPredicate(where, params, query);
       if (query.sinceIso) {
         where.push('created_at >= ?');
         params.push(query.sinceIso);

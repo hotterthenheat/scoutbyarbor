@@ -47,6 +47,14 @@ export interface ReplayOptions {
   /** A claim older than this is treated as abandoned. Defaults to 10 minutes. */
   staleClaimMinutes?: number;
   /**
+   * Also pick up PENDING rows older than this many minutes — a delivery that
+   * started and never reported back, because the process died between the
+   * request going out and the outcome being written. Defaults to 5 minutes,
+   * comfortably longer than any Sprout request could still be in flight.
+   * Set to 0 to consider FAILED rows only.
+   */
+  stalePendingMinutes?: number;
+  /**
    * Stop starting new deliveries once a pass has run this long, handing back
    * everything it has not reached.
    *
@@ -107,9 +115,21 @@ export async function replayFailedDeliveries(
   const startedAt = now();
   const eventIds = options.id ? resolveEventIds(db, options.id) : undefined;
 
+  const stalePendingMinutes = options.stalePendingMinutes ?? 5;
+
   const query = {
     destination: 'sprout',
     status: options.status ?? ('FAILED' as const),
+    // An abandoned PENDING row is a failure that never got to say so. Without
+    // this the replay is blind to exactly the events a crash mid-delivery
+    // produced — and a crash mid-delivery is what a Sprout outage causes.
+    ...(stalePendingMinutes > 0
+      ? {
+          stalePendingBefore: new Date(
+            Date.parse(startedAt) - stalePendingMinutes * 60_000,
+          ).toISOString(),
+        }
+      : {}),
     ...(options.sinceIso ? { sinceIso: options.sinceIso } : {}),
     ...(eventIds ? { eventIds } : {}),
     limit: options.limit ?? 500,

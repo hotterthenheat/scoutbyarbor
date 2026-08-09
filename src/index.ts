@@ -55,10 +55,16 @@ const RELAY_SOURCE_ID = 'relay:discord-urls';
 
 /**
  * How long shutdown waits for in-flight work before closing the database.
- * Render allows roughly 30 seconds between SIGTERM and SIGKILL, so this stays
- * well inside that: finishing cleanly is preferable, hanging is not.
+ *
+ * Long enough for a Sprout request to reach its own timeout and record an
+ * outcome — a shorter budget than the request it is waiting on would abandon
+ * exactly the deliveries the replay exists to recover. Render allows roughly
+ * 30 seconds between SIGTERM and SIGKILL, so this stays well inside that:
+ * finishing cleanly is preferable, hanging is not.
  */
-const SHUTDOWN_DRAIN_MS = 5_000;
+function shutdownDrainMs(sproutTimeoutMs: number): number {
+  return Math.min(20_000, Math.max(5_000, sproutTimeoutMs + 2_000));
+}
 
 export async function main(): Promise<void> {
   const cfg = env();
@@ -298,7 +304,7 @@ export async function main(): Promise<void> {
     const eventId = outcome.cluster?.id ?? outcome.newsEvent.id;
 
     const record = (
-      status: 'SENT' | 'FAILED' | 'SKIPPED',
+      status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED',
       error: string | null,
       sentAt: string | null,
     ): void => {
@@ -331,6 +337,16 @@ export async function main(): Promise<void> {
       record('SKIPPED', freshness.reason, null);
       return;
     }
+
+    // Claim the row BEFORE the request, not after.
+    //
+    // The outcome is recorded when `send` settles, which with Sprout down means
+    // ten seconds later. Kill the process inside that window — a deploy, an OOM,
+    // a crash — and no row is ever written, so the replay, the machinery built
+    // for exactly this outage, is structurally blind to the event. A PENDING row
+    // that never gets overwritten is the durable evidence that a delivery
+    // started and never reported back.
+    record('PENDING', null, null);
 
     try {
       const result = await sprout.send(
@@ -737,16 +753,17 @@ export async function main(): Promise<void> {
     const pending: Array<Promise<unknown>> = [...inFlightPosts];
     if (replayInFlight) pending.push(replayInFlight);
     if (pending.length > 0) {
+      const budgetMs = shutdownDrainMs(cfg.sprout.timeoutMs);
       log.info('draining in-flight work', {
         posts: inFlightPosts.size,
         replay: Boolean(replayInFlight),
-        budgetMs: SHUTDOWN_DRAIN_MS,
+        budgetMs,
       });
       await Promise.race([
         // allSettled, so one rejection cannot skip the rest of the drain.
         Promise.allSettled(pending),
         new Promise<void>((done) => {
-          const t = setTimeout(done, SHUTDOWN_DRAIN_MS);
+          const t = setTimeout(done, budgetMs);
           if (typeof t.unref === 'function') t.unref();
         }),
       ]);
