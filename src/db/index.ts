@@ -15,6 +15,7 @@ import { createDiscordMessageRepo, type DiscordMessageRepo } from './repositorie
 import { createJobRepo, type JobRepo } from './repositories/jobs.js';
 import { createPostRepo, type PostRepo } from './repositories/posts.js';
 import { createDeliveryRepo, type DeliveryRepo } from './repositories/deliveries.js';
+import { applyAdditiveMigrations } from './migrations.js';
 
 /**
  * Storage layer (§24). One SQLite file, WAL mode, repositories over prepared
@@ -188,10 +189,38 @@ function findSchemaFile(): string {
   throw new Error(`db/schema.sql not found; looked in: ${candidates.join(', ')}`);
 }
 
-export function openDatabase(path: string): ScoutDb {
+export interface OpenOptions {
+  /** Test seam. Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv;
+}
+
+export function openDatabase(path: string, options: OpenOptions = {}): ScoutDb {
+  const env = options.env ?? process.env;
+
   if (path !== ':memory:' && !path.startsWith('file::memory:')) {
     const dir = dirname(resolve(path));
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+
+    if (!existsSync(dir)) {
+      // On Render the database directory is a disk mount, and a mount that is
+      // attached always exists. Creating it here would succeed — on the
+      // container's ephemeral root filesystem — and Scout would run happily
+      // with a database that every deploy silently wipes, reposting old
+      // headlines into the trading channels as breaking news.
+      //
+      // Refusing to start is the correct failure. A deploy that fails loudly
+      // gets fixed; one that boots with amnesia does not.
+      if (env.RENDER) {
+        throw new Error(
+          `DATABASE_PATH="${path}" resolves to ${dir}, which does not exist. On Render that ` +
+            'directory is the persistent disk mount, so this means the disk is not attached — ' +
+            'creating it would put the database on ephemeral storage and every deploy would ' +
+            'wipe the dedupe history, the delivery log and the calendar state. Attach a disk ' +
+            'in render.yaml and point DATABASE_PATH at a file directly under its mountPath ' +
+            '(e.g. mountPath /var/data, DATABASE_PATH /var/data/scout.db).',
+        );
+      }
+      mkdirSync(dir, { recursive: true });
+    }
   }
 
   const db: SqliteDatabase = new Database(path);
@@ -214,9 +243,17 @@ export function openDatabase(path: string): ScoutDb {
     posts: createPostRepo(db),
     deliveries: createDeliveryRepo(db),
     migrate(): void {
-      // schema.sql is entirely CREATE ... IF NOT EXISTS, so this is idempotent
-      // and safe to run on every boot.
-      db.exec(readFileSync(findSchemaFile(), 'utf8'));
+      const schemaSql = readFileSync(findSchemaFile(), 'utf8');
+
+      // CREATE TABLE IF NOT EXISTS only creates tables that are ABSENT, so a
+      // column added to an existing table would never appear — and an index in
+      // the same file referencing it throws `no such column`, killing the
+      // process on boot. A database on a persistent disk has to be upgradable
+      // in place, so missing columns are added first.
+      applyAdditiveMigrations(db, schemaSql);
+
+      // Now idempotent, and every column the indexes need exists.
+      db.exec(schemaSql);
     },
     close(): void {
       db.close();

@@ -553,9 +553,12 @@ container, and a Render disk attaches to exactly one service — so a cron runni
 to replay" on every run while failed deliveries piled up. A silent no-op is
 worse than no recovery, so the schedule lives where the data does.
 
-If you would rather drive it externally, `POST /admin/replay` does the same
-pass over HTTP, authenticated with `SCOUT_ADMIN_TOKEN` (falling back to the
-webhook token). `render.yaml` carries a commented cron block that calls it.
+If you would rather drive it externally, `POST /admin/replay` does the same pass
+over HTTP, authenticated with `SCOUT_ADMIN_TOKEN`. Leave that unset and the
+endpoint does not exist. It deliberately does **not** fall back to
+`SCOUT_WEBHOOK_TOKEN`: that token is handed to the upstream relay, and an
+ingestion credential should not authorize an operational endpoint.
+`render.yaml` carries a commented cron block that calls it.
 
 **Overlapping runs cannot double-deliver.** Each pass *claims* rows in the
 database, so two runs take disjoint sets; a claim abandoned by a crashed run is
@@ -583,6 +586,43 @@ Every pass logs the six counts an operator needs:
 
 Set `DATABASE_PATH` to a path on the mounted disk, point `healthCheckPath` at
 `/health`, and put every credential in the dashboard rather than in the file.
+
+### Proving the disk is actually attached
+
+This is the one misconfiguration that is invisible from the outside. A Scout
+whose database sits on ephemeral storage boots cleanly, passes its health check,
+and then reposts a morning's worth of old headlines into the trading channels as
+breaking news — because the dedupe history, the delivery log and the
+calendar-fired keys were all wiped by the deploy.
+
+Configuration cannot prove a disk is mounted, so Scout does not ask you to trust
+it. It keeps a boot counter **inside** the database. The counter can only climb
+if the file survived:
+
+```bash
+curl -s https://<scout-domain>/metrics | jq .storage
+```
+
+```json
+{
+  "path": "/var/data/scout.db",
+  "boots": 4,
+  "firstBootAt": "2026-08-02T13:41:02.881Z",
+  "lastBootAt": "2026-08-09T09:15:44.019Z",
+  "durability": "PERSISTENT",
+  "retained": { "posts": 1284, "newsEvents": 1102, "deliveries": 940,
+                "calendarFired": 22, "jobs": 1284 }
+}
+```
+
+**Redeploy once and check it again.** `boots` going 1 → 2 with `durability`
+reading `PERSISTENT` is the proof. If it still reads `boots: 1` after a redeploy,
+the disk is not attached — fix that before letting Scout near a trading channel.
+
+Scout also logs the same verdict on every boot and warns loudly, in the log
+stream and in `#scout-system`, when `DATABASE_PATH` points somewhere that cannot
+possibly be a mounted disk — a relative path, anything under `/opt/render/`,
+anything under `/tmp`.
 
 
 ---
@@ -625,28 +665,32 @@ including the case that a real headline like
 Order matters — each step depends on the one before it.
 
 1. Deploy Scout (`render.yaml`; **not** the free instance type, and keep the disk).
-2. Enable the **Message Content** intent for the bot in the Discord developer
+2. **Prove the disk.** Redeploy once, then
+   `curl -s https://<scout-domain>/metrics | jq .storage`. `boots` must read 2 or
+   more and `durability` must read `PERSISTENT`. Still `1`? The disk is not
+   attached, and every step below this one is built on sand — fix it first.
+3. Enable the **Message Content** intent for the bot in the Discord developer
    portal. Without it the relay path only sees links Discord expanded into an
    embed. The webhook path does not need it.
-3. Set the real channel IDs — `npm run discord:setup` creates any that are
+4. Set the real channel IDs — `npm run discord:setup` creates any that are
    missing and prints them in the exact variable names to paste back.
-4. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
+5. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
    `https://<scout-domain>/webhook/news` plus that token.
-5. Set `SPROUT_URL` and `SPROUT_TOKEN`.
-6. Populate `config/calendar.yaml` with the real release schedule — every entry
+6. Set `SPROUT_URL` and `SPROUT_TOKEN`.
+7. Populate `config/calendar.yaml` with the real release schedule — every entry
    needs an explicit UTC offset.
-7. `npm run sources:verify`. X checks report SKIPPED without a credential; that
+8. `npm run sources:verify`. X checks report SKIPPED without a credential; that
    is expected and is not a deploy blocker.
-8. Send one test webhook and confirm it appears in `#scout-news`.
-9. Send a major-event webhook (a CPI or FOMC headline) and confirm it reaches
-   `#trading-floor` **and** `#spx-trading`.
-10. Confirm Sprout received it.
-11. Send the identical event again — expect `200 duplicate` and no second alert.
-12. Stop Sprout, send an event, confirm Discord still publishes and the delivery
+9. Send one test webhook and confirm it appears in `#scout-news`.
+10. Send a major-event webhook (a CPI or FOMC headline) and confirm it reaches
+    `#trading-floor` **and** `#spx-trading`.
+11. Confirm Sprout received it.
+12. Send the identical event again — expect `200 duplicate` and no second alert.
+13. Stop Sprout, send an event, confirm Discord still publishes and the delivery
     is recorded `FAILED`.
-13. Restart Sprout and wait one replay interval; confirm still-fresh events
+14. Restart Sprout and wait one replay interval; confirm still-fresh events
     recover on their own.
-14. Confirm a stale event is skipped rather than delivered — `/metrics` and the
+15. Confirm a stale event is skipped rather than delivered — `/metrics` and the
     replay log both show the reason.
 
 Then let it run through real market hours. What is worth having next is latency

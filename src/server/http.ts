@@ -1,5 +1,6 @@
 import { createServer, type Server, type IncomingMessage } from 'node:http';
 import type { ScoutDb } from '../db/index.js';
+import { storageStatus } from '../db/storage.js';
 import type { Logger } from '../util/logger.js';
 import { isoNow, msBetween, minutesBetween } from '../util/time.js';
 import {
@@ -59,6 +60,8 @@ export interface ServerDeps {
   /** Critical dependency probes. All must pass for /ready to return 200. */
   readiness: () => Array<{ name: string; ok: boolean; detail?: string }>;
   startedAt?: Date;
+  /** Where state lives, so /metrics can report whether the disk is persisting. */
+  databasePath?: string;
   /** Omit to leave POST /webhook/news disabled. */
   webhook?: WebhookConfig;
   /** Omit to leave POST /admin/replay disabled. */
@@ -241,6 +244,11 @@ export function createServer_(deps: ServerDeps): ScoutServer {
       return json({
         time: isoNow(),
         window: '24h',
+        // Whether the persistent disk is actually persisting. `boots` counts
+        // process starts recorded IN the database, so it can only climb if the
+        // file survived. Still reading 1 after a redeploy means the disk is not
+        // attached and dedupe/delivery/calendar state is being wiped each time.
+        storage: storageStatus(db, deps.databasePath ?? 'unknown'),
         queue: { depth: db.jobs.queueDepth(), byStatus: jobs },
         webhook: {
           ...webhookHealth(),

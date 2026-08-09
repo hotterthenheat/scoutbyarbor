@@ -345,3 +345,21 @@ CREATE TABLE IF NOT EXISTS calendar_fired (
   key      TEXT PRIMARY KEY,   -- "<eventId>:<leadMinutes>"
   fired_at TEXT NOT NULL
 );
+
+-- Durable key/value for facts about the deployment itself.
+--
+-- This exists for one reason: to make the persistent disk PROVABLE. Scout keeps
+-- every piece of state it has — dedupe history, delivery log, calendar-fired
+-- keys, the job queue — in this one SQLite file. If that file is not on a
+-- mounted disk, every restart silently resets all of it and Scout reposts old
+-- news as if it were new. Nothing about that failure is visible from the
+-- outside: the service boots, reports healthy, and quietly has amnesia.
+--
+-- So the boot counter below survives restarts by definition. If it still reads
+-- 1 after a redeploy, the disk is not attached. That is a fact an operator can
+-- read rather than a configuration they have to trust.
+CREATE TABLE IF NOT EXISTS runtime_state (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

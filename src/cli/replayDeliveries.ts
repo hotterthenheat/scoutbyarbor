@@ -46,6 +46,17 @@ export interface ReplayOptions {
   claimant?: string;
   /** A claim older than this is treated as abandoned. Defaults to 10 minutes. */
   staleClaimMinutes?: number;
+  /**
+   * Stop starting new deliveries once a pass has run this long, handing back
+   * everything it has not reached.
+   *
+   * Without this, a pass is unbounded: with Sprout down, 100 rows each burning
+   * a 10s timeout takes over 16 minutes, which is longer than the stale-claim
+   * window — so the NEXT run would reclaim rows this one is still working on
+   * and send them a second time. Defaults to 80% of the stale-claim window, so
+   * a pass always finishes before its own claims can be taken from it.
+   */
+  maxRunMs?: number;
 }
 
 export interface ReplayOutcome {
@@ -67,6 +78,11 @@ export interface ReplayReport {
   skipped: number;
   failed: number;
   unresolvable: number;
+  /**
+   * Claimed but not reached before the run budget expired, and handed straight
+   * back. Never silently dropped — the next pass picks them up.
+   */
+  deferred: number;
   dryRun: boolean;
   outcomes: ReplayOutcome[];
 }
@@ -99,9 +115,12 @@ export async function replayFailedDeliveries(
     limit: options.limit ?? 500,
   };
 
-  const staleClaimBefore = new Date(
-    Date.parse(startedAt) - (options.staleClaimMinutes ?? 10) * 60_000,
-  ).toISOString();
+  const staleClaimMs = (options.staleClaimMinutes ?? 10) * 60_000;
+  const staleClaimBefore = new Date(Date.parse(startedAt) - staleClaimMs).toISOString();
+
+  // A pass must finish before its own claims become reclaimable, or the next
+  // run starts re-sending rows this one is still working through.
+  const deadline = Date.parse(startedAt) + (options.maxRunMs ?? Math.floor(staleClaimMs * 0.8));
 
   // A dry run must not disturb another run's work, so it only reads.
   const candidates = options.dryRun
@@ -121,11 +140,27 @@ export async function replayFailedDeliveries(
     skipped: 0,
     failed: 0,
     unresolvable: 0,
+    deferred: 0,
     dryRun: Boolean(options.dryRun),
     outcomes: [],
   };
 
-  for (const delivery of candidates) {
+  for (const [index, delivery] of candidates.entries()) {
+    // Out of budget. Hand back everything untouched so the next pass can take
+    // it cleanly, rather than letting the claims rot until they age out.
+    if (Date.parse(now()) >= deadline) {
+      const remaining = candidates.slice(index);
+      if (!options.dryRun) {
+        for (const row of remaining) db.deliveries.releaseClaim(row.eventId, 'sprout');
+      }
+      report.deferred = remaining.length;
+      deps.logger.warn('sprout replay hit its run budget; deferring the rest', {
+        deferred: remaining.length,
+        processed: index,
+      });
+      break;
+    }
+
     let outcome: ReplayOutcome;
     try {
       outcome = await replayOne(deps, delivery.eventId, options, now());
@@ -164,6 +199,9 @@ export async function replayFailedDeliveries(
     skippedUnknownTime: report.skippedUnknownTime,
     stillFailing: report.failed,
     unresolvable: report.unresolvable,
+    // Reported even at zero: a run that quietly capped its own work would read
+    // as a run that had nothing left to do.
+    deferred: report.deferred,
     dryRun: report.dryRun,
     windowMs: Math.max(0, Date.parse(now()) - Date.parse(startedAt)),
   });
@@ -316,6 +354,11 @@ export function formatReplayReport(report: ReplayReport, nowIso: string = isoNow
   ];
   if (report.unresolvable > 0) {
     lines.push(`  unresolvable   ${String(report.unresolvable).padStart(4)}   (no stored event)`);
+  }
+  if (report.deferred > 0) {
+    lines.push(
+      `  deferred       ${String(report.deferred).padStart(4)}   (ran out of time; next pass takes them)`,
+    );
   }
 
   const group = (label: string, result: ReplayOutcome['result']): void => {

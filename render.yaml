@@ -33,7 +33,9 @@ services:
     runtime: node
     plan: starter # NOT free — free instances sleep, and Scout must not
     region: oregon
-    branch: main
+    # Must name a branch that actually exists on the remote, or the blueprint
+    # fails before it builds. This repo has no `main` yet.
+    branch: claude/scout-news-bot-spec-bz2q6y
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /health
@@ -137,7 +139,10 @@ services:
 #
 # This calls the web service over HTTP rather than running the CLI, because a
 # cron container cannot reach the web service's disk. SCOUT_URL is the service's
-# own URL; SCOUT_ADMIN_TOKEN defaults to SCOUT_WEBHOOK_TOKEN when unset.
+# own URL. SCOUT_ADMIN_TOKEN must be set explicitly and must NOT be the webhook
+# token — that one is handed to the upstream relay, and an ingestion credential
+# has no business authorizing an operational endpoint. Unset leaves
+# POST /admin/replay disabled.
 #
 #  - type: cron
 #    name: scout-sprout-replay

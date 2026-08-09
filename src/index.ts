@@ -1,6 +1,7 @@
 import { env } from './config/env.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from './config/loader.js';
 import { openDatabase } from './db/index.js';
+import { databaseExistsAt, recordBoot, formatStorageLine } from './db/storage.js';
 import { createPipeline } from './pipeline/index.js';
 import { createIngestManager } from './ingest/manager.js';
 import { createRssAdapter } from './ingest/adapters/rss.js';
@@ -47,6 +48,13 @@ const log = createLogger('scout');
 /** Source id that relayed X posts are attributed to. */
 const RELAY_SOURCE_ID = 'relay:discord-urls';
 
+/**
+ * How long shutdown waits for in-flight work before closing the database.
+ * Render allows roughly 30 seconds between SIGTERM and SIGKILL, so this stays
+ * well inside that: finishing cleanly is preferable, hanging is not.
+ */
+const SHUTDOWN_DRAIN_MS = 5_000;
+
 export async function main(): Promise<void> {
   const cfg = env();
   setLogLevel(cfg.logLevel);
@@ -55,8 +63,35 @@ export async function main(): Promise<void> {
   log.info('starting', { dryRun: cfg.dryRun, db: cfg.databasePath });
 
   // ── Storage ────────────────────────────────────────────────────────────────
+  //
+  // Every piece of state Scout relies on lives in this one file: the
+  // processed-post set that makes dedupe work, the delivery log the replay
+  // reads, the calendar keys that stop a reminder firing twice. On Render it
+  // has to sit on the mounted disk. If it does not, each deploy wipes it and
+  // Scout reposts old headlines as breaking news — while booting cleanly and
+  // reporting healthy, which is what makes it dangerous.
+  //
+  // Whether the file existed has to be sampled BEFORE opening, since opening
+  // creates it.
+  const existedAtBoot = databaseExistsAt(cfg.databasePath);
   const db = openDatabase(cfg.databasePath);
   db.migrate();
+
+  // The boot counter lives in the database, so it can only survive if the file
+  // survives. Reading "boot #1" after a redeploy is proof the disk is missing.
+  const storage = recordBoot(db, {
+    databasePath: cfg.databasePath,
+    existedAtBoot,
+    nowIso: isoNow(),
+  });
+  log.info(formatStorageLine(storage), {
+    durability: storage.durability,
+    boots: storage.boots,
+    existedAtBoot: storage.existedAtBoot,
+    fileBytes: storage.fileBytes,
+    retained: storage.retained,
+  });
+  for (const warning of storage.warnings) log.warn('STORAGE WARNING', { warning });
 
   // ── Config → DB (the source list is data, not code) ───────────────────────
   const sourcesFile = loadSourcesFile();
@@ -74,6 +109,30 @@ export async function main(): Promise<void> {
   });
 
   // ── Discord (publishing) ───────────────────────────────────────────────────
+  //
+  // Missing configuration here has to be fatal. Publishing is the entire point
+  // of the service, and the Discord client degrades quietly by design — with no
+  // token it logs a warning and carries on, which would leave Scout booting,
+  // answering /health with 200, and silently delivering nothing at all. A
+  // deployment that fails loudly gets fixed; a mute one does not.
+  if (!cfg.dryRun) {
+    if (!cfg.discord.token) {
+      throw new Error(
+        'DISCORD_BOT_TOKEN is not set. Scout exists to publish to Discord, so it will not ' +
+          'start without it — a running service that delivers nothing is the worst possible ' +
+          'failure. Set DISCORD_BOT_TOKEN (DISCORD_TOKEN is also accepted), or set ' +
+          'DRY_RUN=true to exercise the pipeline without publishing.',
+      );
+    }
+    if (!cfg.discord.channels.news) {
+      throw new Error(
+        'DISCORD_CHANNEL_NEWS is not set. Every qualified alert routes to #scout-news, so ' +
+          'without it nothing has anywhere to go. Run `npm run discord:setup` to create the ' +
+          'channels and print their ids.',
+      );
+    }
+  }
+
   const discord = createDiscordClient({
     token: cfg.discord.token,
     guildId: cfg.discord.guildId,
@@ -89,6 +148,13 @@ export async function main(): Promise<void> {
     logger: log.child('publisher'),
     rawChannelEnabled: cfg.discord.rawChannelEnabled,
   });
+
+  // A database on ephemeral storage is the one misconfiguration that is
+  // invisible from the outside, so the warning goes where an operator will see
+  // it rather than only into the log stream. publishSystem never throws.
+  for (const warning of storage.warnings) {
+    await publisher.publishSystem(`STORAGE WARNING\n\n${warning}`);
+  }
 
   // ── Health & stats ─────────────────────────────────────────────────────────
   const health = createHealthMonitor({
@@ -118,6 +184,25 @@ export async function main(): Promise<void> {
     config: { ...cfg.pipeline, categoryChannelsEnabled: cfg.discord.categoryChannelsEnabled },
     logger: log.child('pipeline'),
   });
+
+  /**
+   * Pipeline work currently in flight, so shutdown can let it finish.
+   *
+   * By the time a post reaches Discord it has already been written to
+   * `raw_posts` and `news_events`, which is what makes truncation permanent:
+   * on the next boot the dedupe layer recognises the post and suppresses it, so
+   * an alert cut off mid-publish is never retried and never seen. The same
+   * applies to the Sprout hand-off, whose delivery row is written only after
+   * the request returns — kill the process mid-request and no row exists for
+   * the replay to find.
+   */
+  const inFlightPosts = new Set<Promise<void>>();
+
+  function trackPost(raw: RawPost): Promise<void> {
+    const work = processPost(raw).finally(() => inFlightPosts.delete(work));
+    inFlightPosts.add(work);
+    return work;
+  }
 
   async function processPost(raw: RawPost): Promise<void> {
     try {
@@ -309,7 +394,7 @@ export async function main(): Promise<void> {
       // Feed the health monitor so a relay that goes quiet is distinguishable
       // from one that is broken, exactly as for the polled sources.
       health.recordPoll({ sourceId: RELAY_SOURCE_ID, ok: true, itemCount: 1, latencyMs: 0 });
-      await processPost(post);
+      await trackPost(post);
     },
   });
   urlWorkerRef = urlWorker;
@@ -365,7 +450,7 @@ export async function main(): Promise<void> {
       manual: 5_000,
     },
     onPosts: async (posts) => {
-      for (const post of posts) await processPost(post);
+      for (const post of posts) await trackPost(post);
     },
     onOutcome: (outcome) => health.recordPoll(outcome),
   });
@@ -418,6 +503,9 @@ export async function main(): Promise<void> {
         // Identifies this run's claim, so two overlapping passes take disjoint
         // sets and the same delivery is never sent twice.
         claimant: `${reason}-${process.pid}`,
+        // A pass must finish well inside the interval, so a slow Sprout cannot
+        // leave one run still working while the next tick starts.
+        maxRunMs: Math.max(30_000, cfg.replay.intervalMinutes * 60_000 - 30_000),
       },
     );
     return {
@@ -427,23 +515,41 @@ export async function main(): Promise<void> {
       skippedUnknownTime: report.skippedUnknownTime,
       stillFailing: report.failed,
       unresolvable: report.unresolvable,
+      deferred: report.deferred,
     };
   };
 
   let replayTimer: NodeJS.Timeout | null = null;
-  let replayInFlight = false;
+  /**
+   * The currently running pass, or null. Tracked as a promise rather than a
+   * boolean for two reasons: a second caller can join the run already in
+   * progress instead of starting a redundant one, and shutdown has something
+   * concrete to wait on before the database closes underneath it.
+   */
+  let replayInFlight: Promise<Record<string, unknown>> | null = null;
+
+  const runReplayOnce = (reason: string): Promise<Record<string, unknown>> => {
+    // Overlapping passes are safe — the database claim guarantees that — but
+    // they are pointless work, so a caller arriving mid-pass joins it.
+    if (replayInFlight) return replayInFlight;
+
+    const run = runReplay(reason).finally(() => {
+      replayInFlight = null;
+    });
+    replayInFlight = run;
+    return run;
+  };
 
   if (cfg.replay.enabled && sprout.enabled) {
     const intervalMs = Math.max(60_000, cfg.replay.intervalMinutes * 60_000);
     replayTimer = setInterval(() => {
-      // Overlapping passes are safe thanks to the claim, but pointless.
-      if (replayInFlight) return;
-      replayInFlight = true;
-      void runReplay('scheduled')
-        .catch((err: Error) => log.error('scheduled replay failed', { err }))
-        .finally(() => {
-          replayInFlight = false;
-        });
+      // Every failure mode ends here: a rejected promise, a throw inside the
+      // replay, a database error. None of them may kill the timer, because a
+      // scheduler that dies silently is indistinguishable from one with
+      // nothing to do.
+      void runReplayOnce('scheduled').catch((err: Error) =>
+        log.error('scheduled replay failed; the schedule continues', { err }),
+      );
     }, intervalMs);
     if (typeof replayTimer.unref === 'function') replayTimer.unref();
     log.info('sprout replay scheduled', {
@@ -467,8 +573,9 @@ export async function main(): Promise<void> {
     logger: log.child('http'),
     port: cfg.port,
     startedAt,
+    databasePath: cfg.databasePath,
     admin: cfg.webhook.adminToken
-      ? { token: cfg.webhook.adminToken, replay: () => runReplay('admin') }
+      ? { token: cfg.webhook.adminToken, replay: () => runReplayOnce('admin') }
       : undefined,
     webhook: cfg.webhook.token
       ? {
@@ -548,9 +655,7 @@ export async function main(): Promise<void> {
 
   log.info('scout is live', {
     watching: listener.watching().length,
-    admin: cfg.webhook.adminToken
-      ? { token: cfg.webhook.adminToken, replay: () => runReplay('admin') }
-      : undefined,
+    admin: cfg.webhook.adminToken ? 'enabled at POST /admin/replay' : 'not configured',
     webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
     replay: replayTimer ? `every ${cfg.replay.intervalMinutes}m` : 'off',
@@ -572,7 +677,42 @@ export async function main(): Promise<void> {
     await listener.stop();
     await discord.stop();
     await server.stop();
-    db.close();
+
+    // Let work that is already under way finish before the database closes.
+    //
+    // This is not tidiness. A post mid-publish has already been recorded in
+    // raw_posts and news_events, so on the next boot dedupe suppresses it —
+    // truncate it here and that alert is never sent and never retried. A Sprout
+    // hand-off mid-request has no delivery row yet, so the replay would never
+    // find it either. Both become permanent losses at the exact moment they are
+    // most likely: a deploy.
+    //
+    // Bounded, though. Render sends SIGKILL soon after SIGTERM, and a shutdown
+    // that hangs is worse than one delivery arriving late.
+    const pending: Array<Promise<unknown>> = [...inFlightPosts];
+    if (replayInFlight) pending.push(replayInFlight);
+    if (pending.length > 0) {
+      log.info('draining in-flight work', {
+        posts: inFlightPosts.size,
+        replay: Boolean(replayInFlight),
+        budgetMs: SHUTDOWN_DRAIN_MS,
+      });
+      await Promise.race([
+        // allSettled, so one rejection cannot skip the rest of the drain.
+        Promise.allSettled(pending),
+        new Promise<void>((done) => {
+          const t = setTimeout(done, SHUTDOWN_DRAIN_MS);
+          if (typeof t.unref === 'function') t.unref();
+        }),
+      ]);
+    }
+
+    // Never let a close error mask the shutdown itself.
+    try {
+      db.close();
+    } catch (err) {
+      log.warn('database close failed', { err: err as Error });
+    }
     process.exit(0);
   };
 

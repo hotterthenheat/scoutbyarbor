@@ -448,6 +448,77 @@ describe('concurrent runs cannot double-deliver', () => {
     expect((await replayFailedDeliveries(deps())).candidates).toBe(1);
   });
 
+  /**
+   * A pass is bounded so it always finishes before its own claims become
+   * reclaimable. Without that, a slow Sprout makes a pass outlive the
+   * stale-claim window and the next run starts re-sending rows the first is
+   * still working through.
+   */
+  it('defers the rest rather than outliving its own claims', async () => {
+    const stories = [
+      'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      'OPEC+ AGREES TO EXTEND PRODUCTION CUTS THROUGH Q2',
+    ];
+    for (const [i, text] of stories.entries()) {
+      await seedFailedDelivery({ text, postId: `x:42${i}`, publishedAt: minutesAgo(2) });
+    }
+
+    // Every send costs "time", so the budget runs out after the first one.
+    // Anchored to real time so the seeded events stay inside the freshness window.
+    let clock = Date.now();
+    const slowSprout: SproutClient = {
+      enabled: true,
+      async send(event) {
+        clock += 5_000;
+        sproutCalls.push(event);
+        return { ok: true, status: 202, error: null, skipped: false, reason: 'delivered' };
+      },
+    };
+
+    const report = await replayFailedDeliveries(
+      { ...deps(), sprout: slowSprout, now: () => new Date(clock).toISOString() },
+      { maxRunMs: 4_000 },
+    );
+
+    expect(report.candidates).toBe(3);
+    expect(report.delivered).toBe(1);
+    expect(report.deferred).toBe(2);
+  });
+
+  it('hands deferred rows straight back, so the next pass takes them', async () => {
+    const stories = [
+      'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      'OPEC+ AGREES TO EXTEND PRODUCTION CUTS THROUGH Q2',
+    ];
+    for (const [i, text] of stories.entries()) {
+      await seedFailedDelivery({ text, postId: `x:43${i}`, publishedAt: minutesAgo(2) });
+    }
+
+    // Anchored to real time so the seeded events stay inside the freshness window.
+    let clock = Date.now();
+    const slowSprout: SproutClient = {
+      enabled: true,
+      async send(event) {
+        clock += 5_000;
+        sproutCalls.push(event);
+        return { ok: true, status: 202, error: null, skipped: false, reason: 'delivered' };
+      },
+    };
+
+    await replayFailedDeliveries(
+      { ...deps(), sprout: slowSprout, now: () => new Date(clock).toISOString() },
+      { maxRunMs: 4_000 },
+    );
+
+    // Not left claimed and invisible — the deferred two are immediately
+    // available, without waiting out the stale-claim window.
+    const second = await replayFailedDeliveries(deps());
+    expect(second.delivered).toBe(2);
+    expect(new Set(sproutCalls.map((c) => c.eventId)).size).toBe(3);
+  });
+
   it('a dry run does not claim anything', async () => {
     await seedFailedDelivery({
       text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',

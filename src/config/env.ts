@@ -195,8 +195,12 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
     },
     webhook: {
       token: parsed.SCOUT_WEBHOOK_TOKEN,
-      // Falls back to the webhook secret so a deployment needs only one token.
-      adminToken: parsed.SCOUT_ADMIN_TOKEN || parsed.SCOUT_WEBHOOK_TOKEN,
+      // Deliberately NOT falling back to SCOUT_WEBHOOK_TOKEN. That token is
+      // handed to a third-party upstream relay so it can push news in; it must
+      // not also authorize an operational endpoint. Unset means POST
+      // /admin/replay is disabled, which is the right default now that the
+      // replay runs in-process and nothing external needs to trigger it.
+      adminToken: parsed.SCOUT_ADMIN_TOKEN,
     },
     replay: {
       enabled: parsed.REPLAY_ENABLED,
