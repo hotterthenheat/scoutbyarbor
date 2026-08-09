@@ -23,6 +23,17 @@ export interface DeliveryRepo {
   forEvent(eventId: string): DeliveryRecord[];
   countsByStatus(sinceIso: string): Record<string, number>;
   failed(limit: number): DeliveryRecord[];
+  /** Targeted lookup for the replay command. */
+  find(query: DeliveryQuery): DeliveryRecord[];
+}
+
+export interface DeliveryQuery {
+  destination: string;
+  status?: DeliveryStatus;
+  sinceIso?: string;
+  /** Restrict to these event ids. */
+  eventIds?: string[];
+  limit?: number;
 }
 
 interface DeliveryRow {
@@ -90,6 +101,35 @@ export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
       const out: Record<string, number> = {};
       for (const row of rows) out[row.status] = toNumber(row.n);
       return out;
+    },
+
+    find(query: DeliveryQuery): DeliveryRecord[] {
+      const where: string[] = ['destination = ?'];
+      const params: Array<string | number> = [query.destination];
+
+      if (query.status) {
+        where.push('status = ?');
+        params.push(query.status);
+      }
+      if (query.sinceIso) {
+        where.push('created_at >= ?');
+        params.push(query.sinceIso);
+      }
+      if (query.eventIds && query.eventIds.length > 0) {
+        where.push(`event_id IN (${query.eventIds.map(() => '?').join(',')})`);
+        params.push(...query.eventIds);
+      }
+      params.push(query.limit ?? 500);
+
+      return stmts
+        .get<DeliveryRow>(
+          `SELECT ${COLUMNS} FROM deliveries
+            WHERE ${where.join(' AND ')}
+            ORDER BY created_at ASC
+            LIMIT ?`,
+        )
+        .all(...params)
+        .map(toRecord);
     },
 
     failed(limit: number): DeliveryRecord[] {

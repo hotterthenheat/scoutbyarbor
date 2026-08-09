@@ -9,6 +9,13 @@ import { parseXPostUrl } from '../ingest/adapters/manual.js';
 import { createDiscordClient, CHANNEL_ENV_VARS } from '../discord/client.js';
 import { createStatsCollector, formatSourceReport, formatPipelineReport } from '../health/stats.js';
 import { renderAlert } from '../render/alert.js';
+import { createSproutClient } from '../sprout/client.js';
+import {
+  replayFailedDeliveries,
+  formatReplayReport,
+  parseSince,
+  type ReplayOptions,
+} from './replayDeliveries.js';
 import { createLogger, setLogLevel } from '../util/logger.js';
 import { isoNow } from '../util/time.js';
 import { deterministicId } from '../util/id.js';
@@ -34,6 +41,14 @@ scout — Arbor Capital
   ingest:url <url>        push one X post URL through the pipeline
   replay [limit]          re-run stored raw posts through the current classifier
   classify "<text>"       dry-run the pipeline over a literal string
+
+  deliveries:replay       re-drive failed Sprout deliveries
+      --failed              only FAILED deliveries (the default)
+      --skipped             re-check deliveries held by the freshness gate
+      --since 30m           only those recorded within the window (s/m/h/d)
+      --id x:123456         a single event id or provider post id
+      --limit 100           cap the number replayed
+      --dry-run             report what would happen, send nothing
 `;
 
 async function run(): Promise<void> {
@@ -60,6 +75,8 @@ async function run(): Promise<void> {
       return replay(Number(args[0] ?? 200));
     case 'classify':
       return classifyText(args.join(' '));
+    case 'deliveries:replay':
+      return deliveriesReplay(args);
     default:
       process.stdout.write(COMMANDS);
       if (command) process.exitCode = 1;
@@ -369,6 +386,98 @@ async function classifyText(text: string): Promise<void> {
     process.stdout.write('\n─── as rendered ───\n\n' + renderAlert(outcome.alert) + '\n');
   }
   db.close();
+}
+
+/**
+ * Re-drives failed Sprout deliveries. Touches Sprout and the delivery log only
+ * — it never loads the publisher, so it cannot emit a second Discord alert.
+ */
+async function deliveriesReplay(args: string[]): Promise<void> {
+  const cfg = env();
+  const options: ReplayOptions = {};
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const next = args[i + 1];
+    switch (arg) {
+      // npm consumes the first `--` in `npm run x -- --flag`, but a direct
+      // invocation passes it through. Ignoring it makes both forms work.
+      case '--':
+        break;
+      case '--failed':
+        options.status = 'FAILED';
+        break;
+      case '--skipped':
+        options.status = 'SKIPPED';
+        break;
+      case '--dry-run':
+        options.dryRun = true;
+        break;
+      case '--since': {
+        if (!next) return usage('--since needs a value, e.g. --since 30m');
+        const since = parseSince(next);
+        if (!since) return usage(`could not parse --since "${next}"`);
+        options.sinceIso = since;
+        i++;
+        break;
+      }
+      case '--id':
+        if (!next) return usage('--id needs a value, e.g. --id x:123456');
+        options.id = next;
+        i++;
+        break;
+      case '--limit':
+        if (!next || !/^\d+$/.test(next)) return usage('--limit needs a number');
+        options.limit = Number(next);
+        i++;
+        break;
+      default:
+        if (arg?.startsWith('--')) return usage(`unknown option ${arg}`);
+    }
+  }
+
+  if (!cfg.sprout.url && !options.dryRun) {
+    process.stdout.write(
+      'SPROUT_URL is not configured, so there is nothing to replay to.\n' +
+        'Use --dry-run to see which deliveries would be re-driven.\n',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const db = openDatabase(cfg.databasePath);
+  db.migrate();
+
+  try {
+    const report = await replayFailedDeliveries(
+      {
+        db,
+        sprout: createSproutClient({
+          url: cfg.sprout.url,
+          token: cfg.sprout.token,
+          timeoutMs: cfg.sprout.timeoutMs,
+          logger: log.child('sprout'),
+        }),
+        taxonomy: loadTaxonomy(),
+        securities: loadSecurityMaster(),
+        maxAgeMinutes: cfg.sprout.maxAgeMinutes,
+        logger: log.child('replay'),
+      },
+      options,
+    );
+
+    process.stdout.write(formatReplayReport(report) + '\n');
+    // A delivery that is still failing is worth a non-zero exit so a cron or
+    // CI step notices; a skip is a correct outcome, not an error.
+    if (report.failed > 0) process.exitCode = 1;
+  } finally {
+    db.close();
+  }
+}
+
+function usage(message: string): void {
+  process.stdout.write(`${message}\n${COMMANDS}`);
+  process.exitCode = 1;
 }
 
 run().catch((err) => {

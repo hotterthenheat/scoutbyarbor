@@ -508,6 +508,36 @@ delivery is recorded as `FAILED` and the alert goes out regardless.
 Unlike a Discord alert, the Sprout payload *does* carry severity and market
 relevance — a trading system is exactly who those are for.
 
+### Replaying failed deliveries
+
+The retry schedule is immediate / 1s / 3s / 10s. A Sprout outage longer than
+that leaves deliveries at `FAILED` with nothing to re-drive them:
+
+```bash
+npm run deliveries:replay                      # every FAILED Sprout delivery
+npm run deliveries:replay -- --since 30m       # only the last 30 minutes
+npm run deliveries:replay -- --id x:123456     # one event or provider post id
+npm run deliveries:replay -- --dry-run         # report only, send nothing
+npm run deliveries:replay -- --skipped         # re-check ones held by freshness
+```
+
+Two properties matter more than the command itself.
+
+**It re-runs the freshness gate against the ORIGINAL publication time.** An
+event that has aged out during the outage is skipped, not force-fed to a trading
+system — replaying a stale headline is precisely what the gate exists to
+prevent. The reason is recorded on the delivery row.
+
+**It cannot produce a second Discord alert.** The module touches Sprout and the
+delivery log and nothing else; it has no dependency on the publisher at all.
+The original event id is reused as the idempotency key, so a delivery that
+landed just before the connection dropped is collapsed by Sprout rather than
+counted twice.
+
+The report separates delivered, skipped, still-failing and unresolvable (an
+event that has since aged out of retention), and exits non-zero only when
+something is still failing — a skip is a correct outcome, not an error.
+
 ---
 
 ## Deployment

@@ -56,6 +56,10 @@ export interface NewsEventRepo {
   findBySourcePost(source: string, sourcePostId: string): NewsEventRecord | null;
   /** Newest first, capped at 500 — the dedupe window, not the whole table. */
   dedupeCandidates(sinceIso: string): DedupeCandidate[];
+  /** The processed posts belonging to a cluster, newest first. */
+  byEventId(eventId: string): NewsEventRecord[];
+  /** Lookup by provider post id alone, when the source is not known. */
+  bySourcePostId(sourcePostId: string): NewsEventRecord | null;
   setStatus(id: string, status: EventStatus, reason: RejectionReason | null): void;
   setDiscordMessageId(id: string, messageId: string): void;
   countsByStatus(sinceIso: string): Record<string, number>;
@@ -311,6 +315,20 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
       const row = stmts
         .get<NewsEventRow>(`${SELECT_ALL} WHERE source = ? AND source_post_id = ?`)
         .get(source, sourcePostId);
+      return row ? toNewsEvent(row) : null;
+    },
+
+    byEventId(eventId: string): NewsEventRecord[] {
+      return stmts
+        .get<NewsEventRow>(`${SELECT_ALL} WHERE event_id = ? ORDER BY timestamp DESC`)
+        .all(eventId)
+        .map(toNewsEvent);
+    },
+
+    bySourcePostId(sourcePostId: string): NewsEventRecord | null {
+      const row = stmts
+        .get<NewsEventRow>(`${SELECT_ALL} WHERE source_post_id = ? ORDER BY timestamp DESC LIMIT 1`)
+        .get(sourcePostId);
       return row ? toNewsEvent(row) : null;
     },
 
