@@ -133,12 +133,15 @@ categories:
       - sep
       - dissent
     subcategories:
-      FOMC_DECISION: [rate decision, fomc statement, target range, federal funds rate, rate cut, rate hike]
+      FOMC_DECISION: [rate decision, fomc statement, target range, federal funds rate, rate cut,
+        rate hike, cuts rates, raises rates, hikes rates, lowers rates, holds rates, keeps rates,
+        rate unchanged, basis point]
       POWELL_REMARKS: [powell, press conference, testimony, jackson hole]
       MINUTES: [fomc minutes, beige book]
       BALANCE_SHEET: [balance sheet, quantitative tightening, quantitative easing, qt, qe, taper]
       GUIDANCE: [forward guidance, policy guidance, dot plot, summary of economic projections]
-      EMERGENCY: [emergency facility, emergency lending, discount window, intervention]
+      EMERGENCY: [emergency facility, emergency lending, emergency meeting, unscheduled meeting,
+        discount window, intervention]
       FOREIGN_CB: [european central bank, bank of japan, bank of england, bank of canada, pboc]
 
   # ══════════════════════════════════════════════════════════════════════════
