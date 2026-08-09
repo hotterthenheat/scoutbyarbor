@@ -39,6 +39,13 @@ export interface ReplayOptions {
   limit?: number;
   /** Report what would happen without sending anything. */
   dryRun?: boolean;
+  /**
+   * Identifies this run in the claim. Two concurrent runs claim disjoint sets,
+   * so the same delivery is never processed twice at once.
+   */
+  claimant?: string;
+  /** A claim older than this is treated as abandoned. Defaults to 10 minutes. */
+  staleClaimMinutes?: number;
 }
 
 export interface ReplayOutcome {
@@ -52,6 +59,11 @@ export interface ReplayOutcome {
 export interface ReplayReport {
   candidates: number;
   delivered: number;
+  /** Held back because the event has aged past the freshness window. */
+  skippedStale: number;
+  /** Held back because publication time was never known. */
+  skippedUnknownTime: number;
+  /** Total of the two skip reasons, for convenience. */
   skipped: number;
   failed: number;
   unresolvable: number;
@@ -76,19 +88,36 @@ export async function replayFailedDeliveries(
   const { db } = deps;
   const now = deps.now ?? isoNow;
 
+  const startedAt = now();
   const eventIds = options.id ? resolveEventIds(db, options.id) : undefined;
 
-  const candidates = db.deliveries.find({
+  const query = {
     destination: 'sprout',
-    status: options.status ?? 'FAILED',
+    status: options.status ?? ('FAILED' as const),
     ...(options.sinceIso ? { sinceIso: options.sinceIso } : {}),
     ...(eventIds ? { eventIds } : {}),
     limit: options.limit ?? 500,
-  });
+  };
+
+  const staleClaimBefore = new Date(
+    Date.parse(startedAt) - (options.staleClaimMinutes ?? 10) * 60_000,
+  ).toISOString();
+
+  // A dry run must not disturb another run's work, so it only reads.
+  const candidates = options.dryRun
+    ? db.deliveries.find(query)
+    : db.deliveries.claimForReplay(
+        query,
+        options.claimant ?? `replay-${process.pid}`,
+        staleClaimBefore,
+        startedAt,
+      );
 
   const report: ReplayReport = {
     candidates: candidates.length,
     delivered: 0,
+    skippedStale: 0,
+    skippedUnknownTime: 0,
     skipped: 0,
     failed: 0,
     unresolvable: 0,
@@ -97,17 +126,53 @@ export async function replayFailedDeliveries(
   };
 
   for (const delivery of candidates) {
-    const outcome = await replayOne(deps, delivery.eventId, options, now());
+    let outcome: ReplayOutcome;
+    try {
+      outcome = await replayOne(deps, delivery.eventId, options, now());
+    } catch (err) {
+      // An unexpected failure must not leave the row claimed forever.
+      if (!options.dryRun) db.deliveries.releaseClaim(delivery.eventId, 'sprout');
+      outcome = {
+        eventId: delivery.eventId,
+        headline: '',
+        publishedAt: null,
+        result: 'FAILED',
+        reason: (err as Error).message,
+      };
+    }
+
     report.outcomes.push(outcome);
 
     if (outcome.result === 'DELIVERED') report.delivered++;
-    else if (outcome.result === 'SKIPPED') report.skipped++;
-    else if (outcome.result === 'FAILED') report.failed++;
-    else report.unresolvable++;
+    else if (outcome.result === 'SKIPPED') {
+      report.skipped++;
+      if (outcome.reason === UNKNOWN_TIME_REASON) report.skippedUnknownTime++;
+      else report.skippedStale++;
+    } else if (outcome.result === 'FAILED') report.failed++;
+    else {
+      report.unresolvable++;
+      // Nothing will ever resolve this; do not hold the claim.
+      if (!options.dryRun) db.deliveries.releaseClaim(delivery.eventId, 'sprout');
+    }
   }
+
+  // The six counts the operator actually needs, on one line.
+  deps.logger.info('sprout replay complete', {
+    found: report.candidates,
+    delivered: report.delivered,
+    skippedStale: report.skippedStale,
+    skippedUnknownTime: report.skippedUnknownTime,
+    stillFailing: report.failed,
+    unresolvable: report.unresolvable,
+    dryRun: report.dryRun,
+    windowMs: Math.max(0, Date.parse(now()) - Date.parse(startedAt)),
+  });
 
   return report;
 }
+
+/** Matches the freshness gate's wording for a missing publication time. */
+const UNKNOWN_TIME_REASON = 'publication time unknown';
 
 async function replayOne(
   deps: ReplayDeps,
@@ -245,7 +310,8 @@ export function formatReplayReport(report: ReplayReport, nowIso: string = isoNow
     '',
     `  candidates     ${String(report.candidates).padStart(4)}`,
     `  delivered      ${String(report.delivered).padStart(4)}`,
-    `  skipped        ${String(report.skipped).padStart(4)}   (freshness gate)`,
+    `  skipped stale  ${String(report.skippedStale).padStart(4)}   (aged past the freshness window)`,
+    `  skipped no ts  ${String(report.skippedUnknownTime).padStart(4)}   (publication time unknown)`,
     `  still failing  ${String(report.failed).padStart(4)}`,
   ];
   if (report.unresolvable > 0) {

@@ -89,6 +89,11 @@ const schema = z.object({
   SPROUT_URL: z.string().default(''),
   SPROUT_TOKEN: z.string().default(''),
   SPROUT_TIMEOUT_MS: numeric(10_000),
+  REPLAY_ENABLED: bool(true),
+  REPLAY_INTERVAL_MINUTES: numeric(5),
+  REPLAY_WINDOW_MINUTES: numeric(60),
+  REPLAY_LIMIT: numeric(100),
+  SCOUT_ADMIN_TOKEN: z.string().default(''),
   PORT: numeric(10000),
 
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
@@ -190,6 +195,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
     },
     webhook: {
       token: parsed.SCOUT_WEBHOOK_TOKEN,
+      // Falls back to the webhook secret so a deployment needs only one token.
+      adminToken: parsed.SCOUT_ADMIN_TOKEN || parsed.SCOUT_WEBHOOK_TOKEN,
+    },
+    replay: {
+      enabled: parsed.REPLAY_ENABLED,
+      intervalMinutes: parsed.REPLAY_INTERVAL_MINUTES,
+      windowMinutes: parsed.REPLAY_WINDOW_MINUTES,
+      limit: parsed.REPLAY_LIMIT,
     },
     sprout: {
       maxAgeMinutes: parsed.SPROUT_MAX_AGE_MINUTES,

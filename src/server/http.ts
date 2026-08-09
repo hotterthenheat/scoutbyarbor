@@ -41,6 +41,17 @@ export interface WebhookConfig {
   accept: WebhookAccepter;
 }
 
+/**
+ * Lets an external scheduler drive the Sprout replay over HTTP. Necessary
+ * because a Render cron job runs in its own container and cannot mount the web
+ * service's disk — so it cannot reach the database directly, only through the
+ * service that owns it.
+ */
+export interface AdminConfig {
+  token: string;
+  replay: () => Promise<Record<string, unknown>>;
+}
+
 export interface ServerDeps {
   db: ScoutDb;
   logger: Logger;
@@ -50,6 +61,8 @@ export interface ServerDeps {
   startedAt?: Date;
   /** Omit to leave POST /webhook/news disabled. */
   webhook?: WebhookConfig;
+  /** Omit to leave POST /admin/replay disabled. */
+  admin?: AdminConfig;
 }
 
 /** Bodies larger than this are refused before being buffered. */
@@ -160,6 +173,26 @@ export function createServer_(deps: ServerDeps): ScoutServer {
     }
   }
 
+  /** POST /admin/replay — drives one Sprout replay pass and reports the counts. */
+  async function handleAdminReplay(req: IncomingMessage): Promise<{ status: number; body: string }> {
+    const admin = deps.admin;
+    if (!admin?.token) return json({ error: 'admin endpoint is not configured' }, 503);
+
+    const provided = presentedSecret(req.headers as Record<string, string | string[] | undefined>);
+    if (!provided || !secretsMatch(provided, admin.token)) {
+      logger.warn('admin authentication failed');
+      return json({ error: 'unauthorized' }, 401);
+    }
+
+    try {
+      const report = await admin.replay();
+      return json({ status: 'ok', ...report }, 200);
+    } catch (err) {
+      logger.error('admin replay failed', { err: err as Error });
+      return json({ error: 'replay failed' }, 500);
+    }
+  }
+
   /** Webhook liveness. Silence is normal for a push endpoint, never an outage. */
   function webhookHealth(): Record<string, unknown> {
     const lastReceivedAt = db.posts.lastReceivedAt('webhook');
@@ -249,6 +282,20 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           res.writeHead(result.status, { 'content-type': 'application/json; charset=utf-8' });
           res.end(result.body);
         };
+
+        if (path === '/admin/replay') {
+          if (req.method !== 'POST') {
+            respond(json({ error: 'method not allowed' }, 405));
+            return;
+          }
+          void handleAdminReplay(req)
+            .then(respond)
+            .catch((err: Error) => {
+              logger.error('admin handler threw', { err });
+              respond(json({ error: 'internal error' }, 500));
+            });
+          return;
+        }
 
         if (path === '/webhook/news') {
           if (req.method !== 'POST') {

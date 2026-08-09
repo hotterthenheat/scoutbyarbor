@@ -155,6 +155,15 @@ export interface ScoutEnv {
   webhook: {
     /** Empty leaves POST /webhook/news disabled. Never logged. */
     token: string;
+    /** Secret for POST /admin/replay. Falls back to the webhook token. */
+    adminToken: string;
+  };
+  /** Automatic recovery of failed Sprout deliveries. */
+  replay: {
+    enabled: boolean;
+    intervalMinutes: number;
+    windowMinutes: number;
+    limit: number;
   };
   sprout: {
     /** A post older than this is archived, never sent as a fresh trading event. */

@@ -23,6 +23,7 @@ import { createStatsCollector } from './health/stats.js';
 import { createScoutServer } from './server/http.js';
 import { createRetentionJob } from './db/retention.js';
 import { createSproutClient, toSproutEvent } from './sprout/client.js';
+import { replayFailedDeliveries } from './cli/replayDeliveries.js';
 import { loadCalendar, createCalendarScheduler } from './calendar/scheduler.js';
 import { routeCalendarReminder } from './discord/router.js';
 import { createLogger, setLogLevel } from './util/logger.js';
@@ -393,6 +394,67 @@ export async function main(): Promise<void> {
   scheduler.start(60_000);
   log.info('calendar loaded', { events: calendar.events.length });
 
+  // ── Automatic Sprout recovery ─────────────────────────────────────────────
+  //
+  // Runs INSIDE this service rather than as a separate Render cron job. A cron
+  // job gets its own container and cannot mount this service's disk, so it
+  // could not see the database at all — it would report "nothing to replay"
+  // forever while deliveries piled up. POST /admin/replay exists for the same
+  // job driven over HTTP if an external schedule is preferred.
+  const runReplay = async (reason: string): Promise<Record<string, unknown>> => {
+    const report = await replayFailedDeliveries(
+      {
+        db,
+        sprout,
+        taxonomy,
+        securities,
+        maxAgeMinutes: cfg.sprout.maxAgeMinutes,
+        logger: log.child('replay'),
+      },
+      {
+        status: 'FAILED',
+        sinceIso: new Date(Date.now() - cfg.replay.windowMinutes * 60_000).toISOString(),
+        limit: cfg.replay.limit,
+        // Identifies this run's claim, so two overlapping passes take disjoint
+        // sets and the same delivery is never sent twice.
+        claimant: `${reason}-${process.pid}`,
+      },
+    );
+    return {
+      found: report.candidates,
+      delivered: report.delivered,
+      skippedStale: report.skippedStale,
+      skippedUnknownTime: report.skippedUnknownTime,
+      stillFailing: report.failed,
+      unresolvable: report.unresolvable,
+    };
+  };
+
+  let replayTimer: NodeJS.Timeout | null = null;
+  let replayInFlight = false;
+
+  if (cfg.replay.enabled && sprout.enabled) {
+    const intervalMs = Math.max(60_000, cfg.replay.intervalMinutes * 60_000);
+    replayTimer = setInterval(() => {
+      // Overlapping passes are safe thanks to the claim, but pointless.
+      if (replayInFlight) return;
+      replayInFlight = true;
+      void runReplay('scheduled')
+        .catch((err: Error) => log.error('scheduled replay failed', { err }))
+        .finally(() => {
+          replayInFlight = false;
+        });
+    }, intervalMs);
+    if (typeof replayTimer.unref === 'function') replayTimer.unref();
+    log.info('sprout replay scheduled', {
+      everyMinutes: cfg.replay.intervalMinutes,
+      windowMinutes: cfg.replay.windowMinutes,
+      limit: cfg.replay.limit,
+    });
+  } else if (cfg.replay.enabled && !sprout.enabled) {
+    log.info('sprout replay idle: SPROUT_URL is not configured');
+  }
+
   // ── Retention ─────────────────────────────────────────────────────────────
   // Every table Scout appends to needs a ceiling, or a process that runs for
   // months slowly fills its disk and its percentile queries get slower.
@@ -405,6 +467,9 @@ export async function main(): Promise<void> {
     logger: log.child('http'),
     port: cfg.port,
     startedAt,
+    admin: cfg.webhook.adminToken
+      ? { token: cfg.webhook.adminToken, replay: () => runReplay('admin') }
+      : undefined,
     webhook: cfg.webhook.token
       ? {
           token: cfg.webhook.token,
@@ -483,8 +548,12 @@ export async function main(): Promise<void> {
 
   log.info('scout is live', {
     watching: listener.watching().length,
+    admin: cfg.webhook.adminToken
+      ? { token: cfg.webhook.adminToken, replay: () => runReplay('admin') }
+      : undefined,
     webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
+    replay: replayTimer ? `every ${cfg.replay.intervalMinutes}m` : 'off',
     tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),
   });
 
@@ -498,6 +567,7 @@ export async function main(): Promise<void> {
     queue.stop();
     scheduler.stop();
     retention.stop();
+    if (replayTimer) clearInterval(replayTimer);
     health.stop();
     await listener.stop();
     await discord.stop();

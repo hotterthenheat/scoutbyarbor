@@ -370,3 +370,119 @@ describe('parseSince', () => {
     expect(parseSince('soon', now)).toBeNull();
   });
 });
+
+describe('concurrent runs cannot double-deliver', () => {
+  it('gives a delivery to exactly one of two overlapping runs', async () => {
+    await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:4001',
+      publishedAt: minutesAgo(2),
+    });
+
+    // Two runs starting at the same moment, as two cron firings would.
+    const [a, b] = await Promise.all([
+      replayFailedDeliveries(deps(), { claimant: 'run-a' }),
+      replayFailedDeliveries(deps(), { claimant: 'run-b' }),
+    ]);
+
+    expect(a.candidates + b.candidates).toBe(1);
+    expect(a.delivered + b.delivered).toBe(1);
+    // The event reached Sprout once, not twice.
+    expect(sproutCalls).toHaveLength(1);
+  });
+
+  it('splits a batch between two runs without overlap', async () => {
+    const stories = [
+      'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      'OPEC+ AGREES TO EXTEND PRODUCTION CUTS THROUGH Q2',
+      'ECB HOLDS RATES STEADY AT 2.00% AS GROWTH SLOWS',
+    ];
+    for (const [i, text] of stories.entries()) {
+      await seedFailedDelivery({ text, postId: `x:41${i}`, publishedAt: minutesAgo(2) });
+    }
+
+    const [a, b] = await Promise.all([
+      replayFailedDeliveries(deps(), { claimant: 'run-a' }),
+      replayFailedDeliveries(deps(), { claimant: 'run-b' }),
+    ]);
+
+    expect(a.candidates + b.candidates).toBe(4);
+    // Every event delivered exactly once across both runs.
+    expect(sproutCalls).toHaveLength(4);
+    expect(new Set(sproutCalls.map((c) => c.eventId)).size).toBe(4);
+  });
+
+  it('reclaims a delivery abandoned by a run that died mid-flight', async () => {
+    const eventId = await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:4002',
+      publishedAt: minutesAgo(2),
+    });
+
+    // Simulate a crashed run holding a stale claim.
+    db.raw
+      .prepare(`UPDATE deliveries SET claimed_at = ?, claimed_by = 'dead-run' WHERE event_id = ?`)
+      .run(new Date(Date.now() - 30 * 60_000).toISOString(), eventId);
+
+    // A fresh claim window ignores it...
+    expect((await replayFailedDeliveries(deps(), { staleClaimMinutes: 60 })).candidates).toBe(0);
+    // ...and the default window reclaims it.
+    expect((await replayFailedDeliveries(deps(), { staleClaimMinutes: 10 })).delivered).toBe(1);
+  });
+
+  it('releases the claim when a delivery is unresolvable', async () => {
+    db.deliveries.record({
+      eventId: 'ev-vanished',
+      destination: 'sprout',
+      status: 'FAILED',
+      discordMessageId: null,
+      sentAt: null,
+      error: 'connection refused',
+      createdAt: new Date().toISOString(),
+    });
+
+    await replayFailedDeliveries(deps());
+    // Not left claimed forever — a later run sees it again rather than the row
+    // becoming permanently invisible.
+    expect((await replayFailedDeliveries(deps())).candidates).toBe(1);
+  });
+
+  it('a dry run does not claim anything', async () => {
+    await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:4003',
+      publishedAt: minutesAgo(2),
+    });
+
+    await replayFailedDeliveries(deps(), { dryRun: true });
+    // A real run immediately afterwards still sees it.
+    expect((await replayFailedDeliveries(deps())).delivered).toBe(1);
+  });
+});
+
+describe('the report separates every skip reason', () => {
+  it('counts stale and unknown-time skips apart', async () => {
+    await seedFailedDelivery({
+      text: 'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      postId: 'x:5001',
+      publishedAt: minutesAgo(300),
+    });
+    await seedFailedDelivery({
+      text: 'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      postId: 'x:5002',
+      publishedAt: null,
+    });
+
+    const report = await replayFailedDeliveries(deps());
+
+    expect(report.skippedStale).toBe(1);
+    expect(report.skippedUnknownTime).toBe(1);
+    expect(report.skipped).toBe(2);
+    expect(sproutCalls).toHaveLength(0);
+
+    const printed = formatReplayReport(report);
+    expect(printed).toContain('skipped stale');
+    expect(printed).toContain('skipped no ts');
+  });
+});

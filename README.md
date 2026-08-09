@@ -424,6 +424,7 @@ GET  /health        liveness
 GET  /ready         503 when a dependency ingestion needs is down
 GET  /metrics       queue depth, latency percentiles, feed health, throughput
 POST /webhook/news  authenticated push ingestion (202 on accept)
+POST /admin/replay  authenticated Sprout recovery trigger
 ```
 
 `/ready` failing is the deployment-level version of the same principle as source
@@ -534,9 +535,40 @@ The original event id is reused as the idempotency key, so a delivery that
 landed just before the connection dropped is collapsed by Sprout rather than
 counted twice.
 
-The report separates delivered, skipped, still-failing and unresolvable (an
-event that has since aged out of retention), and exits non-zero only when
-something is still failing — a skip is a correct outcome, not an error.
+The report separates delivered, skipped-stale, skipped-no-timestamp,
+still-failing and unresolvable (an event that has aged out of retention), and
+exits non-zero only when something is still failing — a skip is a correct
+outcome, not an error.
+
+### Automatic recovery
+
+Recovery runs on its own, every `REPLAY_INTERVAL_MINUTES` (default 5), over the
+last `REPLAY_WINDOW_MINUTES` (default 60). The CLI above stays available for
+manual work and `--dry-run`.
+
+**It runs inside the web service, not as a Render cron job**, and that is a
+deliberate correction rather than a shortcut. A Render cron gets its own
+container, and a Render disk attaches to exactly one service — so a cron running
+`deliveries:replay` could not see the database at all. It would report "nothing
+to replay" on every run while failed deliveries piled up. A silent no-op is
+worse than no recovery, so the schedule lives where the data does.
+
+If you would rather drive it externally, `POST /admin/replay` does the same
+pass over HTTP, authenticated with `SCOUT_ADMIN_TOKEN` (falling back to the
+webhook token). `render.yaml` carries a commented cron block that calls it.
+
+**Overlapping runs cannot double-deliver.** Each pass *claims* rows in the
+database, so two runs take disjoint sets; a claim abandoned by a crashed run is
+reclaimed after ten minutes, and an unresolvable row releases its claim rather
+than becoming permanently invisible. Tests drive two concurrent runs and assert
+each event reaches Sprout exactly once.
+
+Every pass logs the six counts an operator needs:
+
+```json
+{"msg":"sprout replay complete","found":7,"delivered":4,"skippedStale":2,
+ "skippedUnknownTime":1,"stillFailing":0,"unresolvable":0}
+```
 
 ---
 
@@ -584,3 +616,38 @@ carrying a score, band, confidence or backend label — while still allowing the
 percentages that are part of the news. Both directions are covered by tests,
 including the case that a real headline like
 "US CONSUMER CONFIDENCE: 102.6 VS 100.4 EXPECTED" must still publish.
+
+
+---
+
+## Going live
+
+Order matters — each step depends on the one before it.
+
+1. Deploy Scout (`render.yaml`; **not** the free instance type, and keep the disk).
+2. Enable the **Message Content** intent for the bot in the Discord developer
+   portal. Without it the relay path only sees links Discord expanded into an
+   embed. The webhook path does not need it.
+3. Set the real channel IDs — `npm run discord:setup` creates any that are
+   missing and prints them in the exact variable names to paste back.
+4. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
+   `https://<scout-domain>/webhook/news` plus that token.
+5. Set `SPROUT_URL` and `SPROUT_TOKEN`.
+6. Populate `config/calendar.yaml` with the real release schedule — every entry
+   needs an explicit UTC offset.
+7. `npm run sources:verify`. X checks report SKIPPED without a credential; that
+   is expected and is not a deploy blocker.
+8. Send one test webhook and confirm it appears in `#scout-news`.
+9. Send a major-event webhook (a CPI or FOMC headline) and confirm it reaches
+   `#trading-floor` **and** `#spx-trading`.
+10. Confirm Sprout received it.
+11. Send the identical event again — expect `200 duplicate` and no second alert.
+12. Stop Sprout, send an event, confirm Discord still publishes and the delivery
+    is recorded `FAILED`.
+13. Restart Sprout and wait one replay interval; confirm still-fresh events
+    recover on their own.
+14. Confirm a stale event is skipped rather than delivered — `/metrics` and the
+    replay log both show the reason.
+
+Then let it run through real market hours. What is worth having next is latency
+and error data from live traffic, not more tests.

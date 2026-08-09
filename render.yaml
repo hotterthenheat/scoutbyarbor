@@ -1,5 +1,23 @@
 # Render blueprint for Scout.
 #
+# ONE service, not two.
+#
+# The obvious shape is a web service plus a `cron` service running
+# `npm run deliveries:replay`. That does not work here: a Render cron job gets
+# its own container and Render disks attach to exactly one service, so the cron
+# could not see the database at all. It would report "nothing to replay" on
+# every run while failed deliveries piled up — a silent failure, which is worse
+# than no recovery.
+#
+# So the replay runs INSIDE the web service on a 5-minute timer
+# (REPLAY_INTERVAL_MINUTES), claiming rows in the database so overlapping runs
+# can never double-deliver. If you would rather drive it externally, the cron
+# block at the bottom of this file calls POST /admin/replay over HTTP, which
+# reaches the service that actually owns the disk.
+#
+# Sprout stays a separate service. Sprout going down must not take Scout's news
+# ingestion down with it.
+#
 # Scout is a always-on worker with an HTTP health surface, not a request/response
 # service — it holds gateway connections and timers, so it must not be deployed
 # anywhere that sleeps on idle. On Render that means a paid instance type: the
@@ -87,6 +105,18 @@ services:
       - key: SPROUT_TOKEN
         sync: false
 
+      # ── Automatic Sprout recovery ──
+      # Runs in-process; see the note at the top of this file for why this is
+      # not a separate cron service.
+      - key: REPLAY_ENABLED
+        value: "true"
+      - key: REPLAY_INTERVAL_MINUTES
+        value: "5"
+      - key: REPLAY_WINDOW_MINUTES
+        value: "60"
+      - key: REPLAY_LIMIT
+        value: "100"
+
       # ── Tuning ──
       - key: RESOLVE_TIMEOUT_SECONDS
         value: "10"
@@ -98,3 +128,29 @@ services:
         value: "60"
       - key: MIN_BREAKING_SCORE
         value: "90"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OPTIONAL: drive the replay externally instead of in-process.
+#
+# Only use this if you set REPLAY_ENABLED=false above — otherwise both would
+# run, which is safe (the database claim prevents double delivery) but wasteful.
+#
+# This calls the web service over HTTP rather than running the CLI, because a
+# cron container cannot reach the web service's disk. SCOUT_URL is the service's
+# own URL; SCOUT_ADMIN_TOKEN defaults to SCOUT_WEBHOOK_TOKEN when unset.
+#
+#  - type: cron
+#    name: scout-sprout-replay
+#    runtime: node
+#    plan: starter
+#    schedule: "*/5 * * * *"
+#    buildCommand: npm ci
+#    startCommand: >-
+#      curl -sS -X POST "$SCOUT_URL/admin/replay"
+#        -H "Authorization: Bearer $SCOUT_ADMIN_TOKEN"
+#        --fail-with-body --max-time 120
+#    envVars:
+#      - key: SCOUT_URL
+#        sync: false
+#      - key: SCOUT_ADMIN_TOKEN
+#        sync: false

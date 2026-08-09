@@ -307,10 +307,18 @@ CREATE TABLE IF NOT EXISTS deliveries (
   sent_at            TEXT,
   error              TEXT,
   created_at         TEXT NOT NULL,
+  -- Replay claim. A row being worked on by one replay run is invisible to
+  -- another, so two concurrent runs cannot deliver the same event twice.
+  -- Cleared whenever a new status is recorded; a claim older than the stale
+  -- threshold is reclaimed, so a run that died mid-flight cannot block a row
+  -- forever.
+  claimed_at         TEXT,
+  claimed_by         TEXT,
   UNIQUE (event_id, destination)
 );
 
 CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_deliveries_claim  ON deliveries(destination, status, claimed_at);
 
 -- The work queue. Persisted so in-flight work resumes after a restart instead
 -- of being lost or duplicated.
