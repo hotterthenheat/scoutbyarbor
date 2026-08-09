@@ -1,0 +1,282 @@
+# SCOUT security master (§25)
+#
+# ticker,name,aliases,exchange,ambiguity,indices,sector,priority
+#   aliases  pipe-delimited alternate names
+#   indices  pipe-delimited index membership, drives asset-exposure scoring
+#   priority 0-100, how much this name can move the index (§12)
+#
+# ambiguity is the anti-false-positive control:
+#   safe       symbol is not an English word or common acronym; a bare
+#              uppercase match is allowed (NVDA, AVGO, GOOGL)
+#   ambiguous  symbol collides with a word or acronym; needs a cashtag, a
+#              company-name hit, or corporate context nearby (META, CAT, DOW)
+#   blocked    never bare-matches at all; cashtag or full company name only
+#              (F, T, X, GO, ON, IT, SPOT, COIN, OPEN)
+#
+# When in doubt, downgrade. A missed ticker costs one tag on one alert; a
+# false ticker puts a wrong name on the wire.
+ticker,name,aliases,exchange,ambiguity,indices,sector,priority
+NVDA,NVIDIA Corporation,NVIDIA|Nvidia Corp|NVIDIA Corp,NASDAQ,safe,SPX|NDX|SOX,Technology,100
+AAPL,Apple Inc.,Apple|Apple Computer,NASDAQ,safe,SPX|NDX,Technology,100
+MSFT,Microsoft Corporation,Microsoft|Microsoft Corp,NASDAQ,safe,SPX|NDX,Technology,100
+AMZN,Amazon.com Inc.,Amazon|Amazon com,NASDAQ,safe,SPX|NDX,Consumer Discretionary,98
+GOOGL,Alphabet Inc.,Alphabet|Alphabet Inc Class A|Google|Google LLC,NASDAQ,safe,SPX|NDX,Communication Services,98
+GOOG,Alphabet Inc. Class C,Alphabet Class C,NASDAQ,safe,SPX|NDX,Communication Services,90
+META,Meta Platforms Inc.,Meta Platforms|Facebook|Facebook Inc|Instagram,NASDAQ,ambiguous,SPX|NDX,Communication Services,96
+TSLA,Tesla Inc.,Tesla|Tesla Motors,NASDAQ,safe,SPX|NDX,Consumer Discretionary,96
+AVGO,Broadcom Inc.,Broadcom,NASDAQ,safe,SPX|NDX|SOX,Technology,94
+AMD,Advanced Micro Devices,Advanced Micro Devices Inc,NASDAQ,safe,SPX|NDX|SOX,Technology,90
+NFLX,Netflix Inc.,Netflix,NASDAQ,safe,SPX|NDX,Communication Services,88
+ORCL,Oracle Corporation,Oracle,NYSE,safe,SPX,Technology,88
+MU,Micron Technology,Micron|Micron Technology Inc,NASDAQ,ambiguous,SPX|NDX|SOX,Technology,82
+PLTR,Palantir Technologies,Palantir,NASDAQ,safe,SPX|NDX,Technology,82
+CRM,Salesforce Inc.,Salesforce|Salesforce com,NYSE,ambiguous,SPX|DJIA,Technology,84
+INTC,Intel Corporation,Intel,NASDAQ,safe,SPX|NDX|SOX,Technology,82
+JPM,JPMorgan Chase,JPMorgan|JP Morgan|JPMorgan Chase Co,NYSE,safe,SPX|DJIA,Financials,94
+BAC,Bank of America,Bank of America Corp|BofA,NYSE,safe,SPX,Financials,88
+GS,Goldman Sachs,Goldman Sachs Group|Goldman,NYSE,safe,SPX|DJIA,Financials,88
+MS,Morgan Stanley,Morgan Stanley Co,NYSE,ambiguous,SPX,Financials,86
+WMT,Walmart Inc.,Walmart|Wal-Mart,NYSE,safe,SPX|DJIA,Consumer Staples,90
+COST,Costco Wholesale,Costco|Costco Wholesale Corp,NASDAQ,ambiguous,SPX|NDX,Consumer Staples,88
+XOM,Exxon Mobil,Exxon|ExxonMobil|Exxon Mobil Corp,NYSE,safe,SPX,Energy,90
+CVX,Chevron Corporation,Chevron,NYSE,safe,SPX|DJIA,Energy,86
+LLY,Eli Lilly,Eli Lilly and Co|Lilly,NYSE,safe,SPX,Health Care,92
+UNH,UnitedHealth Group,UnitedHealth,NYSE,safe,SPX|DJIA,Health Care,88
+JNJ,Johnson & Johnson,Johnson and Johnson,NYSE,safe,SPX|DJIA,Health Care,86
+V,Visa Inc.,Visa,NYSE,blocked,SPX|DJIA,Financials,88
+MA,Mastercard Inc.,Mastercard,NYSE,blocked,SPX,Financials,86
+HD,Home Depot,The Home Depot|Home Depot Inc,NYSE,blocked,SPX|DJIA,Consumer Discretionary,84
+PG,Procter & Gamble,Procter and Gamble|P&G,NYSE,ambiguous,SPX|DJIA,Consumer Staples,84
+ABBV,AbbVie Inc.,AbbVie,NYSE,safe,SPX,Health Care,82
+MRK,Merck & Co.,Merck|Merck and Co,NYSE,safe,SPX,Health Care,82
+PFE,Pfizer Inc.,Pfizer,NYSE,safe,SPX,Health Care,80
+TMO,Thermo Fisher Scientific,Thermo Fisher,NYSE,safe,SPX,Health Care,78
+ABT,Abbott Laboratories,Abbott Labs|Abbott,NYSE,ambiguous,SPX,Health Care,78
+AMGN,Amgen Inc.,Amgen,NASDAQ,safe,SPX|DJIA,Health Care,78
+BMY,Bristol-Myers Squibb,Bristol Myers|Bristol-Myers,NYSE,safe,SPX,Health Care,74
+GILD,Gilead Sciences,Gilead,NASDAQ,safe,SPX|NDX,Health Care,74
+VRTX,Vertex Pharmaceuticals,Vertex Pharma,NASDAQ,safe,SPX|NDX,Health Care,74
+REGN,Regeneron Pharmaceuticals,Regeneron,NASDAQ,safe,SPX|NDX,Health Care,72
+MRNA,Moderna Inc.,Moderna,NASDAQ,safe,SPX,Health Care,68
+BIIB,Biogen Inc.,Biogen,NASDAQ,safe,SPX,Health Care,66
+ISRG,Intuitive Surgical,Intuitive Surgical Inc,NASDAQ,safe,SPX|NDX,Health Care,74
+MDT,Medtronic plc,Medtronic,NYSE,safe,SPX,Health Care,72
+SYK,Stryker Corporation,Stryker,NYSE,safe,SPX,Health Care,70
+BSX,Boston Scientific,Boston Scientific Corp,NYSE,safe,SPX,Health Care,70
+CVS,CVS Health,CVS Health Corp|CVS Pharmacy,NYSE,safe,SPX,Health Care,74
+CI,Cigna Group,The Cigna Group|Cigna,NYSE,blocked,SPX,Health Care,70
+ELV,Elevance Health,Elevance,NYSE,safe,SPX,Health Care,72
+HCA,HCA Healthcare,HCA Healthcare Inc,NYSE,safe,SPX,Health Care,68
+MCK,McKesson Corporation,McKesson,NYSE,safe,SPX,Health Care,68
+WFC,Wells Fargo,Wells Fargo Co,NYSE,safe,SPX,Financials,84
+C,Citigroup Inc.,Citigroup|Citi|Citibank,NYSE,blocked,SPX,Financials,84
+SCHW,Charles Schwab,Schwab|Charles Schwab Corp,NYSE,safe,SPX,Financials,78
+BLK,BlackRock Inc.,BlackRock,NYSE,safe,SPX,Financials,84
+BX,Blackstone Inc.,Blackstone,NYSE,safe,SPX,Financials,80
+KKR,KKR & Co.,KKR and Co|Kohlberg Kravis Roberts,NYSE,safe,SPX,Financials,76
+AXP,American Express,Amex|American Express Co,NYSE,safe,SPX|DJIA,Financials,80
+SPGI,S&P Global,S and P Global|SP Global,NYSE,safe,SPX,Financials,78
+CME,CME Group,CME Group Inc,NASDAQ,safe,SPX,Financials,74
+ICE,Intercontinental Exchange,Intercontinental Exchange Inc,NYSE,blocked,SPX,Financials,72
+NDAQ,Nasdaq Inc.,Nasdaq Inc,NASDAQ,safe,SPX,Financials,68
+PNC,PNC Financial Services,PNC Financial,NYSE,safe,SPX,Financials,70
+USB,U.S. Bancorp,US Bancorp|USBancorp,NYSE,blocked,SPX,Financials,70
+TFC,Truist Financial,Truist,NYSE,safe,SPX,Financials,66
+COF,Capital One Financial,Capital One,NYSE,ambiguous,SPX,Financials,70
+AIG,American International Group,AIG Inc,NYSE,safe,SPX,Financials,66
+PGR,Progressive Corporation,Progressive Corp,NYSE,safe,SPX,Financials,72
+TRV,Travelers Companies,The Travelers,NYSE,safe,SPX|DJIA,Financials,66
+CB,Chubb Limited,Chubb Ltd,NYSE,blocked,SPX,Financials,68
+MET,MetLife Inc.,MetLife,NYSE,blocked,SPX,Financials,64
+BRK.B,Berkshire Hathaway,Berkshire Hathaway Inc|Berkshire,NYSE,safe,SPX,Financials,90
+ADBE,Adobe Inc.,Adobe,NASDAQ,safe,SPX|NDX,Technology,82
+CSCO,Cisco Systems,Cisco,NASDAQ,safe,SPX|NDX|DJIA,Technology,78
+IBM,International Business Machines,IBM Corp,NYSE,safe,SPX|DJIA,Technology,80
+TXN,Texas Instruments,Texas Instruments Inc,NASDAQ,safe,SPX|NDX|SOX,Technology,80
+QCOM,QUALCOMM Inc.,Qualcomm,NASDAQ,safe,SPX|NDX|SOX,Technology,82
+AMAT,Applied Materials,Applied Materials Inc,NASDAQ,safe,SPX|NDX|SOX,Technology,82
+LRCX,Lam Research,Lam Research Corp,NASDAQ,safe,SPX|NDX|SOX,Technology,78
+KLAC,KLA Corporation,KLA Corp|KLA Tencor,NASDAQ,safe,SPX|NDX|SOX,Technology,76
+ADI,Analog Devices,Analog Devices Inc,NASDAQ,safe,SPX|NDX|SOX,Technology,74
+NXPI,NXP Semiconductors,NXP Semiconductors NV|NXP,NASDAQ,safe,NDX|SOX,Technology,70
+MRVL,Marvell Technology,Marvell,NASDAQ,safe,SPX|NDX|SOX,Technology,72
+ON,ON Semiconductor,ON Semiconductor Corp|Onsemi,NASDAQ,blocked,SPX|SOX,Technology,62
+SWKS,Skyworks Solutions,Skyworks,NASDAQ,safe,SPX|SOX,Technology,58
+MCHP,Microchip Technology,Microchip,NASDAQ,safe,SPX|SOX,Technology,62
+SNPS,Synopsys Inc.,Synopsys,NASDAQ,safe,SPX|NDX,Technology,70
+CDNS,Cadence Design Systems,Cadence Design,NASDAQ,safe,SPX|NDX,Technology,70
+INTU,Intuit Inc.,Intuit,NASDAQ,safe,SPX|NDX,Technology,76
+NOW,ServiceNow Inc.,ServiceNow,NYSE,blocked,SPX,Technology,80
+PANW,Palo Alto Networks,Palo Alto Networks Inc,NASDAQ,safe,SPX|NDX,Technology,74
+CRWD,CrowdStrike Holdings,CrowdStrike,NASDAQ,safe,SPX|NDX,Technology,74
+ZS,Zscaler Inc.,Zscaler,NASDAQ,safe,NDX,Technology,58
+DDOG,Datadog Inc.,Datadog,NASDAQ,safe,SPX|NDX,Technology,62
+SNOW,Snowflake Inc.,Snowflake,NYSE,ambiguous,,Technology,64
+NET,Cloudflare Inc.,Cloudflare,NYSE,blocked,,Technology,58
+MDB,MongoDB Inc.,MongoDB,NASDAQ,safe,,Technology,56
+TEAM,Atlassian Corporation,Atlassian,NASDAQ,blocked,NDX,Technology,58
+WDAY,Workday Inc.,Workday,NASDAQ,safe,SPX|NDX,Technology,64
+SHOP,Shopify Inc.,Shopify,NASDAQ,blocked,NDX,Technology,68
+PYPL,PayPal Holdings,PayPal,NASDAQ,safe,SPX|NDX,Financials,64
+COIN,Coinbase Global,Coinbase,NASDAQ,blocked,SPX,Financials,72
+HOOD,Robinhood Markets,Robinhood,NASDAQ,ambiguous,SPX,Financials,66
+SQ,Block Inc.,Block Inc|Square Inc,NYSE,blocked,SPX,Financials,60
+UBER,Uber Technologies,Uber,NYSE,safe,SPX,Industrials,74
+LYFT,Lyft Inc.,Lyft,NASDAQ,safe,,Industrials,50
+ABNB,Airbnb Inc.,Airbnb,NASDAQ,safe,SPX|NDX,Consumer Discretionary,68
+BKNG,Booking Holdings,Booking com|Booking Holdings Inc,NASDAQ,safe,SPX|NDX,Consumer Discretionary,76
+DASH,DoorDash Inc.,DoorDash,NASDAQ,ambiguous,SPX|NDX,Consumer Discretionary,62
+RBLX,Roblox Corporation,Roblox,NYSE,safe,,Communication Services,56
+EA,Electronic Arts,Electronic Arts Inc,NASDAQ,ambiguous,SPX|NDX,Communication Services,58
+TTWO,Take-Two Interactive,Take Two Interactive,NASDAQ,safe,SPX|NDX,Communication Services,56
+SPOT,Spotify Technology,Spotify,NYSE,blocked,,Communication Services,64
+PINS,Pinterest Inc.,Pinterest,NYSE,safe,,Communication Services,50
+SNAP,Snap Inc.,Snapchat,NYSE,ambiguous,,Communication Services,52
+RDDT,Reddit Inc.,Reddit,NYSE,safe,,Communication Services,54
+DIS,Walt Disney Company,Disney|The Walt Disney Co,NYSE,ambiguous,SPX|DJIA,Communication Services,78
+CMCSA,Comcast Corporation,Comcast,NASDAQ,safe,SPX|NDX,Communication Services,70
+CHTR,Charter Communications,Charter Communications Inc,NASDAQ,safe,SPX|NDX,Communication Services,58
+WBD,Warner Bros. Discovery,Warner Bros Discovery|Warner Brothers Discovery,NASDAQ,safe,SPX,Communication Services,56
+PARA,Paramount Global,Paramount,NASDAQ,ambiguous,,Communication Services,48
+FOX,Fox Corporation,Fox Corp,NASDAQ,ambiguous,SPX,Communication Services,50
+T,AT&T Inc.,AT&T|ATT Inc,NYSE,blocked,SPX,Communication Services,70
+VZ,Verizon Communications,Verizon,NYSE,safe,SPX|DJIA,Communication Services,72
+TMUS,T-Mobile US,T-Mobile|TMobile,NASDAQ,safe,SPX|NDX,Communication Services,74
+BA,Boeing Company,Boeing|The Boeing Co,NYSE,ambiguous,SPX|DJIA,Industrials,80
+CAT,Caterpillar Inc.,Caterpillar,NYSE,ambiguous,SPX|DJIA,Industrials,78
+DE,Deere & Company,Deere|John Deere,NYSE,blocked,SPX,Industrials,70
+HON,Honeywell International,Honeywell,NASDAQ,safe,SPX|DJIA,Industrials,74
+GE,GE Aerospace,General Electric|GE Aerospace Inc,NYSE,ambiguous,SPX,Industrials,76
+MMM,3M Company,3M|Three M,NYSE,safe,SPX|DJIA,Industrials,66
+LMT,Lockheed Martin,Lockheed,NYSE,safe,SPX,Industrials,76
+RTX,RTX Corporation,Raytheon|RTX Corp,NYSE,safe,SPX,Industrials,74
+NOC,Northrop Grumman,Northrop,NYSE,safe,SPX,Industrials,70
+GD,General Dynamics,General Dynamics Corp,NYSE,ambiguous,SPX,Industrials,66
+UPS,United Parcel Service,UPS Inc,NYSE,blocked,SPX,Industrials,68
+FDX,FedEx Corporation,FedEx|Federal Express,NYSE,safe,SPX,Industrials,70
+UNP,Union Pacific,Union Pacific Corp,NYSE,safe,SPX,Industrials,72
+CSX,CSX Corporation,CSX Corp,NASDAQ,safe,SPX,Industrials,62
+EMR,Emerson Electric,Emerson,NYSE,safe,SPX,Industrials,64
+ETN,Eaton Corporation,Eaton,NYSE,safe,SPX,Industrials,72
+ITW,Illinois Tool Works,Illinois Tool Works Inc,NYSE,safe,SPX,Industrials,62
+CMI,Cummins Inc.,Cummins,NYSE,safe,SPX,Industrials,60
+PCAR,PACCAR Inc,PACCAR,NASDAQ,safe,SPX|NDX,Industrials,58
+WM,Waste Management,Waste Management Inc,NYSE,ambiguous,SPX,Industrials,62
+GM,General Motors,General Motors Co,NYSE,ambiguous,SPX,Consumer Discretionary,70
+F,Ford Motor Company,Ford Motor|Ford Motor Co,NYSE,blocked,SPX,Consumer Discretionary,68
+RIVN,Rivian Automotive,Rivian,NASDAQ,safe,,Consumer Discretionary,52
+LCID,Lucid Group,Lucid Motors,NASDAQ,safe,,Consumer Discretionary,44
+NKE,NIKE Inc.,Nike,NYSE,safe,SPX|DJIA,Consumer Discretionary,74
+SBUX,Starbucks Corporation,Starbucks,NASDAQ,safe,SPX|NDX,Consumer Discretionary,72
+MCD,McDonald's Corporation,McDonalds|McDonald s,NYSE,safe,SPX|DJIA,Consumer Discretionary,76
+CMG,Chipotle Mexican Grill,Chipotle,NYSE,safe,SPX,Consumer Discretionary,64
+YUM,Yum! Brands,Yum Brands,NYSE,ambiguous,SPX,Consumer Discretionary,56
+TGT,Target Corporation,Target Corp,NYSE,ambiguous,SPX,Consumer Staples,68
+LOW,Lowe's Companies,Lowes|Lowe s Companies Inc,NYSE,blocked,SPX,Consumer Discretionary,72
+TJX,TJX Companies,TJX Companies Inc|TJ Maxx,NYSE,safe,SPX,Consumer Discretionary,66
+ROST,Ross Stores,Ross Stores Inc,NASDAQ,safe,SPX,Consumer Discretionary,56
+LULU,Lululemon Athletica,Lululemon,NASDAQ,safe,SPX|NDX,Consumer Discretionary,58
+ULTA,Ulta Beauty,Ulta Beauty Inc,NASDAQ,safe,SPX,Consumer Discretionary,50
+BBY,Best Buy,Best Buy Co,NYSE,safe,SPX,Consumer Discretionary,50
+EBAY,eBay Inc.,eBay,NASDAQ,safe,SPX|NDX,Consumer Discretionary,54
+ETSY,Etsy Inc.,Etsy,NASDAQ,safe,,Consumer Discretionary,44
+CHWY,Chewy Inc.,Chewy,NYSE,safe,,Consumer Discretionary,44
+DG,Dollar General,Dollar General Corp,NYSE,ambiguous,SPX,Consumer Staples,52
+DLTR,Dollar Tree,Dollar Tree Inc,NASDAQ,safe,SPX,Consumer Staples,50
+KR,Kroger Company,Kroger|The Kroger Co,NYSE,ambiguous,SPX,Consumer Staples,56
+SYY,Sysco Corporation,Sysco,NYSE,safe,SPX,Consumer Staples,54
+KO,Coca-Cola Company,Coca Cola|The Coca-Cola Co,NYSE,ambiguous,SPX|DJIA,Consumer Staples,78
+PEP,PepsiCo Inc.,PepsiCo|Pepsi,NASDAQ,ambiguous,SPX|NDX,Consumer Staples,76
+MDLZ,Mondelez International,Mondelez,NASDAQ,safe,SPX|NDX,Consumer Staples,62
+KHC,Kraft Heinz,The Kraft Heinz Co,NASDAQ,safe,SPX,Consumer Staples,52
+GIS,General Mills,General Mills Inc,NYSE,ambiguous,SPX,Consumer Staples,56
+HSY,Hershey Company,Hershey|The Hershey Co,NYSE,safe,SPX,Consumer Staples,54
+STZ,Constellation Brands,Constellation Brands Inc,NYSE,safe,SPX,Consumer Staples,54
+MO,Altria Group,Altria,NYSE,ambiguous,SPX,Consumer Staples,60
+PM,Philip Morris International,Philip Morris,NYSE,blocked,SPX,Consumer Staples,68
+CL,Colgate-Palmolive,Colgate Palmolive|Colgate,NYSE,ambiguous,SPX,Consumer Staples,62
+KMB,Kimberly-Clark,Kimberly Clark,NASDAQ,safe,SPX,Consumer Staples,54
+EL,Estee Lauder Companies,Estee Lauder|Estée Lauder,NYSE,ambiguous,SPX,Consumer Staples,52
+CLX,Clorox Company,Clorox,NYSE,safe,SPX,Consumer Staples,46
+COP,ConocoPhillips,Conoco Phillips|Conoco,NYSE,ambiguous,SPX,Energy,74
+SLB,Schlumberger,SLB Ltd|Schlumberger NV,NYSE,safe,SPX,Energy,66
+EOG,EOG Resources,EOG Resources Inc,NYSE,safe,SPX,Energy,68
+PSX,Phillips 66,Phillips 66 Co,NYSE,safe,SPX,Energy,62
+VLO,Valero Energy,Valero,NYSE,safe,SPX,Energy,62
+MPC,Marathon Petroleum,Marathon Petroleum Corp,NYSE,safe,SPX,Energy,64
+OXY,Occidental Petroleum,Occidental,NYSE,safe,SPX,Energy,64
+HAL,Halliburton Company,Halliburton,NYSE,ambiguous,SPX,Energy,56
+KMI,Kinder Morgan,Kinder Morgan Inc,NYSE,safe,SPX,Energy,56
+WMB,Williams Companies,The Williams Companies,NYSE,ambiguous,SPX,Energy,58
+DVN,Devon Energy,Devon Energy Corp,NYSE,safe,SPX,Energy,54
+FANG,Diamondback Energy,Diamondback,NASDAQ,ambiguous,SPX,Energy,56
+LIN,Linde plc,Linde,NASDAQ,safe,SPX,Materials,74
+APD,Air Products and Chemicals,Air Products,NYSE,safe,SPX,Materials,62
+SHW,Sherwin-Williams,Sherwin Williams,NYSE,safe,SPX|DJIA,Materials,62
+ECL,Ecolab Inc.,Ecolab,NYSE,safe,SPX,Materials,58
+NEM,Newmont Corporation,Newmont,NYSE,safe,SPX,Materials,62
+FCX,Freeport-McMoRan,Freeport McMoRan|Freeport,NYSE,safe,SPX,Materials,64
+DOW,Dow Inc.,Dow Chemical|Dow Inc,NYSE,ambiguous,SPX,Materials,54
+DD,DuPont de Nemours,DuPont,NYSE,ambiguous,SPX,Materials,52
+NUE,Nucor Corporation,Nucor,NYSE,safe,SPX,Materials,54
+ALB,Albemarle Corporation,Albemarle,NYSE,safe,SPX,Materials,50
+NEE,NextEra Energy,NextEra,NYSE,ambiguous,SPX,Utilities,68
+DUK,Duke Energy,Duke Energy Corp,NYSE,safe,SPX,Utilities,60
+SO,Southern Company,The Southern Co,NYSE,blocked,SPX,Utilities,60
+D,Dominion Energy,Dominion Energy Inc,NYSE,blocked,SPX,Utilities,54
+AEP,American Electric Power,American Electric Power Co,NASDAQ,safe,SPX,Utilities,54
+EXC,Exelon Corporation,Exelon,NASDAQ,safe,SPX,Utilities,52
+SRE,Sempra Energy,Sempra,NYSE,safe,SPX,Utilities,52
+VST,Vistra Corp.,Vistra,NYSE,safe,SPX,Utilities,64
+CEG,Constellation Energy,Constellation Energy Corp,NASDAQ,safe,SPX,Utilities,66
+NRG,NRG Energy,NRG Energy Inc,NYSE,safe,SPX,Utilities,50
+AMT,American Tower,American Tower Corp,NYSE,safe,SPX,Real Estate,62
+PLD,Prologis Inc.,Prologis,NYSE,safe,SPX,Real Estate,60
+CCI,Crown Castle,Crown Castle Inc,NYSE,safe,SPX,Real Estate,52
+EQIX,Equinix Inc.,Equinix,NASDAQ,safe,SPX,Real Estate,62
+SPG,Simon Property Group,Simon Property,NYSE,safe,SPX,Real Estate,52
+PSA,Public Storage,Public Storage Inc,NYSE,safe,SPX,Real Estate,50
+DLR,Digital Realty Trust,Digital Realty,NYSE,safe,SPX,Real Estate,56
+TSM,Taiwan Semiconductor Manufacturing,TSMC|Taiwan Semiconductor,NYSE,safe,SOX,Technology,94
+ASML,ASML Holding,ASML Holding NV,NASDAQ,safe,NDX|SOX,Technology,86
+BABA,Alibaba Group,Alibaba|Alibaba Group Holding,NYSE,safe,,Consumer Discretionary,74
+NVO,Novo Nordisk,Novo Nordisk A S,NYSE,safe,,Health Care,76
+AZN,AstraZeneca plc,AstraZeneca,NASDAQ,safe,,Health Care,70
+SAP,SAP SE,SAP AG,NYSE,safe,,Technology,70
+SHEL,Shell plc,Shell|Royal Dutch Shell,NYSE,safe,,Energy,70
+BP,BP p.l.c.,British Petroleum|BP plc,NYSE,blocked,,Energy,64
+TTE,TotalEnergies SE,TotalEnergies|Total SE,NYSE,safe,,Energy,62
+SONY,Sony Group Corporation,Sony,NYSE,safe,,Consumer Discretionary,62
+TM,Toyota Motor Corporation,Toyota,NYSE,ambiguous,,Consumer Discretionary,64
+HMC,Honda Motor Co.,Honda,NYSE,safe,,Consumer Discretionary,52
+SPY,SPDR S&P 500 ETF Trust,SPDR S P 500|S&P 500 ETF,NYSEARCA,safe,ETF,Index Fund,90
+QQQ,Invesco QQQ Trust,Invesco QQQ|Nasdaq 100 ETF,NASDAQ,safe,ETF,Index Fund,88
+IWM,iShares Russell 2000 ETF,Russell 2000 ETF,NYSEARCA,safe,ETF,Index Fund,76
+DIA,SPDR Dow Jones Industrial Average ETF,Dow Jones ETF,NYSEARCA,safe,ETF,Index Fund,64
+VOO,Vanguard S&P 500 ETF,Vanguard S P 500 ETF,NYSEARCA,safe,ETF,Index Fund,64
+VTI,Vanguard Total Stock Market ETF,Vanguard Total Stock Market,NYSEARCA,safe,ETF,Index Fund,60
+XLE,Energy Select Sector SPDR Fund,Energy Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,64
+XLF,Financial Select Sector SPDR Fund,Financial Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,64
+XLK,Technology Select Sector SPDR Fund,Technology Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,64
+XLV,Health Care Select Sector SPDR Fund,Health Care Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,58
+XLI,Industrial Select Sector SPDR Fund,Industrial Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,56
+XLU,Utilities Select Sector SPDR Fund,Utilities Select Sector SPDR,NYSEARCA,safe,ETF,Sector Fund,54
+XLP,Consumer Staples Select Sector SPDR Fund,Consumer Staples SPDR,NYSEARCA,safe,ETF,Sector Fund,54
+XLY,Consumer Discretionary Select Sector SPDR Fund,Consumer Discretionary SPDR,NYSEARCA,safe,ETF,Sector Fund,56
+SMH,VanEck Semiconductor ETF,VanEck Semiconductor,NASDAQ,safe,ETF,Sector Fund,70
+SOXX,iShares Semiconductor ETF,iShares Semiconductor,NASDAQ,safe,ETF,Sector Fund,64
+TLT,iShares 20+ Year Treasury Bond ETF,iShares 20 Year Treasury,NASDAQ,safe,ETF,Bond Fund,76
+IEF,iShares 7-10 Year Treasury Bond ETF,iShares 7 10 Year Treasury,NASDAQ,safe,ETF,Bond Fund,60
+HYG,iShares iBoxx High Yield Corporate Bond ETF,iShares High Yield,NYSEARCA,safe,ETF,Bond Fund,66
+LQD,iShares iBoxx Investment Grade Corporate Bond ETF,iShares Investment Grade,NYSEARCA,safe,ETF,Bond Fund,58
+AGG,iShares Core U.S. Aggregate Bond ETF,iShares Core Aggregate Bond,NYSEARCA,safe,ETF,Bond Fund,56
+GLD,SPDR Gold Shares,SPDR Gold Trust,NYSEARCA,safe,ETF,Commodity Fund,70
+SLV,iShares Silver Trust,iShares Silver,NYSEARCA,safe,ETF,Commodity Fund,58
+USO,United States Oil Fund,US Oil Fund,NYSEARCA,safe,ETF,Commodity Fund,58
+UNG,United States Natural Gas Fund,US Natural Gas Fund,NYSEARCA,safe,ETF,Commodity Fund,50
+UUP,Invesco DB US Dollar Index Bullish Fund,Invesco Dollar Index,NYSEARCA,safe,ETF,Currency Fund,52
+FXI,iShares China Large-Cap ETF,iShares China Large Cap,NASDAQ,safe,ETF,Regional Fund,56
+EEM,iShares MSCI Emerging Markets ETF,iShares Emerging Markets,NYSEARCA,safe,ETF,Regional Fund,58
+EFA,iShares MSCI EAFE ETF,iShares MSCI EAFE,NYSEARCA,safe,ETF,Regional Fund,52
+IBIT,iShares Bitcoin Trust,iShares Bitcoin,NASDAQ,safe,ETF,Crypto Fund,66
+GBTC,Grayscale Bitcoin Trust,Grayscale Bitcoin,NYSEARCA,safe,ETF,Crypto Fund,56

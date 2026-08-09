@@ -1,0 +1,1349 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SCOUT — classification taxonomy (§4, §8, §20)
+#
+# Keywords and phrases are matched case-insensitively on word boundaries;
+# multiword entries must appear as a contiguous phrase. `phrases` weigh 3x a
+# `keywords` hit — they are the entries that are strong evidence on their own.
+#
+# `requires` is the anti-noise mechanism: a category with a requires list cannot
+# fire unless one of those terms also matches. MARKET and EQUITY both use it, so
+# ordinary price chatter cannot become an alert (§4: "Do NOT turn ordinary
+# market movement into alerts").
+#
+# Edit this file and restart — no code change needed.
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+
+categories:
+  # ══════════════════════════════════════════════════════════════════════════
+  MACRO:
+    weight: 1.0
+    phrases:
+      - monetary policy
+      - fiscal policy
+      - government spending
+      - debt ceiling
+      - treasury auction
+      - treasury auctions
+      - yield curve
+      - interest rates
+      - banking stress
+      - bank failure
+      - credit crunch
+      - government shutdown
+      - budget deficit
+      - sovereign debt
+      - quantitative tightening
+      - quantitative easing
+      - soft landing
+      - hard landing
+      - stagflation
+      - debt downgrade
+    keywords:
+      - macro
+      - inflation
+      - disinflation
+      - deflation
+      - unemployment
+      - treasury
+      - treasuries
+      - yields
+      - rates
+      - stimulus
+      - austerity
+      - tapering
+      - recession
+      - gdp
+      - deficit
+      - surplus
+      - liquidity
+      - refinancing
+      - bailout
+    subcategories:
+      RATES: [interest rates, yield curve, yields, rate path, term premium]
+      FISCAL: [fiscal policy, government spending, budget deficit, debt ceiling, shutdown]
+      DEBT: [treasury auction, sovereign debt, debt downgrade, refinancing]
+      BANKING: [banking stress, bank failure, credit crunch, bailout, deposit flight]
+      INFLATION: [inflation, disinflation, deflation, stagflation]
+      GROWTH: [recession, soft landing, hard landing, gdp]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  FED:
+    weight: 1.35
+    phrases:
+      - federal reserve
+      - federal open market committee
+      - rate decision
+      - rate cut
+      - rate cuts
+      - rate hike
+      - rate hikes
+      - basis point cut
+      - basis point hike
+      - policy guidance
+      - forward guidance
+      - balance sheet
+      - dot plot
+      - beige book
+      - discount window
+      - emergency facility
+      - emergency lending
+      - standing repo facility
+      - summary of economic projections
+      - jackson hole
+      - fomc minutes
+      - fomc statement
+      - target range
+      - federal funds rate
+      - press conference
+      - european central bank
+      - bank of japan
+      - bank of england
+      - bank of canada
+      - reserve bank of australia
+      - people's bank of china
+      - central bank
+      - policy rate
+      - yield curve control
+      - rate decision unchanged
+      # Naming the central bank or its chair is strong evidence by itself.
+      - fed
+      - fomc
+      - powell
+      - ecb
+      - boj
+      - boe
+      - pboc
+    keywords:
+      - lagarde
+      - ueda
+      - bailey
+      - snb
+      - rba
+      - rbnz
+      - hawkish
+      - dovish
+      - qt
+      - qe
+      - taper
+      - tightening
+      - easing
+      - intervention
+      - repo
+      - sep
+      - dissent
+    subcategories:
+      FOMC_DECISION: [rate decision, fomc statement, target range, federal funds rate, rate cut, rate hike]
+      POWELL_REMARKS: [powell, press conference, testimony, jackson hole]
+      MINUTES: [fomc minutes, beige book]
+      BALANCE_SHEET: [balance sheet, quantitative tightening, quantitative easing, qt, qe, taper]
+      GUIDANCE: [forward guidance, policy guidance, dot plot, summary of economic projections]
+      EMERGENCY: [emergency facility, emergency lending, discount window, intervention]
+      FOREIGN_CB: [european central bank, bank of japan, bank of england, bank of canada, pboc]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  ECONOMIC:
+    weight: 1.3
+    phrases:
+      - consumer price index
+      - core cpi
+      - core pce
+      - producer price index
+      - personal consumption expenditures
+      - nonfarm payrolls
+      - non-farm payrolls
+      - unemployment rate
+      - jobless claims
+      - initial claims
+      - continuing claims
+      - retail sales
+      - durable goods
+      - housing starts
+      - building permits
+      - existing home sales
+      - new home sales
+      - consumer confidence
+      - consumer sentiment
+      - industrial production
+      - capacity utilization
+      - personal income
+      - personal spending
+      - trade balance
+      - factory orders
+      - employment situation
+      - labor force participation
+      - average hourly earnings
+      - unit labor costs
+      - job openings
+      - wholesale inventories
+      - gdp growth
+      - gross domestic product
+      # Acronyms below are strong evidence on their own, so they live here
+      # rather than in `keywords`.
+      - cpi
+      - ppi
+      - pce
+      - nfp
+      - gdp
+      - jolts
+      - adp
+      - ism
+      - pmi
+    keywords:
+      - payrolls
+      - claims
+      - inflation
+      - employment
+      - unemployment
+      - jobs
+    subcategories:
+      CPI_RELEASE: [consumer price index, core cpi, cpi]
+      PCE_RELEASE: [personal consumption expenditures, core pce, pce]
+      PPI_RELEASE: [producer price index, ppi]
+      NFP_RELEASE: [nonfarm payrolls, non-farm payrolls, payrolls, employment situation, nfp]
+      CLAIMS_RELEASE: [jobless claims, initial claims, continuing claims]
+      GDP_RELEASE: [gross domestic product, gdp growth]
+      RETAIL_RELEASE: [retail sales]
+      PMI_RELEASE: [ism, pmi, factory orders, industrial production]
+      HOUSING_RELEASE: [housing starts, building permits, existing home sales, new home sales]
+      LABOR_RELEASE: [jolts, adp, job openings, average hourly earnings]
+      SENTIMENT_RELEASE: [consumer confidence, consumer sentiment]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  GEOPOLITICAL:
+    weight: 1.2
+    phrases:
+      - military action
+      - military strike
+      - air strike
+      - airstrikes
+      - missile attack
+      - drone attack
+      - ground invasion
+      - declares war
+      - state of emergency
+      - martial law
+      - peace deal
+      - ceasefire
+      - cease-fire
+      - peace talks
+      - nuclear deal
+      - nuclear program
+      - nuclear weapons
+      - enriched uranium
+      - trade restrictions
+      - export controls
+      - export restrictions
+      - shipping disruption
+      - strait of hormuz
+      - red sea
+      - suez canal
+      - south china sea
+      - foreign policy
+      - diplomatic relations
+      - severs ties
+      - recalls ambassador
+      - security council
+      - regime change
+      - coup attempt
+      - terror attack
+      - hostage
+      - prisoner swap
+      - border clash
+      - troop deployment
+      - arms deal
+      - defense pact
+    keywords:
+      - war
+      - invasion
+      - sanctions
+      - tariff
+      - tariffs
+      - embargo
+      - nato
+      - opec
+      - iran
+      - israel
+      - russia
+      - ukraine
+      - china
+      - taiwan
+      - gaza
+      - hamas
+      - hezbollah
+      - houthi
+      - syria
+      - lebanon
+      - venezuela
+      - pentagon
+      - kremlin
+      - blockade
+      - retaliation
+      - escalation
+      - annexation
+      - talks
+      - negotiations
+      - summit
+      - accord
+      - treaty
+      - diplomatic
+      - envoy
+      - ambassador
+      - ally
+      - allies
+      - troops
+      - militants
+      - strikes
+    subcategories:
+      CONFLICT: [military action, air strike, missile attack, invasion, war, ground invasion]
+      DIPLOMACY: [peace talks, ceasefire, peace deal, nuclear deal, prisoner swap, diplomatic relations]
+      SANCTIONS: [sanctions, embargo, export controls, export restrictions]
+      TRADE: [tariff, tariffs, trade restrictions]
+      SHIPPING: [strait of hormuz, red sea, suez canal, shipping disruption, blockade]
+      NUCLEAR: [nuclear program, nuclear weapons, enriched uranium]
+      ALLIANCE: [nato, defense pact, arms deal, troop deployment]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # MARKET only fires on genuine disruption, never on a daily move (§4).
+  MARKET:
+    weight: 1.0
+    requires:
+      - halt
+      - halted
+      - circuit breaker
+      - limit down
+      - limit up
+      - crash
+      - plunge
+      - plunges
+      - surge
+      - surges
+      - spike
+      - spikes
+      - record high
+      - record low
+      - worst since
+      - best since
+      - biggest since
+      - liquidity
+      - stress
+      - freeze
+      - frozen
+      - suspended
+      - suspension
+      - margin call
+      - deleveraging
+      - flash crash
+      - intervention
+      - devaluation
+      - default
+      - downgrade
+      - contagion
+    phrases:
+      - circuit breaker
+      - trading halt
+      - trading halted
+      - limit down
+      - limit up
+      - flash crash
+      - margin call
+      - liquidity crisis
+      - funding stress
+      - credit event
+      - flight to quality
+      - risk off
+      - risk-off
+      - record high
+      - record low
+      - worst day since
+      - biggest drop since
+      - yields spike
+      - dollar surges
+      - currency intervention
+      - bond selloff
+      - vix spike
+      - volatility spike
+      - market wide
+      - market-wide
+    keywords:
+      - vix
+      - volatility
+      - selloff
+      - rout
+      - capitulation
+      - correction
+      - crash
+      - contagion
+      - deleveraging
+      - devaluation
+      - spread
+      - spreads
+      - basis
+      - repo
+    subcategories:
+      HALT: [circuit breaker, trading halt, trading halted, limit down, limit up, suspended]
+      VOLATILITY: [vix spike, volatility spike, flash crash, rout, capitulation]
+      RATES_MOVE: [yields spike, bond selloff]
+      FX: [dollar surges, currency intervention, devaluation]
+      CREDIT: [credit event, spreads, contagion, default]
+      LIQUIDITY: [liquidity crisis, funding stress, margin call, deleveraging]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # EQUITY needs a corporate action, not merely a company name (§4, §14).
+  EQUITY:
+    weight: 1.0
+    requires:
+      - acquire
+      - acquires
+      - acquisition
+      - merger
+      - merges
+      - takeover
+      - buyout
+      - bid
+      - stake
+      - divest
+      - spin off
+      - spin-off
+      - ipo
+      - guidance
+      - outlook
+      - forecast
+      - announces
+      - announced
+      - unveils
+      - launches
+      - recall
+      - recalls
+      - lawsuit
+      - sues
+      - settlement
+      - investigation
+      - probe
+      - subpoena
+      - fined
+      - fine
+      - approval
+      - approved
+      - rejects
+      - rejected
+      - bankruptcy
+      - chapter 11
+      - restructuring
+      - layoffs
+      - job cuts
+      - resigns
+      - resignation
+      - steps down
+      - appoints
+      - named ceo
+      - contract
+      - deal
+      - partnership
+      - halts production
+      - production halt
+      - export restrictions
+      - delisting
+      - downgrade
+      - upgrade
+      - price target
+      - buyback
+      - dividend
+      - split
+    phrases:
+      - merger agreement
+      - definitive agreement
+      - all-cash deal
+      - hostile bid
+      - activist stake
+      - proxy fight
+      - chapter 11
+      - fda approval
+      - fda rejection
+      - clinical trial
+      - sec investigation
+      - doj investigation
+      - antitrust probe
+      - class action
+      - product recall
+      - supply chain disruption
+      - major contract
+      - steps down
+      - names new ceo
+      - chief executive
+      - chief financial officer
+      - stock split
+      - share buyback
+      - special dividend
+      - price target
+      - export license
+    keywords:
+      - ceo
+      - cfo
+      - coo
+      - merger
+      - acquisition
+      - takeover
+      - buyout
+      - ipo
+      - layoffs
+      - bankruptcy
+      - lawsuit
+      - antitrust
+      - recall
+      - fda
+      - guidance
+      - buyback
+      - dividend
+      - divestiture
+      - restructuring
+    subcategories:
+      MNA: [merger agreement, definitive agreement, acquisition, takeover, buyout, hostile bid, all-cash deal]
+      MANAGEMENT: [chief executive, names new ceo, steps down, resignation, chief financial officer, appoints]
+      LEGAL: [sec investigation, doj investigation, antitrust probe, class action, lawsuit, settlement, fined]
+      REGULATORY: [fda approval, fda rejection, export license, export restrictions, delisting, approval]
+      RESTRUCTURING: [chapter 11, bankruptcy, restructuring, layoffs, job cuts]
+      PRODUCT: [product recall, launches, unveils, clinical trial]
+      CAPITAL: [share buyback, special dividend, stock split, ipo]
+      ACTIVIST: [activist stake, proxy fight]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  EARNINGS:
+    weight: 1.4
+    phrases:
+      - reports earnings
+      - quarterly results
+      - quarterly earnings
+      - full year results
+      - earnings per share
+      - adjusted eps
+      - beats estimates
+      - misses estimates
+      - above estimates
+      - below estimates
+      - tops estimates
+      - above consensus
+      - below consensus
+      - raises guidance
+      - cuts guidance
+      - lowers guidance
+      - reaffirms guidance
+      - sees revenue
+      - sees eps
+      - operating margin
+      - gross margin
+      - free cash flow
+      - same store sales
+      - revenue growth
+      - earnings call
+    keywords:
+      - eps
+      - revenue
+      - guidance
+      - consensus
+      - estimates
+      - est
+      - backlog
+      - bookings
+      - capex
+      - margin
+      - profit
+      - loss
+      - beat
+      - miss
+      - q1
+      - q2
+      - q3
+      - q4
+    subcategories:
+      EARNINGS_RESULT: [reports earnings, quarterly results, earnings per share, eps, revenue]
+      GUIDANCE: [raises guidance, cuts guidance, lowers guidance, sees revenue, sees eps, reaffirms guidance]
+      BEAT: [beats estimates, above estimates, tops estimates, above consensus]
+      MISS: [misses estimates, below estimates, below consensus]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Only genuinely important flow — not every unusual-options post (§4).
+  OPTIONS:
+    weight: 0.9
+    requires:
+      - unusual
+      - massive
+      - largest
+      - record
+      - extraordinary
+      - block
+      - sweep
+      - whale
+      - institutional
+    phrases:
+      - unusual options activity
+      - unusual options volume
+      - block trade
+      - call sweep
+      - put sweep
+      - massive call buying
+      - massive put buying
+      - record open interest
+      - gamma squeeze
+      - gamma exposure
+      - dealer positioning
+      - institutional positioning
+      - opex positioning
+      - largest options trade
+      - extraordinary volume
+    keywords:
+      - options
+      - calls
+      - puts
+      - strike
+      - expiry
+      - expiration
+      - opex
+      - gamma
+      - delta
+      - vanna
+      - charm
+      - premium
+      - sweep
+      - block
+    subcategories:
+      UNUSUAL_ACTIVITY: [unusual options activity, unusual options volume, extraordinary volume]
+      BLOCK: [block trade, largest options trade]
+      SWEEP: [call sweep, put sweep, massive call buying, massive put buying]
+      POSITIONING: [gamma squeeze, gamma exposure, dealer positioning, institutional positioning]
+      EXPIRATION: [opex positioning, expiration]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  COMMODITY:
+    weight: 1.0
+    phrases:
+      - crude oil
+      - brent crude
+      - west texas intermediate
+      - natural gas
+      - opec production
+      - opec+ agreement
+      - production cut
+      - production cuts
+      - output increase
+      - crude inventories
+      - eia inventories
+      - api inventories
+      - strategic petroleum reserve
+      - refinery outage
+      - pipeline shutdown
+      - gold price
+      - silver price
+      - copper price
+      - iron ore
+      - lng exports
+      - harvest forecast
+      - crop report
+    keywords:
+      - oil
+      - crude
+      - wti
+      - brent
+      - natgas
+      - lng
+      - gold
+      - silver
+      - copper
+      - aluminum
+      - nickel
+      - zinc
+      - platinum
+      - palladium
+      - uranium
+      - lithium
+      - wheat
+      - corn
+      - soybeans
+      - coffee
+      - sugar
+      - cocoa
+      - opec
+      - eia
+      - inventories
+      - barrel
+      - bushel
+    subcategories:
+      ENERGY: [crude oil, brent crude, west texas intermediate, natural gas, lng exports, refinery outage]
+      OPEC: [opec production, opec+ agreement, production cut, production cuts, output increase]
+      METALS: [gold price, silver price, copper price, iron ore, uranium, lithium]
+      AGRICULTURE: [harvest forecast, crop report, wheat, corn, soybeans]
+      INVENTORIES: [crude inventories, eia inventories, api inventories, strategic petroleum reserve]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # Material crypto only — no influencers, no speculation (§4).
+  CRYPTO:
+    weight: 0.85
+    requires:
+      - etf
+      - regulation
+      - regulatory
+      - sec
+      - cftc
+      - legislation
+      - bill
+      - approves
+      - approved
+      - rejects
+      - lawsuit
+      - hack
+      - hacked
+      - exploit
+      - breach
+      - insolvency
+      - bankruptcy
+      - halts withdrawals
+      - custody
+      - institutional
+      - treasury
+      - reserve
+      - ban
+      - bans
+      - seizure
+    phrases:
+      - spot bitcoin etf
+      - spot ethereum etf
+      - etf inflows
+      - etf outflows
+      - stablecoin legislation
+      - crypto regulation
+      - exchange hack
+      - halts withdrawals
+      - institutional adoption
+      - strategic bitcoin reserve
+      - central bank digital currency
+      - sec approves
+      - sec rejects
+    keywords:
+      - bitcoin
+      - btc
+      - ethereum
+      - eth
+      - stablecoin
+      - usdt
+      - usdc
+      - crypto
+      - cryptocurrency
+      - blockchain
+      - defi
+      - custodian
+      - cbdc
+    subcategories:
+      ETF: [spot bitcoin etf, spot ethereum etf, etf inflows, etf outflows]
+      REGULATION: [crypto regulation, stablecoin legislation, sec approves, sec rejects, cbdc]
+      SECURITY: [exchange hack, halts withdrawals, exploit, breach]
+      ADOPTION: [institutional adoption, strategic bitcoin reserve, custody]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NOISE (§20). These are the things Scout explicitly refuses to relay.
+# ─────────────────────────────────────────────────────────────────────────────
+noise:
+  opinion:
+    - i think
+    - i believe
+    - i feel
+    - in my opinion
+    - my opinion
+    - imo
+    - imho
+    - my view
+    - in my view
+    - if you ask me
+    - personally i
+    - here's why i
+    - heres why i
+    - this is why i
+    - my take
+    - hot take
+    - unpopular opinion
+    - let me explain why
+    - i've been saying
+    - ive been saying
+    - i told you
+    - called it
+    - deserves
+    - should have
+    - shouldn't have
+    - ought to
+    - my price target
+    - my target
+
+  prediction:
+    - could hit
+    - will hit
+    - going to hit
+    - headed to
+    - heading to
+    - on its way to
+    - on track for
+    - my prediction
+    - i predict
+    - prediction
+    - watch for a move to
+    - expect a move to
+    - will reach
+    - going to reach
+    - by year end
+    - by year-end
+    - easy money
+    - free money
+    - guaranteed
+    - to the moon
+    - going higher
+    - going lower
+    - goes higher
+    - goes lower
+    - about to explode
+    - about to rip
+    - loading up
+
+  engagementBait:
+    - like if
+    - retweet if
+    - rt if
+    - who agrees
+    - agree or disagree
+    - comment below
+    - drop a comment
+    - follow for more
+    - follow me for
+    - turn on notifications
+    - thread below
+    - a thread
+    - bookmark this
+    - share this
+    - tag someone
+    - let me know what you think
+    - vote below
+    - poll
+
+  meme:
+    - lol
+    - lmao
+    - rofl
+    - kek
+    - to the moon
+    - diamond hands
+    - paper hands
+    - apes together
+    - stonks
+    - number go up
+    - ngmi
+    - wagmi
+    - hodl
+    - bagholder
+    - rekt
+    - cope
+    - based
+    - copium
+
+  promotional:
+    - link in bio
+    - link below
+    - sign up
+    - signup
+    - subscribe
+    - my newsletter
+    - our newsletter
+    - free trial
+    - promo code
+    - discount code
+    - use code
+    - join my
+    - join our
+    - my discord
+    - our discord
+    - telegram channel
+    - dm me
+    - dm for
+    - my course
+    - masterclass
+    - webinar
+    - affiliate
+    - sponsored
+    - partnership with us
+    - limited spots
+    - enroll
+
+  personal:
+    - good morning
+    - good night
+    - happy birthday
+    - my family
+    - my wife
+    - my husband
+    - my kids
+    - on vacation
+    - at the gym
+    - just landed
+    - grateful for
+    - blessed
+    - shoutout
+    - rip
+    - congrats to
+    - thank you all
+    - my journey
+    - my story
+
+  politicalCommentary:
+    - the left
+    - the right
+    - radical left
+    - far right
+    - woke
+    - deep state
+    - mainstream media
+    - fake news
+    - propaganda
+    - puppet
+    - corrupt politicians
+    - wake up people
+    - they don't want you to know
+    - they dont want you to know
+    - the establishment
+    - clown world
+
+  marketChatter:
+    - looking strong
+    - looking weak
+    - looks strong
+    - looks weak
+    - nice bounce
+    - nice move
+    - watch this level
+    - key level
+    - setting up
+    - set up nicely
+    - bullish here
+    - bearish here
+    - buying the dip
+    - bought the dip
+    - dip buyers
+    - holding support
+    - broke support
+    - broke resistance
+    - textbook
+    - chart looks
+    - price action
+    - beautiful setup
+    - my entry
+    - stopped out
+    - took profits
+    - still holding
+    - adding here
+    - trimming here
+
+  oldNews:
+    - on this day
+    - years ago
+    - a year ago
+    - last year
+    - back in
+    - flashback
+    - throwback
+    - remember when
+    - this day in history
+    - reminder that
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FACTUALITY (§8). Reporting versus telling people what to think.
+# ─────────────────────────────────────────────────────────────────────────────
+factuality:
+  factualMarkers:
+    - according to
+    - sources say
+    - sources said
+    - people familiar
+    - familiar with the matter
+    - in a statement
+    - in a filing
+    - the company said
+    - officials said
+    - spokesperson said
+    - press release
+    - confirmed
+    - data showed
+    - data shows
+    - report showed
+    - filing showed
+    - reuters
+    - bloomberg
+    - axios
+    - associated press
+    - wsj
+    - financial times
+    - cnbc
+
+  commentaryMarkers:
+    - i think
+    - i believe
+    - in my view
+    - my view
+    - arguably
+    - clearly
+    - obviously
+    - surely
+    - frankly
+    - honestly
+    - let's be honest
+    - lets be honest
+    - if you ask me
+    - the truth is
+    - nobody is talking about
+    - no one is talking about
+    - ridiculous
+    - absurd
+    - insane
+    - pathetic
+    - disgraceful
+    - should
+    - shouldn't
+    - deserves
+    - imagine
+    - why do people
+    - how is this
+
+  attributionVerbs:
+    - said
+    - says
+    - told
+    - announced
+    - announces
+    - reported
+    - reports
+    - confirmed
+    - confirms
+    - stated
+    - states
+    - declared
+    - disclosed
+    - filed
+    - files
+    - warned
+    - warns
+    - testified
+    - wrote
+    - signed
+    - approved
+    - rejected
+    - agreed
+    - ruled
+    - ordered
+    - launched
+    - unveiled
+    - resigned
+    - appointed
+    - raised
+    - lowered
+    - cut
+    - halted
+    - seized
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MAGNITUDE (§19). Terms implying a large consequence.
+# ─────────────────────────────────────────────────────────────────────────────
+magnitude:
+  high:
+    - emergency
+    - unprecedented
+    - historic
+    - record
+    - collapse
+    - collapses
+    - crash
+    - crashes
+    - halted
+    - halt
+    - suspends
+    - suspended
+    - invades
+    - invasion
+    - war
+    - attack
+    - strikes
+    - killed
+    - bankruptcy
+    - default
+    - defaults
+    - resigns
+    - ousted
+    - fired
+    - seized
+    - nationalized
+    - shutdown
+    - ceasefire
+    - surrender
+    - breakthrough
+    - biggest
+    - largest
+    - worst
+    - first time since
+    - all-time high
+    - all-time low
+    - circuit breaker
+    - limit down
+    - contagion
+    - bailout
+    - restatement
+    - fraud
+
+  medium:
+    - surges
+    - plunges
+    - jumps
+    - tumbles
+    - slumps
+    - soars
+    - spikes
+    - warns
+    - cuts
+    - raises
+    - downgrade
+    - upgrade
+    - delays
+    - postpones
+    - recalls
+    - investigation
+    - probe
+    - lawsuit
+    - fined
+    - sanctions
+    - tariffs
+    - layoffs
+    - misses
+    - beats
+    - above expectations
+    - below expectations
+    - higher than expected
+    - lower than expected
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TICKER STOPWORDS (§25). Never bare-match these as symbols, whatever the
+# security master says.
+# ─────────────────────────────────────────────────────────────────────────────
+tickerStopwords:
+  - CEO
+  - CFO
+  - COO
+  - CTO
+  - CIO
+  - CPI
+  - PPI
+  - PCE
+  - GDP
+  - NFP
+  - FOMC
+  - ETF
+  - ETFS
+  - IPO
+  - SEC
+  - FDA
+  - DOJ
+  - FTC
+  - FCC
+  - IRS
+  - EPA
+  - OPEC
+  - NATO
+  - EPS
+  - PMI
+  - ISM
+  - ADP
+  - JOLTS
+  - YOY
+  - QOQ
+  - MOM
+  - EBIT
+  - EBITDA
+  - ECB
+  - BOJ
+  - BOE
+  - BOC
+  - RBA
+  - RBNZ
+  - SNB
+  - PBOC
+  - IMF
+  - WTO
+  - UN
+  - EU
+  - US
+  - USA
+  - UK
+  - AI
+  - EV
+  - ESG
+  - GAAP
+  - QE
+  - QT
+  - Q1
+  - Q2
+  - Q3
+  - Q4
+  - FY
+  - AM
+  - PM
+  - ET
+  - EST
+  - EDT
+  - GMT
+  - UTC
+  - CEST
+  - USD
+  - EUR
+  - GBP
+  - JPY
+  - CNY
+  - CHF
+  - CAD
+  - AUD
+  - NZD
+  - MXN
+  - BRL
+  - INR
+  - KRW
+  - TRY
+  - RUB
+  - BPS
+  - BLN
+  - MLN
+  - YTD
+  - WSJ
+  - CNBC
+  - AP
+  - AFP
+  - PR
+  - CEO'S
+  - NEWS
+  - BREAKING
+  - UPDATE
+  - ALERT
+  - LIVE
+  - VIA
+  - RT
+  - TBD
+  - TBA
+  - CET
+  - GDPR
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ENTITY SURFACE FORMS. Canonical key → the ways it appears in copy.
+# Longest surface form wins, so "North Korea" never resolves as "Korea".
+# ─────────────────────────────────────────────────────────────────────────────
+commodities:
+  CRUDE: [crude oil, west texas intermediate, wti crude, wti, brent crude, brent, crude]
+  NATGAS: [natural gas, natgas, nat gas, henry hub, lng]
+  GOLD: [gold, bullion, xau]
+  SILVER: [silver, xag]
+  COPPER: [copper]
+  ALUMINUM: [aluminum, aluminium]
+  NICKEL: [nickel]
+  IRON_ORE: [iron ore]
+  URANIUM: [uranium]
+  LITHIUM: [lithium]
+  WHEAT: [wheat]
+  CORN: [corn, maize]
+  SOYBEANS: [soybeans, soybean, soy]
+  COFFEE: [coffee, arabica]
+  SUGAR: [sugar]
+  COCOA: [cocoa]
+  PLATINUM: [platinum]
+  PALLADIUM: [palladium]
+
+countries:
+  US: [united states, u.s., USA, US, america, american, washington]
+  IR: [iran, iranian, tehran]
+  IL: [israel, israeli, jerusalem, tel aviv]
+  RU: [russia, russian, moscow, kremlin]
+  UA: [ukraine, ukrainian, kyiv, kiev]
+  CN: [china, chinese, beijing]
+  TW: [taiwan, taiwanese, taipei]
+  KP: [north korea, north korean, pyongyang, DPRK]
+  KR: [south korea, south korean, seoul]
+  JP: [japan, japanese, tokyo]
+  IN: [india, indian, new delhi]
+  SA: [saudi arabia, saudi, riyadh]
+  AE: [united arab emirates, UAE, abu dhabi, dubai]
+  QA: [qatar, doha]
+  IQ: [iraq, iraqi, baghdad]
+  SY: [syria, syrian, damascus]
+  LB: [lebanon, lebanese, beirut]
+  YE: [yemen, yemeni, houthi, houthis]
+  EG: [egypt, egyptian, cairo]
+  TR: [turkey, turkish, ankara]
+  DE: [germany, german, berlin]
+  FR: [france, french, paris]
+  GB: [united kingdom, britain, british, london, UK]
+  IT: [italy, italian, rome]
+  ES: [spain, spanish, madrid]
+  CH: [switzerland, swiss, bern]
+  CA: [canada, canadian, ottawa]
+  MX: [mexico, mexican]
+  BR: [brazil, brazilian, brasilia]
+  AR: [argentina, argentine]
+  VE: [venezuela, venezuelan, caracas]
+  AU: [australia, australian, canberra]
+  NZ: [new zealand]
+  ZA: [south africa]
+  NG: [nigeria]
+  PK: [pakistan]
+  AF: [afghanistan, kabul, taliban]
+  PS: [gaza, palestinian, west bank, hamas]
+
+organizations:
+  FED: [federal reserve, federal open market committee, the fed, fomc, fed]
+  ECB: [european central bank, ecb]
+  BOJ: [bank of japan, boj]
+  BOE: [bank of england, boe]
+  BOC: [bank of canada]
+  PBOC: [people's bank of china, pboc]
+  SNB: [swiss national bank]
+  RBA: [reserve bank of australia]
+  RBNZ: [reserve bank of new zealand]
+  TREASURY: [u.s. treasury, us treasury, treasury department]
+  SEC: [securities and exchange commission, the sec]
+  CFTC: [commodity futures trading commission, cftc]
+  FDA: [food and drug administration, the fda]
+  DOJ: [justice department, department of justice]
+  FTC: [federal trade commission]
+  BLS: [bureau of labor statistics]
+  BEA: [bureau of economic analysis]
+  CENSUS: [census bureau]
+  OPEC: [opec, opec+]
+  IEA: [international energy agency]
+  IMF: [international monetary fund, imf]
+  WORLD_BANK: [world bank]
+  WTO: [world trade organization]
+  NATO: [nato, north atlantic treaty organization]
+  UN: [united nations, security council]
+  EU: [european union, european commission, brussels, EU]
+  WHITE_HOUSE: [white house]
+  PENTAGON: [pentagon, department of defense]
+  STATE_DEPT: [state department]
+  CONGRESS: [congress, senate, house of representatives]
+  IAEA: [international atomic energy agency, iaea]
+
+people:
+  POWELL: [jerome powell, powell, fed chair powell]
+  TRUMP: [donald trump, trump, president trump]
+  LAGARDE: [christine lagarde, lagarde]
+  UEDA: [kazuo ueda, ueda]
+  BAILEY: [andrew bailey]
+  BESSENT: [scott bessent, bessent]
+  PUTIN: [vladimir putin, putin]
+  ZELENSKY: [volodymyr zelensky, zelensky, zelenskyy]
+  XI: [xi jinping]
+  NETANYAHU: [benjamin netanyahu, netanyahu]
+  KHAMENEI: [ali khamenei, khamenei]
+  MBS: [mohammed bin salman]
+  WILLIAMS: [john williams]
+  WALLER: [christopher waller, waller]
+  BOWMAN: [michelle bowman]
+  GOOLSBEE: [austan goolsbee, goolsbee]
+  MUSK: [elon musk, musk]
+  HUANG: [jensen huang]
+  COOK: [tim cook]

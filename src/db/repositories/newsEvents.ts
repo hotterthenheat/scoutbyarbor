@@ -35,6 +35,8 @@ export type NewsEventRecord = NewsEvent & { fingerprint?: string; simhash?: stri
 export interface DedupeCandidate {
   id: string;
   headline: string;
+  /** Kept on the projection so URL dedupe runs in the same pass (§17). */
+  originalUrl: string | null;
   fingerprint: string;
   simhash: string;
   tickers: string[];
@@ -317,6 +319,7 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
         .get<{
           id: string;
           headline: string;
+          original_url: string | null;
           fingerprint: string;
           simhash: string;
           tickers: string;
@@ -326,8 +329,8 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
           timestamp: string;
           importance: number;
         }>(`
-          SELECT id, headline, fingerprint, simhash, tickers, countries, category,
-                 event_id, timestamp, importance
+          SELECT id, headline, original_url, fingerprint, simhash, tickers, countries,
+                 category, event_id, timestamp, importance
             FROM news_events
            WHERE timestamp >= ?
            ORDER BY timestamp DESC
@@ -338,6 +341,7 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
       return rows.map((row) => ({
         id: row.id,
         headline: toText(row.headline),
+        originalUrl: toNullableText(row.original_url),
         fingerprint: toText(row.fingerprint),
         simhash: toText(row.simhash),
         tickers: parseJsonArray<string>(row.tickers),

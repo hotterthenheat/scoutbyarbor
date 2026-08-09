@@ -14,11 +14,15 @@ describe('the alert format', () => {
       banner: 'MACRO ALERT',
       headline: 'NO NUCLEAR IRAN',
       timestampIso: '2026-05-24T21:14:00.000Z', // 5:14 PM ET
+      // Deliberately longer than BODY_MAX_CHARS so the ellipsis in the spec's
+      // worked example is exercised rather than assumed.
       body:
         'Trump called the Obama-era Iran nuclear deal “one of the worst deals ever,” ' +
         'saying it gave Iran a path to nuclear weapons and enriched a hostile regime while ' +
         'delivering nothing durable in return, and he pledged that no future administration ' +
-        'would revive it under any circumstances whatsoever going forward.',
+        'would revive it under any circumstances whatsoever, adding that the terms had been ' +
+        'negotiated from a position of weakness and that any successor agreement would have ' +
+        'to be fundamentally different in both scope and enforcement.',
     });
 
     const out = renderAlert(alert);

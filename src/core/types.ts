@@ -437,6 +437,8 @@ export interface EventCluster {
   band: ImportanceBand;
   /** How many distinct sources reported it — drives corroboration (§19). */
   sourceCount: number;
+  /** The source ids behind that count, so a repost cannot inflate it. */
+  sourceIds: string[];
   postCount: number;
   firstSeenAt: string;
   lastUpdatedAt: string;
