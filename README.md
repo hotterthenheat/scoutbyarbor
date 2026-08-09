@@ -331,6 +331,11 @@ GET /metrics   queue depth, latency percentiles, feed health, throughput
 `/ready` failing is the deployment-level version of the same principle as source
 health: being unable to receive news must never look like there being no news.
 
+**Retention.** Every table Scout appends to has a ceiling, pruned on a
+schedule — latency samples, completed jobs, aged events and posts. The `posts`
+table is deliberately exempt: it is the durable record of what has already been
+processed, and losing a row there would make Scout repost an old item as new.
+
 **Replay** re-runs stored raw posts through the current classifier, so a filter
 change can be measured against real traffic before it ships:
 
@@ -400,3 +405,36 @@ responsible before the thresholds need touching.
 
 Set `DATABASE_PATH` to a path on the mounted disk, point `healthCheckPath` at
 `/health`, and put every credential in the dashboard rather than in the file.
+
+
+---
+
+## Notes for whoever runs this
+
+A few behaviours are deliberate and worth knowing before you tune anything.
+
+**The X request budget is arithmetic, not a guess.** Scout polls every enabled
+X source on each tick, so requests per 15-minute window =
+`enabled_x_sources × (900000 / X_POLL_INTERVAL_MS)`. The shipped watchlist has
+~14 enabled X sources, so the default 90s interval costs 140 requests against a
+budget of 180. Lowering the interval without raising the budget does not break
+anything — Scout rotates which sources it polls and skips the rest — but
+low-priority accounts will be covered less often.
+
+**Two Discord connections, on purpose.** The publisher connects with the Guilds
+intent alone. The URL listener needs the privileged MessageContent intent, and
+Discord *rejects login outright* when that is not enabled in the developer
+portal. Sharing one connection would mean a missing portal checkbox takes down
+publishing too; as it is, URL ingestion degrades and everything else carries on.
+
+**A cold start does not replay history.** On a feed's first poll Scout has no
+watermark, so it emits only items published in the last 15 minutes. A restart
+during a breaking story still catches it; a restart on a quiet morning does not
+dump a backlog into the channels.
+
+**The score is never shown.** It exists to decide routing and to explain
+decisions in `#scout-raw`. `assertNoLeakedMetadata` refuses to publish any alert
+carrying a score, band, confidence or backend label — while still allowing the
+percentages that are part of the news. Both directions are covered by tests,
+including the case that a real headline like
+"US CONSUMER CONFIDENCE: 102.6 VS 100.4 EXPECTED" must still publish.

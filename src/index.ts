@@ -188,7 +188,21 @@ export async function main(): Promise<void> {
     maxAttempts: cfg.ingestion.maxAttempts,
     handler: async (job) => {
       if (!urlWorkerRef) throw new Error('url worker not initialised');
-      await urlWorkerRef.handle(job);
+      try {
+        await urlWorkerRef.handle(job);
+      } catch (err) {
+        // A retrieval that failed is a feed problem, and the health monitor is
+        // how "this relay stopped working" becomes visible rather than looking
+        // like a quiet news period. Successes are recorded in onPost.
+        health.recordPoll({
+          sourceId: RELAY_SOURCE_ID,
+          ok: false,
+          itemCount: 0,
+          error: (err as Error).message,
+          latencyMs: 0,
+        });
+        throw err;
+      }
     },
   });
 
