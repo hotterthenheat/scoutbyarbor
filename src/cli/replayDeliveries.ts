@@ -191,7 +191,18 @@ export async function replayFailedDeliveries(
     }
   }
 
-  // The six counts the operator actually needs, on one line.
+  // Recorded, not just logged. "How much did the replay actually recover" is a
+  // question about the last week, not about whichever log line is still in the
+  // scrollback — and it is the number that says whether Sprout is reliable.
+  // Dry runs are excluded: they deliver nothing and must not inflate the count.
+  if (!options.dryRun) {
+    db.metrics.record('replay_runs_total', 1);
+    db.metrics.record('replay_recovered_total', report.delivered);
+    db.metrics.record('replay_still_failing_total', report.failed);
+    db.metrics.record('replay_deferred_total', report.deferred);
+  }
+
+  // The counts the operator actually needs, on one line.
   deps.logger.info('sprout replay complete', {
     found: report.candidates,
     delivered: report.delivered,
@@ -246,6 +257,14 @@ async function replayOne(
   const freshness = isFreshForTrading(publishedAt, deps.maxAgeMinutes, nowIso);
   if (!freshness.fresh) {
     if (!options.dryRun) {
+      // Same two counters the first-delivery path uses. An event that aged out
+      // while Sprout was down is a stale event by any honest reading.
+      db.metrics.record(
+        freshness.reason === UNKNOWN_TIME_REASON
+          ? 'events_unknown_time_total'
+          : 'events_stale_total',
+        1,
+      );
       db.deliveries.record({
         eventId,
         destination: 'sprout',

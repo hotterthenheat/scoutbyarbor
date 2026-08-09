@@ -11,6 +11,8 @@ export interface MetricsRepo {
   record(metric: string, value: number, opts?: MetricOptions): void;
   recordLatency(sample: LatencySample): void;
   latencyStats(sinceIso: string): LatencyStats;
+  /** The same window, split by stage. */
+  latencyBreakdown(sinceIso: string): LatencyBreakdown;
   /** Per-metric sum, count and mean since `sinceIso`, flattened for reporting. */
   summary(sinceIso: string): Record<string, number>;
 }
@@ -39,6 +41,21 @@ export interface LatencyStats {
 }
 
 /**
+ * Latency broken out by stage, because "Scout is slow" and "the source is slow"
+ * are different problems with different fixes — and a single blended number
+ * cannot tell them apart. Each stage is measured independently, so a stage with
+ * no samples reports zeroes rather than borrowing another stage's figures.
+ */
+export interface LatencyBreakdown {
+  /** Publication → Scout receiving it. Upstream + relay delay, not Scout's. */
+  sourceToScout: LatencyStats;
+  /** Scout receiving it → the alert being in Discord. Scout's own cost. */
+  scoutToDiscord: LatencyStats;
+  /** Publication → Discord. What a reader actually experiences. */
+  total: LatencyStats;
+}
+
+/**
  * SQLite treats NULLs as distinct in a UNIQUE index, so a nullable dimension
  * would defeat UNIQUE(bucket, metric, source_id, category) and the counter
  * would never aggregate. Absent dimensions are stored as ''.
@@ -53,8 +70,38 @@ function percentile(sorted: number[], p: number): number {
   return sorted[index] ?? 0;
 }
 
+/** Column names are from a fixed literal set below, never from user input. */
+type LatencyColumn = 'source_to_scout_ms' | 'scout_to_discord_ms' | 'total_ms';
+
 export function createMetricsRepo(db: SqliteDatabase): MetricsRepo {
   const stmts = createStatementCache(db);
+
+  /**
+   * Percentiles are computed in JS: the sample set is one retention window
+   * wide, and SQLite has no native percentile function. NULLs are excluded
+   * rather than counted as zero, so a stage that was never measured reads as
+   * "no samples" instead of "instant".
+   */
+  function statsForColumn(sinceIso: string, column: LatencyColumn): LatencyStats {
+    const rows = stmts
+      .get<Record<string, number>>(
+        `SELECT ${column} AS value FROM latency_samples
+          WHERE recorded_at >= ? AND ${column} IS NOT NULL
+          ORDER BY ${column} ASC`,
+      )
+      .all(sinceIso);
+
+    const values = rows.map((r) => toNumber(r.value));
+    if (values.length === 0) return { count: 0, avg: 0, p95: 0, p99: 0 };
+
+    const sum = values.reduce((acc, v) => acc + v, 0);
+    return {
+      count: values.length,
+      avg: sum / values.length,
+      p95: percentile(values, 0.95),
+      p99: percentile(values, 0.99),
+    };
+  }
 
   return {
     record(metric: string, value: number, opts: MetricOptions = {}): void {
@@ -94,25 +141,14 @@ export function createMetricsRepo(db: SqliteDatabase): MetricsRepo {
     },
 
     latencyStats(sinceIso: string): LatencyStats {
-      // Percentiles are computed in JS: the sample set is one retention window
-      // wide, and SQLite has no native percentile function.
-      const rows = stmts
-        .get<{ total_ms: number }>(`
-          SELECT total_ms FROM latency_samples
-           WHERE recorded_at >= ? AND total_ms IS NOT NULL
-           ORDER BY total_ms ASC
-        `)
-        .all(sinceIso);
+      return statsForColumn(sinceIso, 'total_ms');
+    },
 
-      const values = rows.map((r) => toNumber(r.total_ms));
-      if (values.length === 0) return { count: 0, avg: 0, p95: 0, p99: 0 };
-
-      const sum = values.reduce((acc, v) => acc + v, 0);
+    latencyBreakdown(sinceIso: string): LatencyBreakdown {
       return {
-        count: values.length,
-        avg: sum / values.length,
-        p95: percentile(values, 0.95),
-        p99: percentile(values, 0.99),
+        sourceToScout: statsForColumn(sinceIso, 'source_to_scout_ms'),
+        scoutToDiscord: statsForColumn(sinceIso, 'scout_to_discord_ms'),
+        total: statsForColumn(sinceIso, 'total_ms'),
       };
     },
 

@@ -22,6 +22,12 @@ export interface DeliveryRepo {
   record(entry: DeliveryRecord): void;
   forEvent(eventId: string): DeliveryRecord[];
   countsByStatus(sinceIso: string): Record<string, number>;
+  /**
+   * The same counts split by destination. A merged total cannot answer "is
+   * Sprout failing or is Discord failing", which is the first question when
+   * FAILED starts climbing.
+   */
+  countsByDestination(sinceIso: string): Record<string, Record<string, number>>;
   failed(limit: number): DeliveryRecord[];
   /** Targeted lookup for the replay command. */
   find(query: DeliveryQuery): DeliveryRecord[];
@@ -111,6 +117,22 @@ export function createDeliveryRepo(db: SqliteDatabase): DeliveryRepo {
         .all(sinceIso);
       const out: Record<string, number> = {};
       for (const row of rows) out[row.status] = toNumber(row.n);
+      return out;
+    },
+
+    countsByDestination(sinceIso: string): Record<string, Record<string, number>> {
+      const rows = stmts
+        .get<{ destination: string; status: string; n: number }>(
+          `SELECT destination, status, COUNT(*) AS n FROM deliveries
+            WHERE created_at >= ? GROUP BY destination, status`,
+        )
+        .all(sinceIso);
+
+      const out: Record<string, Record<string, number>> = {};
+      for (const row of rows) {
+        const bucket = (out[row.destination] ??= {});
+        bucket[row.status] = toNumber(row.n);
+      }
       return out;
     },
 

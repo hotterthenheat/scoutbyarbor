@@ -1,5 +1,6 @@
 import { createServer, type Server, type IncomingMessage } from 'node:http';
 import type { ScoutDb } from '../db/index.js';
+import type { LatencyStats, LatencyBreakdown } from '../db/repositories/metrics.js';
 import { storageStatus } from '../db/storage.js';
 import type { Logger } from '../util/logger.js';
 import { isoNow, msBetween, minutesBetween } from '../util/time.js';
@@ -259,13 +260,43 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           processingLatencyMs: Math.round(summary['webhook_processing_latency_ms.avg'] ?? 0),
           queueDepth: db.jobs.queueDepth(),
         },
-        events: { byStatus: statuses, eventsPerMinute: Number((published / windowMinutes).toFixed(3)) },
+        events: {
+          byStatus: statuses,
+          eventsPerMinute: Number((published / windowMinutes).toFixed(3)),
+          duplicatesTotal: summary.duplicates ?? 0,
+          rejectedTotal: summary.posts_rejected ?? 0,
+          // The two freshness-gate outcomes, kept apart on purpose: an upstream
+          // source that stopped sending timestamps and news that aged out
+          // before delivery are different faults with different fixes.
+          staleTotal: summary.events_stale_total ?? 0,
+          unknownPublicationTimeTotal: summary.events_unknown_time_total ?? 0,
+        },
         deliveries,
+        // Split by destination, because a rising FAILED count is useless until
+        // you know whether it is Sprout or Discord.
+        deliveriesByDestination: db.deliveries.countsByDestination(since),
+        sprout: {
+          deliveredTotal: summary.sprout_delivered_total ?? 0,
+          failedTotal: summary.sprout_failed_total ?? 0,
+          skippedTotal: summary.sprout_skipped_total ?? 0,
+          latencyMsAvg: Math.round(summary['sprout_delivery_ms.avg'] ?? 0),
+          samples: summary['sprout_delivery_ms.count'] ?? 0,
+        },
+        replay: {
+          runsTotal: summary.replay_runs_total ?? 0,
+          // What the automatic recovery actually bought.
+          recoveredTotal: summary.replay_recovered_total ?? 0,
+          stillFailingTotal: summary.replay_still_failing_total ?? 0,
+          deferredTotal: summary.replay_deferred_total ?? 0,
+        },
         latencyMs: {
           count: latency.count,
           avg: Math.round(latency.avg),
           p95: Math.round(latency.p95),
           p99: Math.round(latency.p99),
+          // Per stage, because "Scout is slow" and "the source is slow" are
+          // different problems and a blended number cannot tell them apart.
+          byStage: roundStages(db.metrics.latencyBreakdown(since)),
         },
         sources: {
           byState: feedHealth,
@@ -351,6 +382,21 @@ export function createServer_(deps: ServerDeps): ScoutServer {
     },
 
     port: () => boundPort,
+  };
+}
+
+/** Sub-millisecond precision is noise in a latency report. */
+function roundStages(breakdown: LatencyBreakdown): Record<string, LatencyStats> {
+  const round = (s: LatencyStats): LatencyStats => ({
+    count: s.count,
+    avg: Math.round(s.avg),
+    p95: Math.round(s.p95),
+    p99: Math.round(s.p99),
+  });
+  return {
+    sourceToScout: round(breakdown.sourceToScout),
+    scoutToDiscord: round(breakdown.scoutToDiscord),
+    total: round(breakdown.total),
   };
 }
 

@@ -695,3 +695,39 @@ Order matters — each step depends on the one before it.
 
 Then let it run through real market hours. What is worth having next is latency
 and error data from live traffic, not more tests.
+
+### What to watch once it is live
+
+Everything below is one request: `curl -s https://<scout-domain>/metrics | jq`.
+The window is 24h.
+
+| Signal | Field |
+|---|---|
+| Is the disk actually persisting | `.storage.durability`, `.storage.boots` |
+| Source → Scout latency | `.latencyMs.byStage.sourceToScout` |
+| Scout processing → Discord latency | `.latencyMs.byStage.scoutToDiscord` |
+| End-to-end latency | `.latencyMs.byStage.total` |
+| Scout → Sprout latency | `.sprout.latencyMsAvg`, `.sprout.samples` |
+| Rejected webhooks | `.webhook.rejectedTotal` |
+| Duplicates collapsed | `.events.duplicatesTotal` |
+| Stale events held back | `.events.staleTotal` |
+| Events with no publication time | `.events.unknownPublicationTimeTotal` |
+| Sprout failures | `.sprout.failedTotal`, `.deliveriesByDestination.sprout` |
+| Replay recoveries | `.replay.recoveredTotal`, `.replay.runsTotal` |
+| Feeds that have gone quiet or broken | `.sources.degraded` |
+
+Two of these are worth a second look rather than a glance:
+
+**`events.staleTotal` climbing** means news is arriving too late to trade, not
+that Scout is broken. Check `latencyMs.byStage` next — if `sourceToScout` is the
+large number, the delay is upstream of Scout and no amount of tuning here will
+fix it.
+
+**`events.unknownPublicationTimeTotal` climbing** means an upstream source
+stopped sending timestamps. Scout will not guess one, so those events reach
+`#scout-news` and are deliberately withheld from Sprout. That is a conversation
+with the source, not a code change.
+
+`replay.deferredTotal` above zero means a pass ran out of its time budget and
+handed work to the next one — expected while Sprout is degraded, and worth
+investigating if it persists once Sprout is healthy.

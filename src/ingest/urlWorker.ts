@@ -219,13 +219,21 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
  * a fresh trading event — that is how a recycled headline creates a new
  * blackout.
  */
+/**
+ * The reason string used when publication time was never known. Exported so
+ * the metrics layer can tell that case apart from a genuinely stale event —
+ * "the upstream source stopped sending timestamps" and "Sprout was down long
+ * enough for news to age out" are different problems with different fixes.
+ */
+export const UNKNOWN_PUBLICATION_TIME = 'publication time unknown';
+
 export function isFreshForTrading(
   publishedAt: string | null,
   maxAgeMinutes: number,
   now: string = isoNow(),
 ): { fresh: boolean; reason: string } {
   if (!publishedAt) {
-    return { fresh: false, reason: 'publication time unknown' };
+    return { fresh: false, reason: UNKNOWN_PUBLICATION_TIME };
   }
   const ageMinutes = minutesBetween(publishedAt, now);
   if (ageMinutes > maxAgeMinutes) {

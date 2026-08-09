@@ -10,7 +10,12 @@ import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue } from './ingest/queue.js';
-import { createUrlWorker, createRelayStore, isFreshForTrading } from './ingest/urlWorker.js';
+import {
+  createUrlWorker,
+  createRelayStore,
+  isFreshForTrading,
+  UNKNOWN_PUBLICATION_TIME,
+} from './ingest/urlWorker.js';
 import {
   createXApiResolver,
   createRelayResolver,
@@ -23,7 +28,7 @@ import { createHealthMonitor } from './health/monitor.js';
 import { createStatsCollector } from './health/stats.js';
 import { createScoutServer } from './server/http.js';
 import { createRetentionJob } from './db/retention.js';
-import { createSproutClient, toSproutEvent } from './sprout/client.js';
+import { createSproutClient, toSproutEvent, type SproutClient } from './sprout/client.js';
 import { replayFailedDeliveries } from './cli/replayDeliveries.js';
 import { loadCalendar, createCalendarScheduler } from './calendar/scheduler.js';
 import { routeCalendarReminder } from './discord/router.js';
@@ -169,12 +174,43 @@ export async function main(): Promise<void> {
 
   // Scout is the information layer; Sprout consumes normalized events. With no
   // SPROUT_URL this is inert, which is the normal MVP state.
-  const sprout = createSproutClient({
+  const sproutTransport = createSproutClient({
     url: cfg.sprout.url,
     token: cfg.sprout.token,
     timeoutMs: cfg.sprout.timeoutMs,
     logger: log.child('sprout'),
   });
+
+  /**
+   * Times every Sprout hand-off, wherever it comes from.
+   *
+   * Wrapped here rather than at the call sites so the first delivery and the
+   * replay are measured by the same code — two timers around the same call is
+   * how the two paths quietly start disagreeing.
+   */
+  const sprout: SproutClient = {
+    enabled: sproutTransport.enabled,
+    async send(event) {
+      const started = Date.now();
+      try {
+        const result = await sproutTransport.send(event);
+        db.metrics.record('sprout_delivery_ms', Date.now() - started);
+        db.metrics.record(
+          result.ok
+            ? 'sprout_delivered_total'
+            : result.skipped
+              ? 'sprout_skipped_total'
+              : 'sprout_failed_total',
+          1,
+        );
+        return result;
+      } catch (err) {
+        db.metrics.record('sprout_delivery_ms', Date.now() - started);
+        db.metrics.record('sprout_failed_total', 1);
+        throw err;
+      }
+    },
+  };
 
   // ── Pipeline ───────────────────────────────────────────────────────────────
   const pipeline = createPipeline({
@@ -282,7 +318,16 @@ export async function main(): Promise<void> {
       return;
     }
     if (!freshness.fresh) {
-      // Still in #scout-news, deliberately not a trading event.
+      // Still in #scout-news, deliberately not a trading event. The two skip
+      // reasons are counted apart: "the upstream source stopped sending
+      // timestamps" and "news aged out before it could be delivered" are
+      // different faults, and a merged total hides both.
+      db.metrics.record(
+        freshness.reason === UNKNOWN_PUBLICATION_TIME
+          ? 'events_unknown_time_total'
+          : 'events_stale_total',
+        1,
+      );
       record('SKIPPED', freshness.reason, null);
       return;
     }

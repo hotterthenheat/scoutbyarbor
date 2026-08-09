@@ -532,6 +532,69 @@ describe('concurrent runs cannot double-deliver', () => {
   });
 });
 
+/**
+ * The counts have to outlive the log line. "How much did the replay actually
+ * recover this week" is the number that says whether Sprout is reliable, and it
+ * cannot be answered from whichever log happens to still be in the scrollback.
+ */
+describe('what the replay records for later', () => {
+  it('records recoveries where /metrics can read them', async () => {
+    await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:6001',
+      publishedAt: minutesAgo(2),
+    });
+
+    await replayFailedDeliveries(deps());
+
+    const summary = db.metrics.summary(new Date(Date.now() - 3600_000).toISOString());
+    expect(summary.replay_runs_total).toBe(1);
+    expect(summary.replay_recovered_total).toBe(1);
+  });
+
+  it('counts a stale skip against the stale-event signal, not the unknown-time one', async () => {
+    await seedFailedDelivery({
+      text: 'US CPI RISES 0.4% M/M VS 0.2% EXPECTED',
+      postId: 'x:6002',
+      publishedAt: minutesAgo(300),
+    });
+
+    await replayFailedDeliveries(deps());
+
+    const summary = db.metrics.summary(new Date(Date.now() - 3600_000).toISOString());
+    expect(summary.events_stale_total).toBe(1);
+    expect(summary.events_unknown_time_total).toBeUndefined();
+  });
+
+  it('counts a missing publication time against the unknown-time signal', async () => {
+    await seedFailedDelivery({
+      text: 'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR SITES',
+      postId: 'x:6003',
+      publishedAt: null,
+    });
+
+    await replayFailedDeliveries(deps());
+
+    const summary = db.metrics.summary(new Date(Date.now() - 3600_000).toISOString());
+    expect(summary.events_unknown_time_total).toBe(1);
+    expect(summary.events_stale_total).toBeUndefined();
+  });
+
+  it('a dry run records nothing — it delivered nothing', async () => {
+    await seedFailedDelivery({
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      postId: 'x:6004',
+      publishedAt: minutesAgo(2),
+    });
+
+    await replayFailedDeliveries(deps(), { dryRun: true });
+
+    const summary = db.metrics.summary(new Date(Date.now() - 3600_000).toISOString());
+    expect(summary.replay_runs_total).toBeUndefined();
+    expect(summary.replay_recovered_total).toBeUndefined();
+  });
+});
+
 describe('the report separates every skip reason', () => {
   it('counts stale and unknown-time skips apart', async () => {
     await seedFailedDelivery({
