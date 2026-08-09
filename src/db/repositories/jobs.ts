@@ -17,6 +17,13 @@ export interface JobRepo {
   scheduleRetry(jobId: string, attempts: number, error: string, nextAttemptAt: string): void;
   /** Recover jobs a crashed process left RUNNING. Returns how many. */
   requeueRunning(nowIso: string): number;
+  /** Requeue a terminally failed post so a later relay can retry it. */
+  reopen(postId: string, nowIso: string): void;
+  /**
+   * Requeue rows stuck RUNNING since before `before` that no live worker owns.
+   * `owned` is the set of job ids this process is actually working on.
+   */
+  stuckRunning(before: string, owned: string[]): number;
   byPostId(postId: string): Job | null;
   queueDepth(): number;
   countsByStatus(): Record<string, number>;
@@ -137,6 +144,33 @@ export function createJobRepo(db: SqliteDatabase): JobRepo {
             WHERE status = 'RUNNING'`,
         )
         .run(nowIso);
+      return result.changes;
+    },
+
+    reopen(postId: string, nowIso: string): void {
+      stmts
+        .get(
+          `UPDATE processing_jobs
+              SET status = 'QUEUED', attempts = 0, last_error = NULL,
+                  next_attempt_at = ?, completed_at = NULL
+            WHERE post_id = ? AND status IN ('FAILED','FAILED_RETRIEVAL')`,
+        )
+        .run(nowIso, postId);
+    },
+
+    stuckRunning(before: string, owned: string[]): number {
+      // created_at is the only timestamp a RUNNING row carries, so it bounds
+      // how long the job could possibly have been in flight.
+      const placeholders = owned.length > 0 ? owned.map(() => '?').join(',') : "''";
+      const result = stmts
+        .get(
+          `UPDATE processing_jobs
+              SET status = 'QUEUED', next_attempt_at = ?
+            WHERE status = 'RUNNING'
+              AND created_at < ?
+              AND job_id NOT IN (${placeholders})`,
+        )
+        .run(before, before, ...owned);
       return result.changes;
     },
 

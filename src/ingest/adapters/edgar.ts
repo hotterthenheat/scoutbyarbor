@@ -37,6 +37,13 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
     lastRequestAt = Date.now();
   }
 
+  /** Fetches and reads the body under a single deadline. */
+  async function requestText(url: string): Promise<{ ok: boolean; status: number; statusText: string; text: string }> {
+    const response = await request(url);
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, statusText: response.statusText, text };
+  }
+
   async function request(url: string): Promise<Response> {
     if (!deps.userAgent || !/@|\bhttps?:/i.test(deps.userAgent)) {
       throw new Error(
@@ -45,7 +52,11 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
     }
     await throttle();
     const controller = new AbortController();
+    // Deliberately NOT cleared here: requestText reads the body afterwards and
+    // must stay under the same deadline. The timer is unref'd so it cannot hold
+    // the process open.
     const timer = setTimeout(() => controller.abort(), deps.timeoutMs);
+    if (typeof timer.unref === 'function') timer.unref();
     try {
       return await fetch(url, {
         headers: {
@@ -56,18 +67,19 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
         signal: controller.signal,
         redirect: 'follow',
       });
-    } finally {
+    } catch (err) {
       clearTimeout(timer);
+      throw err;
     }
   }
 
   async function pollOne(source: Source): Promise<{ posts: RawPost[]; itemCount: number }> {
     if (!source.url) throw new Error(`source ${source.id} has no url`);
 
-    const response = await request(source.url);
+    const response = await requestText(source.url);
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
 
-    const entries = parseAtomEntries(parser, await response.text());
+    const entries = parseAtomEntries(parser, response.text);
     const known = seen.get(source.id);
     const isFirstPoll = known === undefined;
     const knownSet = known ?? new Set<string>();
@@ -152,9 +164,9 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
 
     async fetchOne(source: Source, accessionNumber: string): Promise<RawPost | null> {
       const url = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&output=atom&accession_number=${encodeURIComponent(accessionNumber)}`;
-      const response = await request(url);
+      const response = await requestText(url);
       if (!response.ok) return null;
-      const entries = parseAtomEntries(parser, await response.text());
+      const entries = parseAtomEntries(parser, response.text);
       const entry = entries[0];
       if (!entry) return null;
 
@@ -181,7 +193,7 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
     async verify(source: Source): Promise<SourceVerification> {
       if (!source.url) return { sourceId: source.id, ok: false, detail: 'no url configured' };
       try {
-        const response = await request(source.url);
+        const response = await requestText(source.url);
         if (!response.ok) {
           return {
             sourceId: source.id,
@@ -189,7 +201,7 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
             detail: `HTTP ${response.status} ${response.statusText}${response.status === 403 ? ' — check SEC_USER_AGENT includes contact info' : ''}`,
           };
         }
-        const entries = parseAtomEntries(parser, await response.text());
+        const entries = parseAtomEntries(parser, response.text);
         return entries.length > 0
           ? { sourceId: source.id, ok: true, resolvedName: source.name, detail: `${entries.length} filings` }
           : { sourceId: source.id, ok: false, detail: 'feed parsed but contained no entries' };

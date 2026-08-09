@@ -75,13 +75,17 @@ export function createServer_(deps: ServerDeps): ScoutServer {
       }
 
       const published = statuses.PUBLISHED ?? 0;
-      const uptimeMinutes = Math.max(1, msBetween(startedAt.toISOString(), isoNow()) / 60_000);
+      // The rate must be over the window the count covers, not over process
+      // uptime — otherwise a service restarted a minute ago reports a day's
+      // worth of alerts as its per-minute rate.
+      const uptimeMinutes = msBetween(startedAt.toISOString(), isoNow()) / 60_000;
+      const windowMinutes = Math.max(1, Math.min(24 * 60, uptimeMinutes));
 
       return json({
         time: isoNow(),
         window: '24h',
         queue: { depth: db.jobs.queueDepth(), byStatus: jobs },
-        events: { byStatus: statuses, eventsPerMinute: Number((published / uptimeMinutes).toFixed(3)) },
+        events: { byStatus: statuses, eventsPerMinute: Number((published / windowMinutes).toFixed(3)) },
         deliveries,
         latencyMs: {
           count: latency.count,

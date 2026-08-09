@@ -34,12 +34,29 @@ export interface BuildAlertInput {
 }
 
 export function buildAlert(input: BuildAlertInput): RenderableAlert {
+  const headline = normalizeWhitespace(input.headline).toUpperCase();
+  const body = normalizeWhitespace(input.body ?? '');
+
   return {
     banner: normalizeWhitespace(input.banner).toUpperCase(),
-    headline: normalizeWhitespace(input.headline).toUpperCase(),
+    headline,
     timestamp: formatAlertTimestamp(input.timestampIso, input.timeZone),
-    body: truncate(normalizeWhitespace(input.body ?? ''), BODY_MAX_CHARS),
+    body: restatesHeadline(body, headline) ? '' : truncate(body, BODY_MAX_CHARS),
   };
+}
+
+/**
+ * A body that only repeats the headline is noise in an alert whose whole point
+ * is density. Compares on letters and digits alone so punctuation and casing
+ * differences do not hide a restatement.
+ */
+function restatesHeadline(body: string, headline: string): boolean {
+  if (!body) return true;
+  const strip = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const b = strip(body);
+  const h = strip(headline);
+  if (!b || !h) return !b;
+  return b === h || h.startsWith(b) || (b.startsWith(h) && b.length - h.length < 12);
 }
 
 /**
@@ -61,6 +78,11 @@ export function renderAlert(alert: RenderableAlert): string {
 /** Neutralises Discord's formatting characters without mangling the text. */
 export function escapeMarkdown(text: string): string {
   return text.replace(/([*_`~|\\])/g, '\\$1');
+}
+
+/** Inverse of escapeMarkdown, so the leak guard sees the real characters. */
+export function unescapeMarkdown(text: string): string {
+  return text.replace(/\\([*_`~|\\])/g, '$1');
 }
 
 /** Muted, institutional. No category should read as decorative. */
@@ -92,7 +114,11 @@ export function renderAlertEmbed(alert: RenderableAlert): unknown {
 /**
  * Labels Scout must never add to an alert. These are patterns, not values: the
  * concern is Scout annotating an alert with its own metadata, which always
- * takes the form `LABEL:`.
+ * appears as `LABEL:` at the start of a line.
+ *
+ * Line-anchored on purpose. Matching mid-line would reject real headlines —
+ * "US CONSUMER CONFIDENCE: 102.6 VS 100.4 EXPECTED" is an economic release,
+ * not Scout labelling its own confidence.
  */
 const FORBIDDEN_LABELS =
   /(?:^|\n)\s*(?:source|author|handle|via|url|link|likes?|retweets?|reposts?|engagement|confidence|sentiment|market impact|ai summary|summary|score|importance|band|severity|relevance|novelty|magnitude|credibility)\s*:/i;
@@ -104,7 +130,7 @@ const FORBIDDEN_LABELS =
  * 0.3%"); what is banned is Scout labelling an alert with its own verdict.
  */
 const FORBIDDEN_SCORE =
-  /(?:^|\n|\s)(?:score|confidence|importance|severity)\s*[:=]\s*\d|(?:^|\n)\s*(?:CRITICAL|HIGH|MODERATE|LOW|IGNORE)\s*$|\b\d{1,3}\s*\/\s*100\b/i;
+  /(?:^|\n)\s*(?:score|confidence|importance|severity|relevance)\s*[:=]\s*\d|(?:^|\n)\s*(?:CRITICAL|HIGH|MODERATE|LOW|IGNORE)\s*$|(?:^|\n)\s*\d{1,3}\s*\/\s*100\s*$/i;
 
 /**
  * Last line of defence before send. Throws rather than posting an alert that
@@ -117,7 +143,10 @@ const FORBIDDEN_SCORE =
  * story rather than publish it.
  */
 export function assertNoLeakedMetadata(rendered: string, forbidden: string[]): void {
-  const haystack = rendered.toLowerCase();
+  // Compare against the UNESCAPED text. renderAlert escapes markdown, so a
+  // handle like @zero_hedge appears as @zero\_hedge and a raw-needle search
+  // would silently miss it — defeating the guard exactly where it matters.
+  const haystack = unescapeMarkdown(rendered).toLowerCase();
 
   for (const raw of forbidden) {
     const needle = (raw ?? '').trim().toLowerCase();

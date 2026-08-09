@@ -35,6 +35,11 @@ export interface Job {
 /** Attempt 1 immediate, then 1s, 3s, 10s. Then the job is done trying. */
 export const BACKOFF_MS = [0, 1_000, 3_000, 10_000];
 
+/** A job RUNNING for longer than this with no owner is presumed dead. */
+const STUCK_JOB_MS = 10 * 60_000;
+/** How often to look for them. */
+const STUCK_CHECK_MS = 60_000;
+
 export interface JobQueue {
   /** Enqueue, or return null when this post id is already known. */
   enqueue(input: {
@@ -110,7 +115,22 @@ export function createJobQueue(deps: JobQueueDeps): JobQueue {
     };
     // UNIQUE(post_id) makes this the durable dedupe layer: the same post from
     // five channels, or after a restart, inserts once.
-    return jobs.insertIfAbsent(job) ? job : null;
+    if (jobs.insertIfAbsent(job)) return job;
+
+    // A job that failed terminally must not poison the post id forever. A
+    // fourteen-second upstream outage is enough to exhaust the retries, and the
+    // same URL relayed an hour later deserves a fresh attempt. A job that
+    // already SUCCEEDED stays blocked — that is the dedupe guarantee.
+    const existing = jobs.byPostId(input.postId);
+    if (existing && (existing.status === 'FAILED' || existing.status === 'FAILED_RETRIEVAL')) {
+      jobs.reopen(input.postId, iso);
+      logger.info('retrying a previously failed post', {
+        postId: input.postId,
+        previousError: existing.lastError,
+      });
+      return { ...job, attempts: 0 };
+    }
+    return null;
   }
 
   async function runOne(job: Job): Promise<void> {
@@ -147,8 +167,27 @@ export function createJobQueue(deps: JobQueueDeps): JobQueue {
     }
   }
 
+  /** A RUNNING row this process is not actually working on is an orphan. */
+  function reclaimStuck(): void {
+    const stuck = jobs.stuckRunning(
+      new Date(now().getTime() - STUCK_JOB_MS).toISOString(),
+      [...running].map((id) => id),
+    );
+    if (stuck > 0) logger.warn('reclaimed stuck jobs', { count: stuck });
+  }
+
+  let sinceLastReclaim = 0;
+
   function pump(): void {
     if (stopped) return;
+
+    // Cheap, and only every so often: a handler that never settles would
+    // otherwise hold its slot until the process restarts.
+    if (++sinceLastReclaim * pollIntervalMs >= STUCK_CHECK_MS) {
+      sinceLastReclaim = 0;
+      reclaimStuck();
+    }
+
     const capacity = deps.concurrency - running.size;
     if (capacity <= 0) return;
 

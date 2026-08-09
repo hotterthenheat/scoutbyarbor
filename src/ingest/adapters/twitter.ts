@@ -45,6 +45,7 @@ export function createTwitterAdapter(deps: TwitterAdapterDeps): IngestAdapter {
   const sinceIds = new Map<string, string>();
   const requestTimes: number[] = [];
   let rateLimitResetAt = 0;
+  let rotation = 0;
 
   function budgetRemaining(): number {
     const cutoff = Date.now() - WINDOW_MS;
@@ -190,20 +191,25 @@ export function createTwitterAdapter(deps: TwitterAdapterDeps): IngestAdapter {
         return result;
       }
 
-      // Spend the budget on the highest-priority accounts first.
-      const ordered = [...sources].sort((a, b) => b.priority - a.priority);
+      // Spend the budget on the highest-priority accounts first, but rotate the
+      // starting point so lower-priority accounts are not starved forever when
+      // the budget cannot cover every source on a single tick.
+      const byPriority = [...sources].sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+      const offset = byPriority.length > 0 ? rotation % byPriority.length : 0;
+      const ordered = [...byPriority.slice(offset), ...byPriority.slice(0, offset)];
+      rotation = (rotation + 1) % Math.max(1, byPriority.length);
+
+      const skipped: string[] = [];
 
       for (const source of ordered) {
         const started = Date.now();
 
         if (budgetRemaining() <= 1) {
-          result.outcomes.push({
-            sourceId: source.id,
-            ok: false,
-            itemCount: 0,
-            error: 'skipped: X request budget exhausted for this window',
-            latencyMs: 0,
-          });
+          // Deliberately NOT reported as a failed poll. Skipping to stay inside
+          // the rate limit is a decision Scout made, not a feed that broke, and
+          // recording it as a failure would drive healthy sources to
+          // DISCONNECTED and flood the system channel with false alarms.
+          skipped.push(source.id);
           continue;
         }
 
@@ -226,6 +232,13 @@ export function createTwitterAdapter(deps: TwitterAdapterDeps): IngestAdapter {
             latencyMs: Date.now() - started,
           });
         }
+      }
+
+      if (skipped.length > 0) {
+        deps.logger.debug('skipped sources to stay inside the X rate limit', {
+          skipped: skipped.length,
+          budgetRemaining: budgetRemaining(),
+        });
       }
       return result;
     },

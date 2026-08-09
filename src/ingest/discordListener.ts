@@ -123,6 +123,25 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
 
       client.on(Events.Error, (err) => logger.error('listener gateway error', { err }));
 
+      // Without these, `ready` stayed true after a gateway close — a revoked
+      // token or a disabled intent left /ready reporting a healthy service
+      // while URL ingestion was completely dead.
+      client.on(Events.ShardDisconnect, (event, shardId) => {
+        ready = false;
+        logger.warn('listener disconnected', { shardId, code: event?.code });
+      });
+      client.on(Events.Invalidated, () => {
+        ready = false;
+        logger.error('listener session invalidated; URL ingestion is down');
+      });
+      client.on(Events.ShardResume, () => {
+        ready = true;
+        logger.info('listener resumed');
+      });
+      client.on(Events.ShardReady, () => {
+        ready = true;
+      });
+
       await new Promise<void>((resolve, reject) => {
         const onReady = (): void => {
           ready = true;

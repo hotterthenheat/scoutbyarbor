@@ -38,8 +38,11 @@ const DEFAULT_INTERVAL_MS = 60_000;
 
 export function createIngestManager(deps: IngestManagerDeps): IngestManager {
   const { db, adapters, logger } = deps;
-  const timers: NodeJS.Timeout[] = [];
+  // One live timer per adapter, replaced on each tick rather than appended to a
+  // list that grows for the life of the process.
+  const timers = new Map<SourceType, NodeJS.Timeout>();
   const running = new Set<SourceType>();
+  let stopped = false;
 
   function sourcesFor(type: SourceType) {
     return db.sources.enabled().filter((s) => s.sourceType === type);
@@ -99,16 +102,20 @@ export function createIngestManager(deps: IngestManagerDeps): IngestManager {
 
   return {
     start(): void {
+      stopped = false;
       for (const adapter of adapters) {
         const base = deps.intervals[adapter.type] ?? DEFAULT_INTERVAL_MS;
         // Jitter keeps every adapter off the same tick.
-        const jitter = Math.floor(base * 0.1);
+        const jitter = Math.max(1, Math.floor(base * 0.1));
         const schedule = (): void => {
+          // stop() may have run while a poll was in flight; without this the
+          // loop reschedules itself forever after shutdown.
+          if (stopped) return;
           const timer = setTimeout(() => {
             void runAdapter(adapter).finally(schedule);
           }, base + Math.floor(Math.random() * jitter));
           if (typeof timer.unref === 'function') timer.unref();
-          timers.push(timer);
+          timers.set(adapter.type, timer);
         };
         schedule();
       }
@@ -119,8 +126,9 @@ export function createIngestManager(deps: IngestManagerDeps): IngestManager {
     },
 
     stop(): void {
-      for (const timer of timers) clearTimeout(timer);
-      timers.length = 0;
+      stopped = true;
+      for (const timer of timers.values()) clearTimeout(timer);
+      timers.clear();
     },
 
     async pollOnce(): Promise<IngestResult> {

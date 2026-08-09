@@ -37,8 +37,18 @@ interface FeedState {
   etag?: string;
   lastModified?: string;
   lastSeenAt?: number;
+  /**
+   * Ids already emitted. Timestamps alone are not enough: feeds routinely
+   * publish two items in the same second — the FOMC statement and its
+   * implementation note are both stamped 14:00:00 — and a `<=` watermark drops
+   * one of them permanently.
+   */
+  seenIds?: Set<string>;
   seeded: boolean;
 }
+
+/** Cap on remembered ids per feed, so the set cannot grow without bound. */
+const MAX_SEEN_IDS = 400;
 
 export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
   const parser = new XMLParser({
@@ -59,7 +69,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
     if (feedState.etag) headers['if-none-match'] = feedState.etag;
     if (feedState.lastModified) headers['if-modified-since'] = feedState.lastModified;
 
-    const response = await fetchWithTimeout(source.url, headers, deps.timeoutMs);
+    const response = await fetchTextWithTimeout(source.url, headers, deps.timeoutMs);
 
     // Not modified: a healthy poll that produced nothing.
     if (response.status === 304) {
@@ -72,15 +82,19 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
 
     const etag = response.headers.get('etag');
     const lastModified = response.headers.get('last-modified');
-    const body = await response.text();
-    const items = parseFeed(parser, body);
+    const items = parseFeed(parser, response.text);
 
     const ingestionTime = isoNow();
     const posts: RawPost[] = [];
 
+    const seenIds = feedState.seenIds ?? new Set<string>();
+
     for (const item of items) {
       const publishedMs = Date.parse(item.published);
-      if (feedState.seeded && feedState.lastSeenAt && publishedMs <= feedState.lastSeenAt) continue;
+      if (seenIds.has(item.id)) continue;
+      // Strictly older than the watermark is definitely stale; equal timestamps
+      // fall through to the id check above.
+      if (feedState.seeded && feedState.lastSeenAt && publishedMs < feedState.lastSeenAt) continue;
 
       posts.push({
         sourceId: source.id,
@@ -92,6 +106,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
         ingestionTime,
         meta: { feedTitle: item.title, rss: true },
       });
+      seenIds.add(item.id);
     }
 
     posts.sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime));
@@ -101,6 +116,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
       ...(etag ? { etag } : {}),
       ...(lastModified ? { lastModified } : {}),
       lastSeenAt: Math.max(newest, feedState.lastSeenAt ?? 0),
+      seenIds: seenIds.size > MAX_SEEN_IDS ? new Set([...seenIds].slice(-MAX_SEEN_IDS)) : seenIds,
       seeded: true,
     });
 
@@ -156,7 +172,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
         return { sourceId: source.id, ok: false, detail: 'no url configured' };
       }
       try {
-        const response = await fetchWithTimeout(
+        const response = await fetchTextWithTimeout(
           source.url,
           { 'user-agent': deps.userAgent, accept: 'application/rss+xml, application/xml, */*' },
           deps.timeoutMs,
@@ -168,8 +184,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
             detail: `HTTP ${response.status} ${response.statusText}`,
           };
         }
-        const body = await response.text();
-        const items = parseFeed(parser, body);
+        const items = parseFeed(parser, response.text);
         if (items.length === 0) {
           return { sourceId: source.id, ok: false, detail: 'response parsed but contained no items' };
         }
@@ -281,15 +296,29 @@ function linkOf(entry: Record<string, unknown>): string | null {
   return null;
 }
 
-async function fetchWithTimeout(
+/**
+ * Fetches AND reads the body under one deadline. Clearing the abort timer when
+ * the headers arrive leaves the body read unbounded, so a server that stalls
+ * mid-response would hang the poll loop indefinitely.
+ */
+async function fetchTextWithTimeout(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
-): Promise<Response> {
+): Promise<{ status: number; statusText: string; ok: boolean; headers: Headers; text: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(url, { headers, signal: controller.signal, redirect: 'follow' });
+    const response = await fetch(url, { headers, signal: controller.signal, redirect: 'follow' });
+    // 304 has no body; reading it is a no-op but keeps the shape uniform.
+    const text = response.status === 304 ? '' : await response.text();
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: response.headers,
+      text,
+    };
   } finally {
     clearTimeout(timer);
   }

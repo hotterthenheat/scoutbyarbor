@@ -213,3 +213,98 @@ describe('no score ever reaches a user-facing alert', () => {
     expect(content.toLowerCase()).not.toContain('confidence');
   });
 });
+
+describe('the body is never a restatement of the headline', () => {
+  it('omits the body entirely for a single-line wire headline', () => {
+    // The most common shape in the product. Falling back to the cleaned text
+    // here printed the headline twice on every short alert.
+    const out = renderAlert(
+      buildAlert({
+        banner: 'FED ALERT',
+        headline: 'FED CUTS RATES BY 25 BPS',
+        timestampIso: '2026-08-09T18:31:00.000Z',
+        body: 'FED CUTS RATES BY 25 BPS',
+      }),
+    );
+    const nonEmpty = out.split('\n').filter((l) => l.trim());
+    expect(nonEmpty).toHaveLength(3);
+    expect(out.match(/FED CUTS RATES BY 25 BPS/g)).toHaveLength(1);
+  });
+
+  it('ignores punctuation and casing when detecting a restatement', () => {
+    const alert = buildAlert({
+      banner: 'MACRO ALERT',
+      headline: 'US AND IRAN REACH DEAL',
+      timestampIso: '2026-08-09T18:31:00.000Z',
+      body: 'U.S. and Iran reach deal.',
+    });
+    expect(alert.body).toBe('');
+  });
+
+  it('keeps a body that genuinely adds detail', () => {
+    const alert = buildAlert({
+      banner: 'FED ALERT',
+      headline: 'FED CUTS RATES BY 25 BPS',
+      timestampIso: '2026-08-09T18:31:00.000Z',
+      body: 'The Committee cited a deteriorating labour market and said further cuts depend on inflation.',
+    });
+    expect(alert.body).toContain('deteriorating labour market');
+  });
+
+  it('keeps a body that starts with the headline but continues', () => {
+    const alert = buildAlert({
+      banner: 'FED ALERT',
+      headline: 'FED CUTS RATES BY 25 BPS',
+      timestampIso: '2026-08-09T18:31:00.000Z',
+      body: 'FED CUTS RATES BY 25 BPS, its third reduction of the year, citing labour market weakness.',
+    });
+    expect(alert.body).toContain('third reduction');
+  });
+});
+
+describe('the guard does not misfire on real headlines', () => {
+  it('publishes a consumer confidence release', () => {
+    // "CONFIDENCE:" followed by a number is an economic release, not Scout
+    // labelling its own confidence. Rejecting it dropped the alert entirely.
+    const content = renderAlert(
+      buildAlert({
+        banner: 'ECONOMIC ALERT',
+        headline: 'US CONSUMER CONFIDENCE: 102.6 VS 100.4 EXPECTED',
+        timestampIso: '2026-08-09T14:00:00.000Z',
+        body: 'The Conference Board index rose more than forecast.',
+      }),
+    );
+    expect(() => assertNoLeakedMetadata(content, [])).not.toThrow();
+  });
+
+  it.each([
+    'MARKET ALERT\n\nVIX SPIKES AS CREDIT SPREADS WIDEN\n\nRelevance: broad exposure to risk',
+    'EQUITY ALERT\n\nMOODY’S CUTS SEVERITY: 3 NOTCHES',
+  ])('still publishes %s', (headlineish) => {
+    // These contain the banned words but not as Scout's own annotation.
+    const content = renderAlert(
+      buildAlert({
+        banner: 'MARKET ALERT',
+        headline: headlineish.split('\n\n')[1] ?? 'X',
+        timestampIso: '2026-08-09T14:00:00.000Z',
+        body: '',
+      }),
+    );
+    expect(() => assertNoLeakedMetadata(content, [])).not.toThrow();
+  });
+
+  it('catches a handle even after markdown escaping', () => {
+    // renderAlert escapes '_' so the rendered text contains @zero\_hedge.
+    // Searching the escaped string for the raw handle silently missed it.
+    const content = renderAlert(
+      buildAlert({
+        banner: 'MACRO ALERT',
+        headline: 'RELAYED BY @zero_hedge',
+        timestampIso: '2026-08-09T14:00:00.000Z',
+        body: '',
+      }),
+    );
+    expect(content).toContain('\\_');
+    expect(() => assertNoLeakedMetadata(content, ['@zero_hedge'])).toThrow();
+  });
+});

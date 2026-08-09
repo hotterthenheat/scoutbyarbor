@@ -64,7 +64,7 @@ const schema = z.object({
   ADMIN_INPUT_CHANNEL_IDS: list(),
 
   X_BEARER_TOKEN: z.string().default(''),
-  X_POLL_INTERVAL_MS: numeric(20_000),
+  X_POLL_INTERVAL_MS: numeric(90_000),
   X_REQUEST_BUDGET_PER_WINDOW: numeric(180),
 
   SEC_USER_AGENT: z.string().default('ArborCapital Scout (ops@example.com)'),

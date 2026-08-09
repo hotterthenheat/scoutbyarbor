@@ -280,3 +280,34 @@ describe('category fan-out is opt-in', () => {
     expect(channels).toEqual(expect.arrayContaining(['news', 'tradingFloor', 'spx', 'fed', 'macro']));
   });
 });
+
+describe('an event whose route grows must reach the new channels', () => {
+  // The critical failure the routing rule exists to prevent: a story that was
+  // #scout-news only becomes market-moving on a later development. Editing the
+  // existing messages alone would leave the trading channels with nothing.
+  it('routes more channels once the event becomes market-moving', () => {
+    const early = route({
+      category: 'GEOPOLITICAL',
+      band: 'MODERATE',
+      score: 62,
+      text: 'REPORTS OF UNREST NEAR A REGIONAL BORDER',
+      entities: entities({ countries: ['TR'] }),
+    });
+    const later = route({
+      category: 'GEOPOLITICAL',
+      subcategory: 'CONFLICT',
+      band: 'HIGH',
+      score: 84,
+      text: 'US CONFIRMS MILITARY ACTION AFTER BORDER ESCALATION',
+      entities: entities({ countries: ['US', 'TR'] }),
+    });
+
+    expect(bothTradingChannels(early.channels)).toBe(false);
+    expect(bothTradingChannels(later.channels)).toBe(true);
+
+    // The publisher must post to what the second route added, not merely edit
+    // the first message.
+    const added = later.channels.filter((c) => !early.channels.includes(c));
+    expect(added).toEqual(expect.arrayContaining(['tradingFloor', 'spx']));
+  });
+});

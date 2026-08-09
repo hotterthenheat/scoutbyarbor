@@ -479,3 +479,71 @@ describe('the URL worker', () => {
     expect(db.jobs.byPostId('x:999')?.status).toBe('FAILED_RETRIEVAL');
   });
 });
+
+describe('a terminally failed post is not poisoned forever', () => {
+  let dir2: string;
+  let db2: ScoutDb;
+
+  beforeEach(() => {
+    dir2 = mkdtempSync(join(tmpdir(), 'scout-retry-'));
+    db2 = openDatabase(join(dir2, 'r.db'));
+    db2.migrate();
+  });
+
+  afterEach(() => {
+    db2.close();
+    rmSync(dir2, { recursive: true, force: true });
+  });
+
+  it('accepts the same post again after a terminal failure', async () => {
+    let shouldFail = true;
+    const seen: string[] = [];
+
+    const queue = createJobQueue({
+      db: db2,
+      logger: log,
+      concurrency: 1,
+      maxAttempts: 2,
+      pollIntervalMs: 5,
+      backoffMs: [0, 5],
+      handler: async (job) => {
+        if (shouldFail) throw Object.assign(new Error('upstream down'), { retriable: false });
+        seen.push(job.postId);
+      },
+    });
+
+    expect(queue.enqueue({ postId: 'x:1', url: 'u', sourceChannel: 'a', sourceKind: 'news' })).toBeTruthy();
+    await queue.drain();
+    expect(db2.jobs.byPostId('x:1')?.status).toBe('FAILED_RETRIEVAL');
+
+    // A brief upstream outage must not permanently blacklist the post — the
+    // same URL relayed later deserves a fresh attempt.
+    shouldFail = false;
+    expect(queue.enqueue({ postId: 'x:1', url: 'u', sourceChannel: 'b', sourceKind: 'news' })).toBeTruthy();
+    await queue.drain();
+
+    expect(seen).toEqual(['x:1']);
+    expect(db2.jobs.byPostId('x:1')?.status).toBe('DONE');
+  });
+
+  it('still refuses a post that already succeeded', async () => {
+    const seen: string[] = [];
+    const queue = createJobQueue({
+      db: db2,
+      logger: log,
+      concurrency: 1,
+      maxAttempts: 2,
+      pollIntervalMs: 5,
+      handler: async (job) => {
+        seen.push(job.postId);
+      },
+    });
+
+    queue.enqueue({ postId: 'x:2', url: 'u', sourceChannel: 'a', sourceKind: 'news' });
+    await queue.drain();
+    // The dedupe guarantee: a successfully processed post never runs twice.
+    expect(queue.enqueue({ postId: 'x:2', url: 'u', sourceChannel: 'b', sourceKind: 'news' })).toBeNull();
+    await queue.drain();
+    expect(seen).toEqual(['x:2']);
+  });
+});

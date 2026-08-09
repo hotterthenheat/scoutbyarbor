@@ -62,11 +62,11 @@ function detectEcho(raw: RawPost, decoded: string, cleanText: string): boolean {
   const isRetweet = raw.meta?.isRetweet === true || /^\s*RT\s+@/i.test(decoded);
   const quoted = typeof raw.meta?.quotedText === 'string' ? raw.meta.quotedText : null;
 
+  // An echo is a post that carries no information, not merely a retweet. A
+  // newswire account relaying a headline verbatim is often the only route by
+  // which Scout sees a source outside its watchlist, and dedupe already
+  // collapses it against the original when both arrive.
   if (isRetweet && cleanText.trim().length === 0) return true;
-  if (isRetweet && !quoted) {
-    // A bare RT with no commentary of its own: the text IS the quoted post.
-    return true;
-  }
   if (quoted && cleanText.length > 0) {
     // Quote post whose "own" text is really just a copy of what it quotes.
     return textSimilarity(cleanText, quoted) > 0.9;

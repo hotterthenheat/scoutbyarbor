@@ -79,15 +79,15 @@ export function createXApiResolver(deps: XApiResolverDeps): PostResolver {
       });
 
       const controller = new AbortController();
+      // The timer must stay armed until the BODY has been read. Clearing it
+      // after fetch() resolves leaves the read unbounded, and a server that
+      // stalls mid-body hangs this worker until the process restarts.
       const timer = setTimeout(() => controller.abort(), deps.timeoutMs);
 
-      let response: Response;
       try {
-        response = await fetch(`https://api.x.com/2/tweets/${url.postId}?${params.toString()}`, {
-          headers: { authorization: `Bearer ${deps.bearerToken}`, accept: 'application/json' },
-          signal: controller.signal,
-        });
+        return await resolveWithin(controller, url, params, deps);
       } catch (err) {
+        if (err instanceof RetrievalError) throw err;
         const aborted = (err as Error).name === 'AbortError';
         throw new RetrievalError(
           aborted ? `timed out after ${deps.timeoutMs}ms` : (err as Error).message,
@@ -96,52 +96,64 @@ export function createXApiResolver(deps: XApiResolverDeps): PostResolver {
       } finally {
         clearTimeout(timer);
       }
-
-      if (response.status === 429 || response.status >= 500) {
-        throw new RetrievalError(`HTTP ${response.status} — retriable`, true);
-      }
-      if (response.status === 401 || response.status === 403) {
-        // Not retriable and not something to work around: the credential simply
-        // does not grant access to this post.
-        throw new RetrievalError(`HTTP ${response.status} — not authorised for this post`, false);
-      }
-      if (response.status === 404) {
-        throw new RetrievalError('post not found or deleted', false);
-      }
-      if (!response.ok) {
-        throw new RetrievalError(`HTTP ${response.status} ${response.statusText}`, false);
-      }
-
-      const body = (await response.json()) as {
-        data?: {
-          id: string;
-          text: string;
-          created_at?: string;
-          author_id?: string;
-          note_tweet?: { text?: string };
-        };
-        includes?: { users?: Array<{ id: string; name: string; username: string }> };
-        errors?: Array<{ detail?: string; title?: string }>;
-      };
-
-      if (!body.data) {
-        const detail = body.errors?.[0]?.detail ?? body.errors?.[0]?.title ?? 'no data returned';
-        throw new RetrievalError(detail, false);
-      }
-
-      const author = body.includes?.users?.find((u) => u.id === body.data?.author_id);
-
-      return {
-        postId: url.canonicalId,
-        author: author?.name ?? null,
-        authorHandle: author?.username ? `@${author.username}` : `@${url.username}`,
-        text: body.data.note_tweet?.text || body.data.text,
-        publishedAt: body.data.created_at ?? null,
-        canonicalUrl: url.canonicalUrl,
-        media: [],
-        retrievalSource: 'x-api-v2',
-      };
     },
+  };
+}
+
+async function resolveWithin(
+  controller: AbortController,
+  url: DetectedUrl,
+  params: URLSearchParams,
+  deps: XApiResolverDeps,
+): Promise<ResolvedPost> {
+  const response = await fetch(`https://api.x.com/2/tweets/${url.postId}?${params.toString()}`, {
+      headers: { authorization: `Bearer ${deps.bearerToken}`, accept: 'application/json' },
+      signal: controller.signal,
+  });
+
+  if (response.status === 429 || response.status >= 500) {
+      throw new RetrievalError(`HTTP ${response.status} — retriable`, true);
+  }
+  if (response.status === 401 || response.status === 403) {
+      // Not retriable and not something to work around: the credential simply
+      // does not grant access to this post.
+      throw new RetrievalError(`HTTP ${response.status} — not authorised for this post`, false);
+  }
+  if (response.status === 404) {
+      throw new RetrievalError('post not found or deleted', false);
+  }
+  if (!response.ok) {
+      throw new RetrievalError(`HTTP ${response.status} ${response.statusText}`, false);
+  }
+
+  const body = (await response.json()) as {
+      data?: {
+        id: string;
+        text: string;
+        created_at?: string;
+        author_id?: string;
+        note_tweet?: { text?: string };
+      };
+      includes?: { users?: Array<{ id: string; name: string; username: string }> };
+      errors?: Array<{ detail?: string; title?: string }>;
+  };
+
+  if (!body.data) {
+      const detail = body.errors?.[0]?.detail ?? body.errors?.[0]?.title ?? 'no data returned';
+      throw new RetrievalError(detail, false);
+  }
+
+  const author = body.includes?.users?.find((u) => u.id === body.data?.author_id);
+
+  return {
+      postId: url.canonicalId,
+      author: author?.name ?? null,
+      authorHandle: author?.username ? `@${author.username}` : `@${url.username}`,
+      text: body.data.note_tweet?.text || body.data.text,
+      publishedAt: body.data.created_at ?? null,
+      canonicalUrl: url.canonicalUrl,
+      media: [],
+  retrievalSource: 'x-api-v2',
   };
 }
 

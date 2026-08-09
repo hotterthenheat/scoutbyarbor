@@ -353,7 +353,9 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       banner: bannerFor(category),
       headline,
       timestampIso: raw.eventTime,
-      body: post.body || post.cleanText,
+      // Only genuine additional prose. Falling back to cleanText here rendered
+      // the headline twice for every single-line wire headline.
+      body: post.body,
     });
 
     const processedAt = now().toISOString();

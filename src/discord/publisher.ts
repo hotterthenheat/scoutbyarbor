@@ -65,52 +65,63 @@ export function createPublisher(deps: PublisherDeps): Publisher {
     }
 
     const cluster = outcome.cluster;
+    const routed = outcome.route.channels as ChannelKey[];
 
-    // A superseding development edits what is already on screen.
-    if (outcome.supersedes && cluster) {
-      const existing = db.discordMessages.forEvent(cluster.id);
-      if (existing.length > 0) {
-        let edited = 0;
-        for (const record of existing) {
-          if (await discord.edit(record.channelId, record.messageId, content)) edited++;
-        }
-        if (edited > 0) {
-          logger.info('superseded in place', { eventId: cluster.id, edited });
-          recordLatency(outcome);
-          return { channels: existing.map((e) => e.channelKey), messageIds };
+    // Channels this cluster already has a message in. A development only ever
+    // edits those; the channels it does NOT have are still owed a first post.
+    const existing = cluster ? db.discordMessages.forEvent(cluster.id) : [];
+    const covered = new Set(existing.map((e) => e.channelKey));
+
+    // This is the important part. An event's route can GROW between
+    // developments — a story that was #scout-news only at importance 62 becomes
+    // market-moving at 74 — and editing only what already exists would leave the
+    // trading channels with nothing. That is precisely the failure the routing
+    // rule exists to prevent, so anything newly routed gets a real post.
+    const needsFirstPost = routed.filter((c) => !covered.has(c));
+
+    if (outcome.supersedes && existing.length > 0) {
+      const editedChannels: string[] = [];
+      for (const record of existing) {
+        if (await discord.edit(record.channelId, record.messageId, content)) {
+          editedChannels.push(record.channelKey);
+          messageIds[record.channelKey] = record.messageId;
+        } else {
+          // Report only what actually happened: claiming a delivery that failed
+          // is worse than reporting the failure.
+          logger.warn('supersede edit failed', {
+            eventId: cluster?.id,
+            channelKey: record.channelKey,
+          });
         }
       }
+
+      const sentNew = await sendTo(needsFirstPost, content, outcome, cluster?.id ?? null, messageIds);
+      logger.info('superseded in place', {
+        eventId: cluster?.id,
+        edited: editedChannels.length,
+        added: sentNew.length,
+      });
+      recordLatency(outcome);
+      return { channels: [...editedChannels, ...sentNew], messageIds };
     }
 
-    // A non-superseding development in an existing cluster is not worth a
-    // second alert — it is already represented by the message on screen.
-    if (!outcome.isNewCluster && !outcome.supersedes && cluster) {
-      const existing = db.discordMessages.forEvent(cluster.id);
-      if (existing.length > 0) {
-        logger.debug('development folded into existing cluster', { eventId: cluster.id });
+    // A development that does not supersede adds nothing to the channels that
+    // already carry the story — but a channel newly in scope has never seen it.
+    if (!outcome.isNewCluster && !outcome.supersedes && existing.length > 0) {
+      if (needsFirstPost.length === 0) {
+        logger.debug('development folded into existing cluster', { eventId: cluster?.id });
         return { channels: [], messageIds };
       }
-    }
-
-    const sentChannels: string[] = [];
-    for (const channelKey of outcome.route.channels as ChannelKey[]) {
-      const sent = await discord.send(channelKey, content);
-      if (!sent) continue;
-
-      sentChannels.push(channelKey);
-      messageIds[channelKey] = sent.messageId;
-
-      db.discordMessages.insert({
-        id: newId(),
-        eventId: cluster?.id ?? null,
-        newsEventId: outcome.newsEvent.id,
-        channelKey,
-        channelId: sent.channelId,
-        messageId: sent.messageId,
-        threadId: null,
-        sentAt: isoNow(),
+      const sentNew = await sendTo(needsFirstPost, content, outcome, cluster?.id ?? null, messageIds);
+      logger.info('development reached newly routed channels', {
+        eventId: cluster?.id,
+        channels: sentNew,
       });
+      recordLatency(outcome);
+      return { channels: sentNew, messageIds };
     }
+
+    const sentChannels = await sendTo(routed, content, outcome, cluster?.id ?? null, messageIds);
 
     const firstChannel = sentChannels[0];
     if (firstChannel) {
@@ -126,6 +137,37 @@ export function createPublisher(deps: PublisherDeps): Publisher {
     });
 
     return { channels: sentChannels, messageIds };
+  }
+
+  /** Posts to each channel and records the delivery. Returns what actually sent. */
+  async function sendTo(
+    channels: ChannelKey[],
+    content: string,
+    outcome: PipelineOutcome,
+    eventId: string | null,
+    messageIds: Record<string, string>,
+  ): Promise<string[]> {
+    const sentChannels: string[] = [];
+
+    for (const channelKey of channels) {
+      const sent = await discord.send(channelKey, content);
+      if (!sent) continue;
+
+      sentChannels.push(channelKey);
+      messageIds[channelKey] = sent.messageId;
+
+      db.discordMessages.insert({
+        id: newId(),
+        eventId,
+        newsEventId: outcome.newsEvent.id,
+        channelKey,
+        channelId: sent.channelId,
+        messageId: sent.messageId,
+        threadId: null,
+        sentAt: isoNow(),
+      });
+    }
+    return sentChannels;
   }
 
   function recordLatency(outcome: PipelineOutcome): void {
