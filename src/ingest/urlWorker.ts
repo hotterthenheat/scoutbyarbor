@@ -23,12 +23,50 @@ import type { RelayedMessage } from './discordListener.js';
  *     resurfacing cannot create a new trading event.
  */
 
+/**
+ * Holds the relaying message alongside its post id so the resolver chain can
+ * fall back to content that already arrived with the link.
+ *
+ * Bounded: a 24/7 process cannot keep every message it has ever seen. Oldest
+ * entries are evicted first, and an evicted entry simply means the relay
+ * fallback is unavailable for that post — never a crash.
+ */
+export interface RelayStore {
+  put(message: RelayedMessage): void;
+  get(canonicalId: string): RelayedMessage | null;
+  drop(canonicalId: string): void;
+  size(): number;
+}
+
+export function createRelayStore(maxEntries = 500): RelayStore {
+  const entries = new Map<string, RelayedMessage>();
+  return {
+    put(message: RelayedMessage): void {
+      const key = message.url.canonicalId;
+      // Re-inserting moves the key to the end of the iteration order, which is
+      // what makes the eviction below least-recently-added.
+      entries.delete(key);
+      entries.set(key, message);
+      while (entries.size > maxEntries) {
+        const oldest = entries.keys().next().value;
+        if (oldest === undefined) break;
+        entries.delete(oldest);
+      }
+    },
+    get: (canonicalId) => entries.get(canonicalId) ?? null,
+    drop: (canonicalId) => void entries.delete(canonicalId),
+    size: () => entries.size,
+  };
+}
+
 export interface UrlWorkerDeps {
   db: ScoutDb;
   queue: JobQueue;
   resolver: PostResolver;
   logger: Logger;
   allowedAccounts: string[];
+  /** Shared with the relay resolver so both see the same payloads. */
+  relayStore: RelayStore;
   /** Source id these posts are attributed to for scoring/health purposes. */
   relaySourceId: string;
   onPost: (post: RawPost, context: UrlPostContext) => Promise<void>;
@@ -53,9 +91,7 @@ export interface UrlWorker {
 export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
   const { db, logger } = deps;
 
-  // Relayed text keyed by canonical id, so the resolver chain can fall back to
-  // content that already arrived with the link.
-  const relayed = new Map<string, RelayedMessage>();
+  const relayed = deps.relayStore;
 
   function submit(message: RelayedMessage): void {
     const { url } = message;
@@ -75,7 +111,7 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       return;
     }
 
-    relayed.set(url.canonicalId, message);
+    relayed.put(message);
 
     const job = deps.queue.enqueue({
       postId: url.canonicalId,
@@ -100,13 +136,16 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       throw Object.assign(new Error(`unparseable url: ${job.url}`), { retriable: false });
     }
 
-    const context = relayed.get(job.postId) ?? null;
+    const context = relayed.get(job.postId);
 
     let resolved;
     try {
       resolved = await deps.resolver.resolve(url);
     } catch (err) {
       const error = err as RetrievalError;
+      // A permanently failed job will never be retried, so its relay payload is
+      // dead weight — drop it rather than leaking it for the life of the process.
+      if (error.retriable === false) relayed.drop(job.postId);
       // Surface retriability to the queue so a rate limit backs off but a
       // deleted post does not spin.
       throw Object.assign(new Error(error.message), { retriable: error.retriable ?? true });
@@ -115,6 +154,7 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
     // A resolver that returned nothing usable is a failed retrieval, not an
     // empty news item.
     if (!resolved.text.trim()) {
+      relayed.drop(job.postId);
       throw Object.assign(new Error('resolved post had no text'), { retriable: false });
     }
 
@@ -160,7 +200,7 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       retrievalSource: resolved.retrievalSource,
     });
 
-    relayed.delete(job.postId);
+    relayed.drop(job.postId);
   }
 
   return { submit, handle };

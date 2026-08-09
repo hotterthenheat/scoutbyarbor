@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectPostUrls, parsePostUrl, isAllowedAccount } from '../src/ingest/urls.js';
 import { createJobQueue, BACKOFF_MS } from '../src/ingest/queue.js';
-import { createUrlWorker, isFreshForTrading } from '../src/ingest/urlWorker.js';
+import { createUrlWorker, createRelayStore, isFreshForTrading } from '../src/ingest/urlWorker.js';
 import { createChainResolver, RetrievalError, type PostResolver } from '../src/ingest/resolver.js';
 import { openDatabase, type ScoutDb } from '../src/db/index.js';
 import { createLogger, setLogLevel } from '../src/util/logger.js';
@@ -366,6 +366,7 @@ describe('the URL worker', () => {
       resolver,
       logger: log,
       allowedAccounts: [],
+      relayStore: createRelayStore(),
       relaySourceId: 'relay:discord-urls',
       onPost: async (post) => {
         posts.push(post);
@@ -434,6 +435,7 @@ describe('the URL worker', () => {
       resolver: { name: 'x', available: () => true, resolve: async () => { throw new Error('unused'); } },
       logger: log,
       allowedAccounts: ['someoneelse'],
+      relayStore: createRelayStore(),
       relaySourceId: 'relay:discord-urls',
       onPost: async (p) => {
         posts.push(p);
@@ -467,6 +469,7 @@ describe('the URL worker', () => {
       },
       logger: log,
       allowedAccounts: [],
+      relayStore: createRelayStore(),
       relaySourceId: 'relay:discord-urls',
       onPost: async () => {},
     });

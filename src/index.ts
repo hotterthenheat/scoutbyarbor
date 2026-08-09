@@ -9,19 +9,19 @@ import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue } from './ingest/queue.js';
-import { createUrlWorker, isFreshForTrading } from './ingest/urlWorker.js';
+import { createUrlWorker, createRelayStore, isFreshForTrading } from './ingest/urlWorker.js';
 import { createXApiResolver, createRelayResolver, createChainResolver } from './ingest/resolver.js';
 import { createDiscordClient } from './discord/client.js';
 import { createPublisher } from './discord/publisher.js';
 import { createHealthMonitor } from './health/monitor.js';
 import { createStatsCollector } from './health/stats.js';
 import { createScoutServer } from './server/http.js';
+import { createRetentionJob } from './db/retention.js';
 import { loadCalendar, createCalendarScheduler } from './calendar/scheduler.js';
 import { routeCalendarReminder } from './discord/router.js';
 import { createLogger, setLogLevel } from './util/logger.js';
 import { isoNow } from './util/time.js';
 import type { RawPost } from './core/types.js';
-import type { RelayedMessage } from './ingest/discordListener.js';
 
 /**
  * Scout runtime wiring.
@@ -157,9 +157,10 @@ export async function main(): Promise<void> {
   }
 
   // ── 24/7 URL ingestion ─────────────────────────────────────────────────────
-  // A pending relay payload is looked up by canonical id so the resolver chain
-  // can use content that already arrived with the link.
-  const pendingRelays = new Map<string, RelayedMessage>();
+  // One bounded store shared by the worker and the relay resolver, so a payload
+  // is written once, read once, and evicted — rather than accumulating in two
+  // maps for the life of the process.
+  const relayStore = createRelayStore(500);
 
   const resolver = createChainResolver(
     [
@@ -169,7 +170,7 @@ export async function main(): Promise<void> {
         logger: log.child('resolver'),
       }),
       createRelayResolver((url) => {
-        const relay = pendingRelays.get(url.canonicalId);
+        const relay = relayStore.get(url.canonicalId);
         if (!relay?.relayedText) return null;
         // No publishedAt: the relay's own message time is not the post's.
         return { text: relay.relayedText, authorHandle: `@${url.username}` };
@@ -197,8 +198,12 @@ export async function main(): Promise<void> {
     resolver,
     logger: log.child('url-worker'),
     allowedAccounts: cfg.ingestion.allowedXAccounts,
+    relayStore,
     relaySourceId: RELAY_SOURCE_ID,
     onPost: async (post) => {
+      // Feed the health monitor so a relay that goes quiet is distinguishable
+      // from one that is broken, exactly as for the polled sources.
+      health.recordPoll({ sourceId: RELAY_SOURCE_ID, ok: true, itemCount: 1, latencyMs: 0 });
       await processPost(post);
     },
   });
@@ -211,12 +216,26 @@ export async function main(): Promise<void> {
     adminChannelIds: cfg.discord.adminInputChannelIds,
     logger: log.child('listener'),
     onUrl: (message) => {
-      pendingRelays.set(message.url.canonicalId, message);
       urlWorker.submit(message);
     },
   });
 
-  await listener.start();
+  // A separate gateway connection from the publisher, deliberately: the
+  // listener needs the privileged MessageContent intent, and if that is not
+  // enabled for the bot, login is REJECTED outright. Sharing one client would
+  // mean a missing portal setting takes down publishing too. Here it degrades
+  // to "no URL ingestion" and the RSS/EDGAR/X layers carry on.
+  let listenerStarted = false;
+  try {
+    await listener.start();
+    listenerStarted = true;
+  } catch (err) {
+    log.error(
+      'URL ingestion could not start; Scout will run without it. If this is an intent error, ' +
+        'enable MESSAGE CONTENT for the bot in the Discord developer portal.',
+      { err: err as Error },
+    );
+  }
   queue.start();
 
   // ── Polling ingestion (RSS / EDGAR / X timelines) ─────────────────────────
@@ -270,6 +289,12 @@ export async function main(): Promise<void> {
   scheduler.start(60_000);
   log.info('calendar loaded', { events: calendar.events.length });
 
+  // ── Retention ─────────────────────────────────────────────────────────────
+  // Every table Scout appends to needs a ceiling, or a process that runs for
+  // months slowly fills its disk and its percentile queries get slower.
+  const retention = createRetentionJob({ db, logger: log.child('retention') });
+  retention.start(6 * 3600_000);
+
   // ── Operational endpoints ──────────────────────────────────────────────────
   const server = createScoutServer({
     db,
@@ -285,10 +310,16 @@ export async function main(): Promise<void> {
       },
       {
         // Only a hard requirement when input channels are configured; a
-        // deployment running purely on RSS/EDGAR is legitimately ready.
+        // deployment running purely on RSS/EDGAR is legitimately ready. But if
+        // channels ARE configured and the listener is down, ingestion is dead
+        // and /ready must say so rather than reporting a healthy service that
+        // silently receives nothing.
         name: 'url-listener',
-        ok: listener.watching().length === 0 || listener.isReady(),
-        detail: `${listener.watching().length} channels watched`,
+        ok: listener.watching().length === 0 || (listenerStarted && listener.isReady()),
+        detail:
+          listener.watching().length === 0
+            ? 'no input channels configured'
+            : `${listener.watching().length} channels watched, ready=${listener.isReady()}`,
       },
     ],
   });
@@ -318,6 +349,7 @@ export async function main(): Promise<void> {
     ingest.stop();
     queue.stop();
     scheduler.stop();
+    retention.stop();
     health.stop();
     await listener.stop();
     await discord.stop();

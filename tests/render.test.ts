@@ -133,3 +133,83 @@ describe('timestamp formatting (§3, §10)', () => {
     expect(formatAlertTimestamp('2026-08-10T00:30:00.000Z')).toBe('8:30 PM · Aug. 9, 2026');
   });
 });
+
+describe('the metadata guard does not block legitimate alerts', () => {
+  // A wire service or filer naming itself inside a real headline is content,
+  // not a leak. Blocking these would throw the story away rather than publish
+  // it — the worst possible failure mode for a newswire.
+  it('publishes an EDGAR headline containing the filer name', () => {
+    const content = renderAlert(
+      buildAlert({
+        banner: 'EQUITY ALERT',
+        headline: '8-K - NVIDIA CORP (0001045810) (FILER)',
+        timestampIso: '2026-08-09T18:31:00.000Z',
+        body: 'Item 2.02 Results of Operations and Financial Condition.',
+      }),
+    );
+    expect(() => assertNoLeakedMetadata(content, ['NVIDIA CORP', 'SEC EDGAR'])).not.toThrow();
+  });
+
+  it('publishes a headline carrying a Reuters dateline', () => {
+    const content = renderAlert(
+      buildAlert({
+        banner: 'MACRO ALERT',
+        headline: 'FED HOLDS RATES STEADY',
+        timestampIso: '2026-08-09T18:31:00.000Z',
+        body: 'WASHINGTON (Reuters) - The Federal Reserve left rates unchanged.',
+      }),
+    );
+    expect(() => assertNoLeakedMetadata(content, ['Reuters', 'Reuters Business'])).not.toThrow();
+  });
+
+  it('still blocks the handle and the URL', () => {
+    expect(() =>
+      assertNoLeakedMetadata('MACRO ALERT\n\nsomething via @DeItaone', ['@DeItaone']),
+    ).toThrow();
+    expect(() =>
+      assertNoLeakedMetadata('MACRO ALERT\n\nhttps://x.com/i/status/1', ['https://x.com/i/status/1']),
+    ).toThrow();
+  });
+});
+
+describe('no score ever reaches a user-facing alert', () => {
+  it.each([
+    'MACRO ALERT\n\nFED CUTS RATES\n\n5:14 PM · May 24, 2026\n\nScore: 92',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nConfidence: 0.94',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nIMPORTANCE: 92',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nSENTIMENT: bullish',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nMARKET IMPACT: broad',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nAI SUMMARY: the Fed cut rates',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nSOURCE: @DeItaone',
+    'MACRO ALERT\n\nFED CUTS RATES\n\n92/100',
+    'MACRO ALERT\n\nFED CUTS RATES\n\nCRITICAL',
+  ])('rejects %s', (content) => {
+    expect(() => assertNoLeakedMetadata(content, [])).toThrow();
+  });
+
+  it('still allows a percentage that is part of the news', () => {
+    const content = renderAlert(
+      buildAlert({
+        banner: 'ECONOMIC ALERT',
+        headline: 'US CPI RISES 0.3% M/M VS 0.2% EXPECTED',
+        timestampIso: '2026-08-09T12:30:00.000Z',
+        body: 'Core CPI rose 0.2% on the month and 3.1% on the year.',
+      }),
+    );
+    expect(() => assertNoLeakedMetadata(content, [])).not.toThrow();
+  });
+
+  it('renders no score for a real alert built from a scored event', () => {
+    const content = renderAlert(
+      buildAlert({
+        banner: 'FED ALERT',
+        headline: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+        timestampIso: '2026-08-09T18:31:00.000Z',
+        body: 'The Committee cited deteriorating labour market conditions.',
+      }),
+    );
+    expect(content).not.toMatch(/\b(?:9[0-9]|100)\b\s*(?:CRITICAL|HIGH)/);
+    expect(content.toLowerCase()).not.toContain('score');
+    expect(content.toLowerCase()).not.toContain('confidence');
+  });
+});

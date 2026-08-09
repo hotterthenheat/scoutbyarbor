@@ -185,23 +185,53 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
   return { start, stop, send, edit, ensureChannels, isReady: () => ready };
 }
 
-/** Split on paragraph boundaries so an alert is never cut mid-line. */
+/**
+ * Split on paragraph boundaries so an alert is never cut mid-line. A single
+ * paragraph longer than the limit is split on whitespace rather than truncated
+ * — dropping the tail of a message is data loss, not formatting.
+ */
 export function splitForDiscord(content: string): string[] {
   if (content.length <= MESSAGE_LIMIT) return [content];
 
   const chunks: string[] = [];
   let current = '';
+
+  const flush = (): void => {
+    if (current) chunks.push(current);
+    current = '';
+  };
+
   for (const block of content.split('\n\n')) {
+    if (block.length > MESSAGE_LIMIT) {
+      flush();
+      for (const piece of hardSplit(block)) chunks.push(piece);
+      continue;
+    }
     const candidate = current ? `${current}\n\n${block}` : block;
     if (candidate.length > MESSAGE_LIMIT) {
-      if (current) chunks.push(current);
-      current = block.length > MESSAGE_LIMIT ? block.slice(0, MESSAGE_LIMIT) : block;
+      flush();
+      current = block;
     } else {
       current = candidate;
     }
   }
-  if (current) chunks.push(current);
-  return chunks;
+  flush();
+  return chunks.length > 0 ? chunks : [content.slice(0, MESSAGE_LIMIT)];
+}
+
+/** Breaks an over-long block on whitespace, falling back to a hard cut. */
+function hardSplit(block: string): string[] {
+  const out: string[] = [];
+  let rest = block;
+  while (rest.length > MESSAGE_LIMIT) {
+    const window = rest.slice(0, MESSAGE_LIMIT);
+    const breakAt = window.lastIndexOf(' ');
+    const cut = breakAt > MESSAGE_LIMIT * 0.5 ? breakAt : MESSAGE_LIMIT;
+    out.push(rest.slice(0, cut));
+    rest = rest.slice(cut).trimStart();
+  }
+  if (rest) out.push(rest);
+  return out;
 }
 
 /** Honours Discord's retry_after on 429; backs off on 5xx. */

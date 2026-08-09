@@ -47,9 +47,20 @@ export function buildAlert(input: BuildAlertInput): RenderableAlert {
  * used — it gives the banner and headline weight without adding furniture.
  */
 export function renderAlert(alert: RenderableAlert): string {
-  const blocks = [`**${alert.banner}**`, `**${alert.headline}**`, alert.timestamp];
-  if (alert.body.trim()) blocks.push(alert.body);
+  // The bolded segments are escaped: an unbalanced '*' inside a headline would
+  // otherwise swallow the rest of the message into italics.
+  const blocks = [
+    `**${escapeMarkdown(alert.banner)}**`,
+    `**${escapeMarkdown(alert.headline)}**`,
+    alert.timestamp,
+  ];
+  if (alert.body.trim()) blocks.push(escapeMarkdown(alert.body));
   return blocks.join('\n\n');
+}
+
+/** Neutralises Discord's formatting characters without mangling the text. */
+export function escapeMarkdown(text: string): string {
+  return text.replace(/([*_`~|\\])/g, '\\$1');
 }
 
 /** Muted, institutional. No category should read as decorative. */
@@ -79,20 +90,53 @@ export function renderAlertEmbed(alert: RenderableAlert): unknown {
 }
 
 /**
+ * Labels Scout must never add to an alert. These are patterns, not values: the
+ * concern is Scout annotating an alert with its own metadata, which always
+ * takes the form `LABEL:`.
+ */
+const FORBIDDEN_LABELS =
+  /(?:^|\n)\s*(?:source|author|handle|via|url|link|likes?|retweets?|reposts?|engagement|confidence|sentiment|market impact|ai summary|summary|score|importance|band|severity|relevance|novelty|magnitude|credibility)\s*:/i;
+
+/**
+ * Score-like annotations. The importance score is an internal routing mechanism
+ * and is never shown — not the number, not the band, not a percentage of
+ * confidence. A percentage inside the body is fine and expected ("CPI ROSE
+ * 0.3%"); what is banned is Scout labelling an alert with its own verdict.
+ */
+const FORBIDDEN_SCORE =
+  /(?:^|\n|\s)(?:score|confidence|importance|severity)\s*[:=]\s*\d|(?:^|\n)\s*(?:CRITICAL|HIGH|MODERATE|LOW|IGNORE)\s*$|\b\d{1,3}\s*\/\s*100\b/i;
+
+/**
  * Last line of defence before send. Throws rather than posting an alert that
  * carries backend metadata — a leak here is a product bug, not a cosmetic one.
+ *
+ * `forbidden` should carry only values Scout itself would have attached: the
+ * author handle and the original URL. It must NOT include the source's display
+ * name — wire services name themselves inside real headlines ("REUTERS: US,
+ * IRAN REACH AGREEMENT"), and treating that as a leak would throw away the
+ * story rather than publish it.
  */
 export function assertNoLeakedMetadata(rendered: string, forbidden: string[]): void {
   const haystack = rendered.toLowerCase();
+
   for (const raw of forbidden) {
     const needle = (raw ?? '').trim().toLowerCase();
     // Very short fragments would false-positive on ordinary words.
     if (needle.length < 4) continue;
+    // Only @handles and URLs belong here; a bare word is the caller's mistake.
+    if (!needle.startsWith('@') && !needle.includes('://')) continue;
     if (haystack.includes(needle)) {
       throw new Error(`alert would leak backend metadata: ${raw}`);
     }
   }
+
   if (/https?:\/\//i.test(rendered)) {
     throw new Error('alert would leak a URL');
+  }
+  if (FORBIDDEN_LABELS.test(rendered)) {
+    throw new Error('alert would carry a backend label');
+  }
+  if (FORBIDDEN_SCORE.test(rendered)) {
+    throw new Error('alert would show an internal score');
   }
 }

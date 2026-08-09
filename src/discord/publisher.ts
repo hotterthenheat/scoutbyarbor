@@ -44,13 +44,25 @@ export function createPublisher(deps: PublisherDeps): Publisher {
 
     const content = renderAlert(outcome.alert);
 
-    // Nothing backend-only may appear in a user-facing alert.
-    assertNoLeakedMetadata(content, [
-      outcome.newsEvent.author ?? '',
-      outcome.newsEvent.originalUrl ?? '',
-      outcome.raw.sourceName ?? '',
-      outcome.raw.handle ?? '',
-    ]);
+    // Nothing Scout attached may appear in a user-facing alert. Deliberately
+    // NOT the source's display name: wire services name themselves in real
+    // headlines ("REUTERS: US, IRAN REACH AGREEMENT"), and treating that as a
+    // leak would throw the story away instead of publishing it.
+    try {
+      assertNoLeakedMetadata(content, [
+        outcome.newsEvent.author ?? '',
+        outcome.newsEvent.originalUrl ?? '',
+        outcome.raw.handle ?? '',
+      ]);
+    } catch (err) {
+      // Refusing to publish is the correct outcome, but it must be loud: a
+      // silently dropped alert is worse than a noisy one.
+      logger.error('alert blocked by the metadata guard', {
+        newsEventId: outcome.newsEvent.id,
+        reason: (err as Error).message,
+      });
+      return { channels: [], messageIds };
+    }
 
     const cluster = outcome.cluster;
 

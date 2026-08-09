@@ -136,6 +136,24 @@ export function createMetricsRepo(db: SqliteDatabase): MetricsRepo {
         out[`${row.metric}.count`] = count;
         out[`${row.metric}.avg`] = count > 0 ? total / count : 0;
       }
+
+      // Per-category breakdown as `metric:CATEGORY`. Without this the pipeline
+      // report's category distribution silently renders empty, because it has
+      // nothing keyed by category to read.
+      const byCategory = stmts
+        .get<{ metric: string; category: string | null; total: number }>(`
+          SELECT metric, category, SUM("sum") AS total
+            FROM pipeline_metrics
+           WHERE bucket >= ? AND category IS NOT NULL AND category <> ''
+           GROUP BY metric, category
+        `)
+        .all(hourBucket(sinceIso));
+
+      for (const row of byCategory) {
+        if (!row.category) continue;
+        out[`${row.metric}:${row.category}`] = toNumber(row.total);
+      }
+
       return out;
     },
   };

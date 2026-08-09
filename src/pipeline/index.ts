@@ -32,7 +32,7 @@ import { routeAlert } from '../discord/router.js';
 import { buildAlert } from '../render/alert.js';
 import { computeLatency } from '../health/latency.js';
 import { newId, deterministicId } from '../util/id.js';
-import { isoNow, msBetween } from '../util/time.js';
+import { msBetween } from '../util/time.js';
 
 /**
  * The pipeline (§2):
@@ -131,8 +131,16 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       // more independent sources on the same story raises credibility (§19).
       if (dup.matchedEventId) {
         const cluster = db.events.byId(dup.matchedEventId);
-        if (cluster && !clusterHasSource(cluster, source.id)) {
-          cluster.sourceCount += 1;
+        if (cluster) {
+          // Corroboration counts distinct wires. A source reposting its own
+          // headline must not inflate the credibility of the event, so this
+          // checks actual membership rather than guessing from timing.
+          const sourceIds = new Set(cluster.sourceIds ?? []);
+          if (!sourceIds.has(source.id)) {
+            sourceIds.add(source.id);
+            cluster.sourceIds = [...sourceIds];
+            cluster.sourceCount = sourceIds.size;
+          }
           cluster.postCount += 1;
           cluster.lastUpdatedAt = startedAt.toISOString();
           db.events.update(cluster);
@@ -559,13 +567,6 @@ function buildRawPayload(
     latencyMs: msBetween(ctx.raw.eventTime, ctx.raw.ingestionTime),
     eventId: ctx.cluster?.id ?? null,
   };
-}
-
-function clusterHasSource(cluster: EventCluster, _sourceId: string): boolean {
-  // sourceCount is a count, not a set; the cluster module owns membership, so
-  // this is a conservative guard against double-counting a single source that
-  // reposts. Treat a repeat inside 60s as the same source contribution.
-  return msBetween(cluster.lastUpdatedAt, isoNow()) < 60_000;
 }
 
 function bannerFor(category: Category): string {
