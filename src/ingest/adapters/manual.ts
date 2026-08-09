@@ -44,11 +44,22 @@ export function createManualAdapter(): ManualAdapter {
 
     async poll(_sources: Source[]): Promise<IngestResult> {
       const posts = queue.splice(0, queue.length);
+
+      // One outcome per source, or health credits every submission to whichever
+      // source happened to be first in the queue.
+      const counts = new Map<string, number>();
+      for (const post of posts) {
+        counts.set(post.sourceId, (counts.get(post.sourceId) ?? 0) + 1);
+      }
+
       return {
         posts,
-        outcomes: posts.length
-          ? [{ sourceId: posts[0]!.sourceId, ok: true, itemCount: posts.length, latencyMs: 0 }]
-          : [],
+        outcomes: [...counts].map(([sourceId, itemCount]) => ({
+          sourceId,
+          ok: true,
+          itemCount,
+          latencyMs: 0,
+        })),
       };
     },
   };

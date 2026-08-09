@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sources (
   filter_profile      TEXT NOT NULL DEFAULT 'standard'
                         CHECK (filter_profile IN ('standard','strict')),
   official            INTEGER NOT NULL DEFAULT 0,
+  expected_interval_ms INTEGER NOT NULL DEFAULT 900000,
   notes               TEXT,
   created_at          TEXT NOT NULL,
   updated_at          TEXT NOT NULL

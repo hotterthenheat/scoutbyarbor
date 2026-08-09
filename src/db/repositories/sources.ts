@@ -49,6 +49,7 @@ interface SourceRow {
   geopolitical_score: number;
   filter_profile: string;
   official: number;
+  expected_interval_ms: number;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -74,7 +75,7 @@ interface SourceStatsRow {
 const SOURCE_COLUMNS = `
   id, name, handle, url, source_type, category, priority, enabled, verified,
   quality_score, noise_score, macro_score, micro_score, geopolitical_score,
-  filter_profile, official, notes, created_at, updated_at`;
+  filter_profile, official, expected_interval_ms, notes, created_at, updated_at`;
 
 /**
  * Counters `bumpStat` may touch, mapped to their column. An allowlist because
@@ -116,6 +117,7 @@ function toSource(row: SourceRow): Source {
     geopoliticalScore: toNumber(row.geopolitical_score, 50),
     filterProfile: row.filter_profile === 'strict' ? 'strict' : 'standard',
     official: fromSqliteBool(row.official),
+    expectedIntervalMs: toNumber(row.expected_interval_ms, 900_000),
     notes: toNullableText(row.notes),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
@@ -147,7 +149,7 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
   const upsertOne = (s: Source): void => {
     stmts.get(`
       INSERT INTO sources (${SOURCE_COLUMNS})
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         handle = excluded.handle,
@@ -182,6 +184,7 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
       s.geopoliticalScore,
       s.filterProfile,
       toSqliteBool(s.official),
+    s.expectedIntervalMs ?? 900_000,
       s.notes,
       s.createdAt,
       s.updatedAt,

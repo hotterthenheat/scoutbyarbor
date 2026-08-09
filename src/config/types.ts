@@ -24,8 +24,6 @@ export interface SourceConfigEntry {
   geopoliticalScore?: number;
   filterProfile?: 'standard' | 'strict';
   official?: boolean;
-  /** Poll interval override in ms; falls back to the adapter default. */
-  pollIntervalMs?: number;
   /** How long a silence is normal for this feed before health flags it (§23). */
   expectedIntervalMs?: number;
   notes?: string | null;

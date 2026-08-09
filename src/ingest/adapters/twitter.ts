@@ -16,6 +16,8 @@ import { isoNow } from '../../util/time.js';
 const API = 'https://api.x.com/2';
 const WINDOW_MS = 15 * 60_000;
 const MAX_RESULTS = 25;
+/** Cold-start window, matching the other adapters. */
+const FIRST_POLL_MAX_AGE_MS = 15 * 60_000;
 
 export interface TwitterAdapterDeps {
   bearerToken: string;
@@ -156,8 +158,15 @@ export function createTwitterAdapter(deps: TwitterAdapterDeps): IngestAdapter {
 
     posts.sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime));
 
-    // First poll seeds since_id without alerting on the backlog.
-    return { posts: isFirstPoll ? [] : posts, itemCount: tweets.length };
+    // The first poll seeds since_id. It emits only genuinely fresh posts, so a
+    // cold start does not replay a timeline but a restart mid-event still
+    // catches what landed in the gap.
+    return {
+      posts: isFirstPoll
+        ? posts.filter((p) => Date.now() - Date.parse(p.eventTime) <= FIRST_POLL_MAX_AGE_MS)
+        : posts,
+      itemCount: tweets.length,
+    };
   }
 
   return {

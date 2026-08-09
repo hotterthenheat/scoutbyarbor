@@ -34,7 +34,6 @@ const sourceEntrySchema = z.object({
   geopoliticalScore: z.number().min(0).max(100).optional(),
   filterProfile: z.enum(['standard', 'strict']).optional(),
   official: z.boolean().optional(),
-  pollIntervalMs: z.number().int().positive().optional(),
   expectedIntervalMs: z.number().int().positive().optional(),
   notes: z.string().nullable().optional(),
 });
@@ -81,10 +80,28 @@ export function toSource(entry: SourceConfigEntry, now: string): Source {
     geopoliticalScore: entry.geopoliticalScore ?? 50,
     filterProfile: entry.filterProfile ?? 'standard',
     official: entry.official ?? false,
+    expectedIntervalMs: entry.expectedIntervalMs ?? defaultIntervalFor(entry.sourceType),
     notes: entry.notes ?? null,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * How long a silence is normal, by source type, when the config does not say.
+ * An official release feed is naturally sparse; a newswire account is not.
+ */
+function defaultIntervalFor(sourceType: SourceConfigEntry['sourceType']): number {
+  switch (sourceType) {
+    case 'x':
+      return 900_000; // 15 minutes
+    case 'edgar':
+      return 3_600_000; // an hour
+    case 'rss':
+      return 86_400_000; // a day
+    default:
+      return 3_600_000;
+  }
 }
 
 // ── taxonomy.yaml ────────────────────────────────────────────────────────────

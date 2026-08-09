@@ -17,6 +17,8 @@ import { normalizeWhitespace, stripHtml } from '../../util/text.js';
 
 const MIN_REQUEST_SPACING_MS = 125; // ~8 req/s across the whole adapter
 const FIRST_POLL_ITEM_CAP = 10;
+/** Same cold-start rule as the RSS adapter: fresh only, never a backlog. */
+const FIRST_POLL_MAX_AGE_MS = 15 * 60_000;
 
 export interface EdgarAdapterDeps {
   userAgent: string;
@@ -108,7 +110,11 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
     }
 
     return {
-      posts: isFirstPoll ? posts.slice(0, FIRST_POLL_ITEM_CAP) : posts,
+      posts: isFirstPoll
+        ? posts
+            .filter((p) => Date.now() - Date.parse(p.eventTime) <= FIRST_POLL_MAX_AGE_MS)
+            .slice(0, FIRST_POLL_ITEM_CAP)
+        : posts,
       itemCount: entries.length,
     };
   }

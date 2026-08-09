@@ -67,7 +67,9 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
       lastErrorAt: null,
       lastError: null,
       consecutiveFailures: 0,
-      expectedIntervalMs: expectedIntervalFor(source?.sourceType),
+      // Per source, from config — a quarterly filing feed and a breaking-news
+      // account have very different ideas of what "quiet" means.
+      expectedIntervalMs: source?.expectedIntervalMs || DEFAULT_EXPECTED_INTERVAL_MS,
       updatedAt: now().toISOString(),
     };
     state.set(sourceId, fresh);
@@ -101,7 +103,11 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
       const current = currentFor(source.id);
       const previous = current.state;
 
-      const expected = current.expectedIntervalMs || DEFAULT_EXPECTED_INTERVAL_MS;
+      // Re-read from the source each tick so `npm run sources:sync` changes the
+      // threshold without a restart.
+      const expected =
+        source.expectedIntervalMs || current.expectedIntervalMs || DEFAULT_EXPECTED_INTERVAL_MS;
+      current.expectedIntervalMs = expected;
       const sinceItem = current.lastItemAt ? nowMs - Date.parse(current.lastItemAt) : Infinity;
       const everPolled = current.lastSuccessAt !== null || current.consecutiveFailures > 0;
 
@@ -192,16 +198,3 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
   return { recordPoll, evaluate, start, stop };
 }
 
-/** How long a silence is normal, by source type. */
-function expectedIntervalFor(sourceType: string | undefined): number {
-  switch (sourceType) {
-    case 'x':
-      return 900_000; // 15 minutes — a newswire account goes quiet overnight
-    case 'edgar':
-      return 3_600_000; // an hour
-    case 'rss':
-      return 86_400_000; // a day — official release feeds are naturally sparse
-    default:
-      return DEFAULT_EXPECTED_INTERVAL_MS;
-  }
-}

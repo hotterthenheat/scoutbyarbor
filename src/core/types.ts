@@ -144,6 +144,12 @@ export interface Source {
   filterProfile: 'standard' | 'strict';
   /** Official government / central-bank / exchange feed — high credibility (§9). */
   official: boolean;
+  /**
+   * How long a silence is normal for this feed before health flags it (§23).
+   * A quarterly filing feed and a breaking-news account have very different
+   * idea of "quiet", so this is per source rather than per type.
+   */
+  expectedIntervalMs: number;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

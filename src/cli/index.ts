@@ -6,7 +6,7 @@ import { createTwitterAdapter } from '../ingest/adapters/twitter.js';
 import { createRssAdapter } from '../ingest/adapters/rss.js';
 import { createEdgarAdapter } from '../ingest/adapters/edgar.js';
 import { parseXPostUrl } from '../ingest/adapters/manual.js';
-import { createDiscordClient } from '../discord/client.js';
+import { createDiscordClient, CHANNEL_ENV_VARS } from '../discord/client.js';
 import { createStatsCollector, formatSourceReport, formatPipelineReport } from '../health/stats.js';
 import { renderAlert } from '../render/alert.js';
 import { createLogger, setLogLevel } from '../util/logger.js';
@@ -118,7 +118,13 @@ async function sourcesVerify(path: string): Promise<void> {
   ];
 
   const results: SourceVerification[] = [];
+  const skipped: string[] = [];
   for (const source of db.sources.all()) {
+    if (source.sourceType === 'manual') {
+      // Nothing remote to check: a relay source is fed by Discord, not polled.
+      skipped.push(source.id);
+      continue;
+    }
     const adapter = adapters.find((a) => a.type === source.sourceType);
     if (!adapter?.verify) {
       results.push({
@@ -144,6 +150,10 @@ async function sourcesVerify(path: string): Promise<void> {
   for (const r of ok) process.stdout.write(`  ok    ${r.sourceId}  ${r.resolvedName ?? ''}\n`);
   process.stdout.write(`\nUNVERIFIED  ${bad.length}\n`);
   for (const r of bad) process.stdout.write(`  FAIL  ${r.sourceId}  ${r.detail}\n`);
+  if (skipped.length) {
+    process.stdout.write(`\nSKIPPED  ${skipped.length} (nothing remote to verify)\n`);
+    for (const id of skipped) process.stdout.write(`  --    ${id}\n`);
+  }
   if (bad.length) {
     process.stdout.write(
       `\nUnverified sources stay in the config but should not be trusted until they resolve.\n` +
@@ -189,8 +199,14 @@ async function discordSetup(): Promise<void> {
   const map = await discord.ensureChannels();
   process.stdout.write('\nPaste these into .env:\n\n');
   for (const [key, id] of Object.entries(map)) {
-    process.stdout.write(`DISCORD_CHANNEL_${key.toUpperCase()}=${id}\n`);
+    const envVar = CHANNEL_ENV_VARS[key as keyof typeof CHANNEL_ENV_VARS];
+    if (!envVar) continue;
+    process.stdout.write(`${envVar}=${id}\n`);
   }
+  process.stdout.write(
+    '\nThe three primary channels are NEWS, TRADING_FLOOR and SPX. The rest are the\n' +
+      'optional per-category fan-out — set CATEGORY_CHANNELS_ENABLED=true to use them.\n',
+  );
   await discord.stop();
 }
 

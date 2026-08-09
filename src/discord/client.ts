@@ -39,6 +39,30 @@ export const CHANNEL_NAMES: Record<ChannelKey, string> = {
   system: 'scout-system',
 };
 
+/**
+ * ChannelKey → the environment variable that carries its id. Explicit, because
+ * deriving it from the key produced DISCORD_CHANNEL_TRADINGFLOOR for
+ * `tradingFloor` — a name nothing reads, so the setup output quietly left the
+ * trading channel unconfigured.
+ */
+export const CHANNEL_ENV_VARS: Record<ChannelKey, string> = {
+  news: 'DISCORD_CHANNEL_NEWS',
+  tradingFloor: 'DISCORD_CHANNEL_TRADING_FLOOR',
+  spx: 'DISCORD_CHANNEL_SPX',
+  breaking: 'DISCORD_CHANNEL_BREAKING',
+  macro: 'DISCORD_CHANNEL_MACRO',
+  fed: 'DISCORD_CHANNEL_FED',
+  geopolitics: 'DISCORD_CHANNEL_GEOPOLITICS',
+  markets: 'DISCORD_CHANNEL_MARKETS',
+  equities: 'DISCORD_CHANNEL_EQUITIES',
+  earnings: 'DISCORD_CHANNEL_EARNINGS',
+  commodities: 'DISCORD_CHANNEL_COMMODITIES',
+  options: 'DISCORD_CHANNEL_OPTIONS',
+  crypto: 'DISCORD_CHANNEL_CRYPTO',
+  raw: 'DISCORD_CHANNEL_RAW',
+  system: 'DISCORD_CHANNEL_SYSTEM',
+};
+
 export interface SentMessage {
   channelId: string;
   messageId: string;

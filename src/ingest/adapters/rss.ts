@@ -19,6 +19,13 @@ import { normalizeWhitespace, stripHtml } from '../../util/text.js';
  */
 
 const FIRST_POLL_ITEM_CAP = 5;
+/**
+ * On the very first poll of a feed Scout has no watermark, so it would
+ * otherwise treat the whole page as new. Emitting nothing would mean a restart
+ * during a major event misses it; emitting everything means a cold boot floods
+ * the wire with a backlog. Only genuinely fresh items pass.
+ */
+const FIRST_POLL_MAX_AGE_MS = 15 * 60_000;
 
 export interface RssAdapterDeps {
   userAgent: string;
@@ -97,9 +104,19 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
       seeded: true,
     });
 
-    // On the very first poll, only take the most recent handful so Scout does
-    // not open with a wall of history.
-    const emitted = feedState.seeded ? posts : posts.slice(-FIRST_POLL_ITEM_CAP);
+    const emitted = feedState.seeded
+      ? posts
+      : posts
+          .filter((p) => Date.now() - Date.parse(p.eventTime) <= FIRST_POLL_MAX_AGE_MS)
+          .slice(-FIRST_POLL_ITEM_CAP);
+
+    if (!feedState.seeded && emitted.length < posts.length) {
+      deps.logger.info('seeded feed, skipped backlog', {
+        sourceId: source.id,
+        skipped: posts.length - emitted.length,
+      });
+    }
+
     return { posts: emitted, itemCount: items.length };
   }
 
