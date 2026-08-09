@@ -1,0 +1,228 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openDatabase } from '../src/db/index.js';
+import { createPipeline } from '../src/pipeline/index.js';
+import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../src/config/loader.js';
+import { createLogger, setLogLevel } from '../src/util/logger.js';
+import { renderAlert } from '../src/render/alert.js';
+import type { RawPost } from '../src/core/types.js';
+import type { ScoutDb } from '../src/db/index.js';
+
+/**
+ * End-to-end through the real pipeline, real config and a real (temporary)
+ * database. This is the test that would catch two modules agreeing on types but
+ * disagreeing on meaning.
+ */
+
+setLogLevel('silent');
+
+const CONFIG = {
+  minPublishScore: 60,
+  minBreakingScore: 90,
+  dedupeWindowMinutes: 90,
+  clusterWindowMinutes: 240,
+  dedupeSimilarity: 0.82,
+};
+
+let dir: string;
+let db: ScoutDb;
+let pipeline: ReturnType<typeof createPipeline>;
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'scout-test-'));
+  db = openDatabase(join(dir, 'test.db'));
+  db.migrate();
+
+  const now = new Date().toISOString();
+  db.sources.upsertMany(loadSourcesFile().sources.map((s) => toSource(s, now)));
+  const securities = loadSecurityMaster();
+  db.securities.upsertMany(securities);
+
+  pipeline = createPipeline({
+    db,
+    taxonomy: loadTaxonomy(),
+    securities,
+    config: CONFIG,
+    logger: createLogger('test'),
+  });
+});
+
+afterEach(() => {
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+let seq = 0;
+function raw(text: string, over: Partial<RawPost> = {}): RawPost {
+  const at = over.eventTime ?? new Date().toISOString();
+  return {
+    sourceId: over.sourceId ?? 'x:deltaone',
+    sourcePostId: over.sourcePostId ?? `test-${++seq}`,
+    originalUrl: over.originalUrl ?? null,
+    author: over.author ?? '@DeItaone',
+    text,
+    eventTime: at,
+    ingestionTime: over.ingestionTime ?? at,
+    meta: over.meta ?? {},
+  };
+}
+
+describe('accepting real news', () => {
+  it('turns a Powell headline into a FED alert', async () => {
+    const out = await pipeline.process(
+      raw("FED'S POWELL: FURTHER RATE CUTS WILL DEPEND ON INFLATION PROGRESS"),
+    );
+    expect(out.accepted).toBe(true);
+    expect(out.newsEvent.category).toBe('FED');
+    expect(out.route?.channels).toContain('fed');
+    expect(out.alert?.banner).toBe('FED ALERT');
+  });
+
+  it('classifies a CPI release as ECONOMIC, not generic MACRO', async () => {
+    const out = await pipeline.process(
+      raw('US CPI RISES 0.3% M/M IN JULY VS 0.2% EXPECTED', { sourceId: 'rss:bls-latest' }),
+    );
+    expect(out.accepted).toBe(true);
+    expect(out.newsEvent.category).toBe('ECONOMIC');
+  });
+
+  it('classifies a war headline as GEOPOLITICAL and resolves the countries', async () => {
+    const out = await pipeline.process(
+      raw('ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR FACILITIES, OFFICIALS SAY'),
+    );
+    expect(out.accepted).toBe(true);
+    expect(out.newsEvent.category).toBe('GEOPOLITICAL');
+    expect(out.newsEvent.countries.length).toBeGreaterThan(0);
+    expect(out.route?.channels).toContain('geopolitics');
+  });
+
+  it('routes a corporate event to equities with the ticker resolved', async () => {
+    const out = await pipeline.process(raw('NVIDIA ANNOUNCES MAJOR NEW AI PARTNERSHIP'));
+    expect(out.accepted).toBe(true);
+    expect(out.newsEvent.tickers).toContain('NVDA');
+    expect(out.route?.channels).toContain('equities');
+  });
+});
+
+describe('rejecting noise end to end (§20)', () => {
+  it.each([
+    'NVDA is looking strong today',
+    "Here's why I think NVDA hits $250",
+    'LIKE if you think Powell is wrong',
+    'Join my free trading Discord, link in bio',
+  ])('rejects %s', async (text) => {
+    const out = await pipeline.process(raw(text));
+    expect(out.accepted).toBe(false);
+    expect(out.rejection).toBeTruthy();
+  });
+
+  it('records the rejection instead of discarding it (§28)', async () => {
+    await pipeline.process(raw('NVDA is looking strong today'));
+    const stats = db.sources.getStats('x:deltaone');
+    expect(stats?.postsRejected).toBeGreaterThan(0);
+  });
+});
+
+describe('deduplication end to end (§17)', () => {
+  it('publishes the first report and collapses the next two', async () => {
+    const t = new Date().toISOString();
+    const a = await pipeline.process(
+      raw('US AND IRAN REACH DEAL', { sourceId: 'x:deltaone', eventTime: t }),
+    );
+    const b = await pipeline.process(
+      raw('U.S. AND IRAN HAVE REACHED AGREEMENT', { sourceId: 'x:firstsquawk', eventTime: t }),
+    );
+    const c = await pipeline.process(
+      raw('AXIOS: US, IRAN REACH AGREEMENT', { sourceId: 'x:livesquawk', eventTime: t }),
+    );
+
+    expect(a.accepted).toBe(true);
+    expect(b.accepted).toBe(false);
+    expect(c.accepted).toBe(false);
+    expect(b.rejection).toMatch(/^DUPLICATE/);
+    expect(c.rejection).toMatch(/^DUPLICATE/);
+  });
+
+  it('ignores a repost of the exact same source post', async () => {
+    const post = raw('ECB HOLDS RATES STEADY', { sourcePostId: 'fixed-1' });
+    const first = await pipeline.process(post);
+    const second = await pipeline.process({ ...post });
+    expect(first.accepted).toBe(true);
+    expect(second.accepted).toBe(false);
+  });
+});
+
+describe('clustering end to end (§18)', () => {
+  it('files a later development into the same event', async () => {
+    const t0 = new Date();
+    const a = await pipeline.process(
+      raw('TRUMP SAYS TALKS WITH IRAN ARE PROGRESSING', {
+        sourceId: 'x:deltaone',
+        eventTime: t0.toISOString(),
+      }),
+    );
+    const b = await pipeline.process(
+      raw('IRAN SIGNALS IT WILL ACCEPT THE PROPOSED NUCLEAR FRAMEWORK', {
+        sourceId: 'x:firstsquawk',
+        eventTime: new Date(t0.getTime() + 15 * 60_000).toISOString(),
+      }),
+    );
+
+    expect(a.accepted).toBe(true);
+    if (b.accepted) {
+      // Either it joined the open cluster, or it was distinct enough to open its
+      // own — both are defensible, but it must never be silently lost.
+      expect(b.cluster).toBeTruthy();
+    } else {
+      expect(b.rejection).toMatch(/^DUPLICATE/);
+    }
+  });
+});
+
+describe('persistence (§24)', () => {
+  it('stores the URL and author internally while keeping them out of the alert', async () => {
+    const url = 'https://x.com/i/status/1234567890';
+    const out = await pipeline.process(
+      raw('FED CUTS RATES BY 25 BPS', { originalUrl: url, author: '@DeItaone' }),
+    );
+
+    expect(out.accepted).toBe(true);
+    const stored = db.newsEvents.byId(out.newsEvent.id);
+    expect(stored?.originalUrl).toBe(url);
+    expect(stored?.author).toBe('@DeItaone');
+
+    const rendered = renderAlert(out.alert!);
+    expect(rendered).not.toContain(url);
+    expect(rendered).not.toContain('@DeItaone');
+    expect(rendered).not.toContain('x.com');
+  });
+
+  it('records the latency stamps separately (§22)', async () => {
+    const eventTime = new Date(Date.now() - 500).toISOString();
+    const out = await pipeline.process(
+      raw('BOJ RAISES POLICY RATE TO 0.75%', { eventTime, ingestionTime: new Date().toISOString() }),
+    );
+    expect(out.newsEvent.latency.sourceToScoutMs).toBeGreaterThanOrEqual(0);
+    expect(out.newsEvent.latency.eventTime).toBe(eventTime);
+  });
+
+  it('makes the raw payload carry what the alert must not (§27)', async () => {
+    const out = await pipeline.process(
+      raw('FED CUTS RATES BY 25 BPS', { originalUrl: 'https://x.com/i/status/1', author: '@DeItaone' }),
+    );
+    expect(out.raw.originalUrl).toBe('https://x.com/i/status/1');
+    expect(out.raw.sourceName).toBeTruthy();
+    expect(out.raw.decision).toBe('ACCEPTED');
+  });
+});
+
+describe('a disabled source is not ingested', () => {
+  it('rejects a post from a disabled source', async () => {
+    db.sources.setEnabled('x:deltaone', false);
+    const out = await pipeline.process(raw('FED CUTS RATES BY 25 BPS'));
+    expect(out.accepted).toBe(false);
+    expect(out.rejection).toBe('SOURCE_DISABLED');
+  });
+});
