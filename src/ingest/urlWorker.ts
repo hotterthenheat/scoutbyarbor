@@ -163,6 +163,11 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
 
     db.posts.upsert({
       ...resolved,
+      platform: url.platform,
+      // A relayed post has no upstream service in front of it; the webhook path
+      // is what fills this in.
+      upstreamSource: null,
+      receivedAt: discordReceivedAt ?? createdAt,
       discordReceivedAt,
       createdAt,
     });

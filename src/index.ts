@@ -10,7 +10,12 @@ import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue } from './ingest/queue.js';
 import { createUrlWorker, createRelayStore, isFreshForTrading } from './ingest/urlWorker.js';
-import { createXApiResolver, createRelayResolver, createChainResolver } from './ingest/resolver.js';
+import {
+  createXApiResolver,
+  createRelayResolver,
+  createStoredPostResolver,
+  createChainResolver,
+} from './ingest/resolver.js';
 import { createDiscordClient } from './discord/client.js';
 import { createPublisher } from './discord/publisher.js';
 import { createHealthMonitor } from './health/monitor.js';
@@ -229,6 +234,21 @@ export async function main(): Promise<void> {
   // the relay carried nothing usable, and only when it is configured at all.
   const resolver = createChainResolver(
     [
+      // Content already persisted by the webhook path. Resolves with no
+      // retrieval at all, which is how a pushed event joins the identical
+      // processor a relayed one uses.
+      createStoredPostResolver((canonicalId) => {
+        const stored = db.posts.byId(canonicalId);
+        if (!stored || stored.retrievalSource !== 'webhook') return null;
+        return {
+          author: stored.author,
+          authorHandle: stored.authorHandle,
+          text: stored.text,
+          publishedAt: stored.publishedAt,
+          canonicalUrl: stored.canonicalUrl,
+          retrievalSource: stored.retrievalSource,
+        };
+      }),
       createRelayResolver((url) => {
         const relay = relayStore.get(url.canonicalId);
         return relay ? { rawMessage: relay.rawMessage } : null;
@@ -385,6 +405,48 @@ export async function main(): Promise<void> {
     logger: log.child('http'),
     port: cfg.port,
     startedAt,
+    webhook: cfg.webhook.token
+      ? {
+          token: cfg.webhook.token,
+          // Persist, queue, return. Nothing here awaits Discord, Sprout,
+          // classification or any external call — the upstream source is
+          // acknowledged as soon as the event is durable.
+          accept: (event, key) => {
+            const now = isoNow();
+
+            db.posts.upsert({
+              postId: event.canonicalId,
+              author: event.upstreamSource,
+              authorHandle: event.handle,
+              text: event.text,
+              // Exactly as supplied, including null. The receipt time below is
+              // a separate column and is never promoted into this one.
+              publishedAt: event.publishedAt,
+              canonicalUrl: event.url,
+              media: [],
+              retrievalSource: 'webhook',
+              platform: event.platform,
+              upstreamSource: event.upstreamSource,
+              receivedAt: event.receivedAt,
+              discordReceivedAt: null,
+              createdAt: now,
+            });
+
+            const job = queue.enqueue({
+              postId: event.canonicalId,
+              url: event.url,
+              sourceChannel: `webhook:${key}`,
+              sourceKind: 'webhook',
+            });
+
+            return {
+              accepted: job !== null,
+              duplicate: job === null,
+              eventId: event.canonicalId,
+            };
+          },
+        }
+      : undefined,
     readiness: () => [
       { name: 'database', ok: databaseReachable(), detail: cfg.databasePath },
       {
@@ -421,6 +483,7 @@ export async function main(): Promise<void> {
 
   log.info('scout is live', {
     watching: listener.watching().length,
+    webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
     tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),
   });

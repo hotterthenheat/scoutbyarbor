@@ -11,6 +11,12 @@ import type { ResolvedPost } from '../../ingest/resolver.js';
  */
 
 export interface StoredPost extends ResolvedPost {
+  /** Platform the post came from, when known. */
+  platform: string | null;
+  /** Upstream relay/service that delivered it — not the original account. */
+  upstreamSource: string | null;
+  /** When Scout received it. Never promoted into publishedAt. */
+  receivedAt: string | null;
   discordReceivedAt: string | null;
   createdAt: string;
 }
@@ -19,6 +25,8 @@ export interface PostRepo {
   upsert(post: StoredPost): void;
   byId(postId: string): StoredPost | null;
   exists(postId: string): boolean;
+  /** Most recent receipt time for a retrieval source, for health reporting. */
+  lastReceivedAt(retrievalSource: string): string | null;
   recent(limit: number): StoredPost[];
 }
 
@@ -30,12 +38,16 @@ interface PostRow {
   published_at: string | null;
   canonical_url: string | null;
   retrieval_source: string;
+  platform: string | null;
+  upstream_source: string | null;
+  received_at: string | null;
   discord_received_at: string | null;
   created_at: string;
 }
 
 const COLUMNS = `post_id, author, author_handle, text, published_at, canonical_url,
-                 retrieval_source, discord_received_at, created_at`;
+                 retrieval_source, platform, upstream_source, received_at,
+                 discord_received_at, created_at`;
 
 function toPost(row: PostRow): StoredPost {
   return {
@@ -47,6 +59,9 @@ function toPost(row: PostRow): StoredPost {
     canonicalUrl: toText(row.canonical_url),
     media: [],
     retrievalSource: toText(row.retrieval_source, 'unknown'),
+    platform: toNullableText(row.platform),
+    upstreamSource: toNullableText(row.upstream_source),
+    receivedAt: toNullableText(row.received_at),
     discordReceivedAt: toNullableText(row.discord_received_at),
     createdAt: toText(row.created_at),
   };
@@ -59,14 +74,17 @@ export function createPostRepo(db: SqliteDatabase): PostRepo {
     upsert(post: StoredPost): void {
       stmts
         .get(
-          `INSERT INTO posts (${COLUMNS}) VALUES (?,?,?,?,?,?,?,?,?)
+          `INSERT INTO posts (${COLUMNS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(post_id) DO UPDATE SET
              author = excluded.author,
              author_handle = excluded.author_handle,
              text = excluded.text,
              published_at = COALESCE(excluded.published_at, posts.published_at),
              canonical_url = excluded.canonical_url,
-             retrieval_source = excluded.retrieval_source`,
+             retrieval_source = excluded.retrieval_source,
+             platform = COALESCE(excluded.platform, posts.platform),
+             upstream_source = COALESCE(excluded.upstream_source, posts.upstream_source),
+             received_at = COALESCE(posts.received_at, excluded.received_at)`,
         )
         .run(
           post.postId,
@@ -76,6 +94,9 @@ export function createPostRepo(db: SqliteDatabase): PostRepo {
           post.publishedAt,
           post.canonicalUrl,
           post.retrievalSource,
+          post.platform ?? null,
+          post.upstreamSource ?? null,
+          post.receivedAt ?? post.discordReceivedAt ?? null,
           post.discordReceivedAt,
           post.createdAt,
         );
@@ -88,6 +109,16 @@ export function createPostRepo(db: SqliteDatabase): PostRepo {
 
     exists(postId: string): boolean {
       return Boolean(stmts.get(`SELECT 1 FROM posts WHERE post_id = ?`).get(postId));
+    },
+
+    lastReceivedAt(retrievalSource: string): string | null {
+      const row = stmts
+        .get<{ received_at: string | null }>(
+          `SELECT received_at FROM posts WHERE retrieval_source = ?
+            ORDER BY received_at DESC LIMIT 1`,
+        )
+        .get(retrievalSource);
+      return toNullableText(row?.received_at);
     },
 
     recent(limit: number): StoredPost[] {

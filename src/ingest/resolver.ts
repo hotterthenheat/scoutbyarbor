@@ -224,6 +224,48 @@ export function createRelayResolver(lookup: (url: DetectedUrl) => RelayPayload |
 }
 
 /**
+ * Reads content already persisted by an earlier stage. The webhook path stores
+ * the event before queueing it, so this resolver returns it without any
+ * retrieval at all — which is what lets a pushed event and a relayed one run
+ * through one identical processor rather than two.
+ */
+export function createStoredPostResolver(
+  lookup: (canonicalId: string) => StoredContent | null,
+): PostResolver {
+  return {
+    name: 'stored',
+    available: () => true,
+
+    async resolve(url: DetectedUrl): Promise<ResolvedPost> {
+      const stored = lookup(url.canonicalId);
+      if (!stored?.text?.trim()) {
+        throw new RetrievalError('no stored content for this post', false);
+      }
+      return {
+        postId: url.canonicalId,
+        author: stored.author,
+        authorHandle: stored.authorHandle,
+        text: stored.text,
+        // Passed through untouched, including null.
+        publishedAt: stored.publishedAt,
+        canonicalUrl: stored.canonicalUrl || url.canonicalUrl,
+        media: [],
+        retrievalSource: stored.retrievalSource,
+      };
+    },
+  };
+}
+
+export interface StoredContent {
+  author: string | null;
+  authorHandle: string | null;
+  text: string;
+  publishedAt: string | null;
+  canonicalUrl: string;
+  retrievalSource: string;
+}
+
+/**
  * Tries each provider in order and returns the first success. Providers that
  * are unavailable (no credential) are skipped rather than counted as failures,
  * so a missing X token does not mask a working relay.

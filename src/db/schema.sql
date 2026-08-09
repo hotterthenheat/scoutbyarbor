@@ -248,6 +248,11 @@ CREATE TABLE IF NOT EXISTS latency_samples (
   source_id       TEXT NOT NULL,
   source_to_scout_ms INTEGER,
   scout_to_discord_ms INTEGER,
+  -- How long the event sat in the queue before a worker picked it up, and how
+  -- long the Sprout hand-off took. Together with the columns above these
+  -- separate "the upstream source was slow" from "Scout was slow".
+  queue_wait_ms   INTEGER,
+  sprout_ms       INTEGER,
   total_ms        INTEGER,
   recorded_at     TEXT NOT NULL
 );
@@ -274,12 +279,22 @@ CREATE TABLE IF NOT EXISTS posts (
   -- time is NEVER substituted here.
   published_at     TEXT,
   canonical_url    TEXT,
+  -- How the content reached Scout: 'webhook', 'discord-relay', 'x-api-v2'.
   retrieval_source TEXT NOT NULL DEFAULT 'unknown',
+  -- The platform the post came FROM, and the upstream relay/service that
+  -- pushed it. Kept apart from author/handle, which describe the original
+  -- account — conflating them makes debugging a bad feed much harder.
+  platform         TEXT,
+  upstream_source  TEXT,
+  -- When Scout received it. Deliberately a different column from published_at,
+  -- which stays NULL when the true publication time is unknown.
+  received_at      TEXT,
   discord_received_at TEXT,
   created_at       TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_posts_published ON posts(published_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_retrieval ON posts(retrieval_source, received_at DESC);
 
 -- Per-destination delivery log, so a partial Discord outage is visible and
 -- retryable rather than silent.

@@ -41,6 +41,11 @@ services:
       - key: DISCORD_GUILD_ID
         sync: false
 
+      # ── Webhook ingestion. Set this and give the upstream source the URL
+      # https://<scout-domain>/webhook/news plus this token. ──
+      - key: SCOUT_WEBHOOK_TOKEN
+        sync: false
+
       # ── OPTIONAL. Scout runs fully without this ──
       # The primary ingestion path reads the content the permitted relay already
       # posted alongside the link, which needs no credential. An X API resolver

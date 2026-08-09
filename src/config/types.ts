@@ -152,6 +152,10 @@ export interface ScoutEnv {
     /** Only these X accounts enter the production pipeline. Empty = allow all. */
     allowedXAccounts: string[];
   };
+  webhook: {
+    /** Empty leaves POST /webhook/news disabled. Never logged. */
+    token: string;
+  };
   sprout: {
     /** A post older than this is archived, never sent as a fresh trading event. */
     maxAgeMinutes: number;

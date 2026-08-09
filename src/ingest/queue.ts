@@ -16,7 +16,7 @@ import { isoNow } from '../util/time.js';
  */
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'FAILED_RETRIEVAL' | 'SKIPPED';
-export type SourceKind = 'news' | 'truth_social' | 'admin';
+export type SourceKind = 'news' | 'truth_social' | 'admin' | 'webhook';
 
 export interface Job {
   jobId: string;

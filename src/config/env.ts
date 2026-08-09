@@ -85,6 +85,7 @@ const schema = z.object({
   INGEST_CONCURRENCY: numeric(4),
   ALLOWED_X_ACCOUNTS: list(),
   SPROUT_MAX_AGE_MINUTES: numeric(30),
+  SCOUT_WEBHOOK_TOKEN: z.string().default(''),
   SPROUT_URL: z.string().default(''),
   SPROUT_TOKEN: z.string().default(''),
   SPROUT_TIMEOUT_MS: numeric(10_000),
@@ -186,6 +187,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       maxAttempts: parsed.RESOLVE_MAX_ATTEMPTS,
       concurrency: parsed.INGEST_CONCURRENCY,
       allowedXAccounts: parsed.ALLOWED_X_ACCOUNTS.map((a) => a.replace(/^@/, '').toLowerCase()),
+    },
+    webhook: {
+      token: parsed.SCOUT_WEBHOOK_TOKEN,
     },
     sprout: {
       maxAgeMinutes: parsed.SPROUT_MAX_AGE_MINUTES,

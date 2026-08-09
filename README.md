@@ -264,6 +264,66 @@ persisted, so a restart does not repeat them.
 
 ---
 
+## Webhook ingestion
+
+An upstream source can push posts straight into Scout:
+
+```
+POST https://<scout-domain>/webhook/news
+Authorization: Bearer <SCOUT_WEBHOOK_TOKEN>
+X-Idempotency-Key: x-2058552301120360937        (optional; the id is used otherwise)
+
+{
+  "v": 1,
+  "id": "x-2058552301120360937",
+  "platform": "x",
+  "source": "DeItaone",
+  "handle": "@DeItaone",
+  "text": "NO NUCLEAR IRAN\n\nTrump called the Obama-era Iran nuclear deal...",
+  "published_at": "2026-05-24T17:14:00Z",
+  "url": "https://x.com/DeItaone/status/2058552301120360937"
+}
+```
+
+Truth Social uses the same endpoint with `"platform": "truth_social"`.
+
+The request is authenticated (constant-time compare, `401` on failure),
+validated (`400` on a malformed payload), persisted, queued, and acknowledged
+with **`202`** — it never waits for Discord, Sprout, classification or any
+external call. A retry of an already-accepted event returns `200 duplicate`
+without producing a second alert.
+
+**Nothing downstream knows it was a webhook.** The event joins the identical
+processor a relayed post uses — same dedupe, classifier, router, renderer,
+calendar and Sprout path. There is no webhook-specific branch anywhere after
+ingestion, which is the whole point:
+
+```
+Webhook ──────────────┐
+                      ↓
+Discord relay ───→ Normalizer → Dedupe → Classifier → Router ─┬→ #scout-news
+                                                              ├→ #trading-floor
+                                                              ├→ #spx-trading
+                                                              └→ Sprout
+```
+
+Dedupe is by the supplied id, normalised to the same key the relay path derives
+from a URL (`x-123`, `x:123` and a bare `123` all become `x:123`), enforced by a
+database uniqueness constraint. The same post pushed twice, sent by two upstream
+sources, arriving after a restart, or seen through **both** the webhook and the
+Discord relay produces exactly one canonical event and one alert.
+
+`published_at` is stored exactly as supplied and is never replaced by the
+receipt time — `received_at` is its own column. An event with no publication
+time still appears in `#scout-news` but is held from Sprout with the reason
+`publication time unknown`.
+
+Webhook counters and liveness appear in `/metrics`. Silence there is reported as
+`NO_RECENT_EVENTS`, never as an outage: an upstream source with nothing to say
+looks exactly like a quiet news period.
+
+---
+
 ## 24/7 URL ingestion
 
 Scout watches configured Discord channels for X post URLs and processes them as
@@ -360,9 +420,10 @@ consuming Scout downstream can therefore distinguish "no news" from "no feed".
 **HTTP surface** for a hosted deployment:
 
 ```
-GET /health    liveness
-GET /ready     503 when a dependency ingestion needs is down
-GET /metrics   queue depth, latency percentiles, feed health, throughput
+GET  /health        liveness
+GET  /ready         503 when a dependency ingestion needs is down
+GET  /metrics       queue depth, latency percentiles, feed health, throughput
+POST /webhook/news  authenticated push ingestion (202 on accept)
 ```
 
 `/ready` failing is the deployment-level version of the same principle as source
