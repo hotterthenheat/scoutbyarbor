@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { openDatabase, type ScoutDb } from '../src/db/index.js';
 import { createPipeline } from '../src/pipeline/index.js';
 import { createPublisher } from '../src/discord/publisher.js';
-import { createJobQueue } from '../src/ingest/queue.js';
-import { createUrlWorker, createRelayStore, isFreshForTrading } from '../src/ingest/urlWorker.js';
+import { createJobQueue, parseRelayPayload } from '../src/ingest/queue.js';
+import { createUrlWorker, isFreshForTrading } from '../src/ingest/urlWorker.js';
 import { createRelayResolver, createXApiResolver, createChainResolver } from '../src/ingest/resolver.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../src/config/loader.js';
 import { createLogger, setLogLevel } from '../src/util/logger.js';
@@ -76,15 +76,14 @@ afterEach(() => {
 
 /** Wires the real components exactly as src/index.ts does, minus the network. */
 function buildScout(sent: Sent[], opts: { bearerToken?: string } = {}) {
-  const relayStore = createRelayStore();
-
   // Relay FIRST, API second — and with no token the API provider reports itself
-  // unavailable and is skipped rather than failing.
+  // unavailable and is skipped rather than failing. The relay payload is read
+  // from the job row, exactly as src/index.ts does.
   const resolver = createChainResolver(
     [
       createRelayResolver((url) => {
-        const relay = relayStore.get(url.canonicalId);
-        return relay ? { rawMessage: relay.rawMessage } : null;
+        const payload = parseRelayPayload(db.jobs.relayPayload(url.canonicalId));
+        return payload ? { rawMessage: payload.rawMessage } : null;
       }),
       createXApiResolver({ bearerToken: opts.bearerToken ?? '', timeoutMs: 1000, logger: log }),
     ],
@@ -131,7 +130,6 @@ function buildScout(sent: Sent[], opts: { bearerToken?: string } = {}) {
     resolver,
     logger: log,
     allowedAccounts: [],
-    relayStore,
     relaySourceId: 'relay:discord-urls',
     onPost: async (post) => {
       const outcome = await pipeline.process(post);

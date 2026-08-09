@@ -211,6 +211,96 @@ describe('duplicates and rejections', () => {
   });
 });
 
+/**
+ * `/metrics` is unauthenticated on a public Render hostname, which is a
+ * deliberate choice — the operator needs it to verify the disk and watch
+ * latency. That choice is only safe while the endpoint carries operational
+ * numbers and nothing else, so this is the guard on it.
+ */
+describe('/metrics carries operational data and nothing else', () => {
+  /** Collects every key at every depth. */
+  function allKeys(value: unknown, into: string[] = []): string[] {
+    if (Array.isArray(value)) {
+      for (const item of value) allKeys(item, into);
+    } else if (value && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value)) {
+        into.push(k);
+        allKeys(v, into);
+      }
+    }
+    return into;
+  }
+
+  it('exposes no field that could name a credential', async () => {
+    const body = await metrics();
+
+    const secretish =
+      /token|secret|password|bearer|authorization|api[_-]?key|credential|cookie|header|env/i;
+    const offenders = allKeys(body).filter((k) => secretish.test(k));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('does not echo raw news text, handles or channel ids', async () => {
+    // Everything a post carries goes into the database; none of it belongs in
+    // an operational endpoint.
+    db.posts.upsert({
+      postId: 'x:1',
+      author: 'Walter Bloomberg',
+      authorHandle: '@DeItaone',
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+      publishedAt: NOW,
+      canonicalUrl: 'https://x.com/DeItaone/status/1',
+      media: [],
+      retrievalSource: 'webhook',
+      platform: 'x',
+      upstreamSource: 'relay',
+      receivedAt: NOW,
+      discordReceivedAt: null,
+      createdAt: NOW,
+    });
+    db.deliveries.record({
+      eventId: 'ev-1',
+      destination: 'news',
+      status: 'SENT',
+      discordMessageId: '111222333444555666',
+      sentAt: NOW,
+      error: null,
+      createdAt: NOW,
+    });
+
+    const res = await fetch(`http://127.0.0.1:${server.port()}/metrics`);
+    const raw = await res.text();
+
+    expect(raw).not.toContain('FED CUTS RATES');
+    expect(raw).not.toContain('DeItaone');
+    expect(raw).not.toContain('Walter Bloomberg');
+    // Discord message and channel ids are snowflakes; none should appear.
+    expect(raw).not.toContain('111222333444555666');
+    // The destination KEY is a channel name, which is fine and is the point.
+    expect(raw).toContain('news');
+  });
+
+  it('reports only the shape the operator was promised', async () => {
+    const body = await metrics();
+
+    expect(Object.keys(body).sort()).toEqual([
+      'deliveries',
+      'deliveriesByDestination',
+      'events',
+      'latencyMs',
+      'queue',
+      'replay',
+      'sources',
+      'sprout',
+      'storage',
+      'time',
+      'webhook',
+      'window',
+    ]);
+  });
+});
+
 describe('every signal worth watching is readable from one request', () => {
   it('exposes all ten', async () => {
     const body = await metrics();

@@ -7,7 +7,7 @@ import { createScoutServer, type ScoutServer } from '../src/server/http.js';
 import { createPipeline } from '../src/pipeline/index.js';
 import { createPublisher } from '../src/discord/publisher.js';
 import { createJobQueue, type JobQueue } from '../src/ingest/queue.js';
-import { createUrlWorker, createRelayStore, isFreshForTrading } from '../src/ingest/urlWorker.js';
+import { createUrlWorker, isFreshForTrading } from '../src/ingest/urlWorker.js';
 import { createStoredPostResolver, createChainResolver } from '../src/ingest/resolver.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../src/config/loader.js';
 import { createLogger, setLogLevel } from '../src/util/logger.js';
@@ -161,7 +161,6 @@ beforeEach(async () => {
     resolver,
     logger: log,
     allowedAccounts: [],
-    relayStore: createRelayStore(),
     relaySourceId: 'relay:discord-urls',
     onPost: async (post) => {
       const outcome = await pipeline.process(post);

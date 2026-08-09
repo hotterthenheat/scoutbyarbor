@@ -333,6 +333,19 @@ CREATE TABLE IF NOT EXISTS processing_jobs (
   attempts        INTEGER NOT NULL DEFAULT 0,
   last_error      TEXT,
   next_attempt_at TEXT,
+  -- Everything needed to process this job WITHOUT the message that created it.
+  --
+  -- A relayed post's content arrives once, in a Discord message Scout never
+  -- sees again — the listener subscribes to new messages and does no history
+  -- scraping. Holding that content only in memory meant a restart left a job
+  -- row that could never be completed: the resolver chain would find nothing,
+  -- fail non-retriably, and the news item was gone. So the payload is written
+  -- in the same INSERT as the job itself, and a queued job is recoverable
+  -- entirely from this table.
+  --
+  -- Cleared only on successful completion. A failed or retrying job keeps it,
+  -- because that is precisely when it is still needed.
+  relay_payload   TEXT,
   created_at      TEXT NOT NULL,
   completed_at    TEXT,
   UNIQUE (post_id)

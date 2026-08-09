@@ -4,7 +4,13 @@ import type { Logger } from '../util/logger.js';
 import { isoNow, minutesBetween } from '../util/time.js';
 import { isAllowedAccount, parsePostUrl } from './urls.js';
 import { RetrievalError, type PostResolver } from './resolver.js';
-import type { Job, JobQueue, SourceKind } from './queue.js';
+import {
+  serializeRelayPayload,
+  parseRelayPayload,
+  type Job,
+  type JobQueue,
+  type SourceKind,
+} from './queue.js';
 import type { RelayedMessage } from './discordListener.js';
 
 /**
@@ -24,40 +30,19 @@ import type { RelayedMessage } from './discordListener.js';
  */
 
 /**
- * Holds the relaying message alongside its post id so the resolver chain can
- * fall back to content that already arrived with the link.
+ * Relay content is durable, not cached.
  *
- * Bounded: a 24/7 process cannot keep every message it has ever seen. Oldest
- * entries are evicted first, and an evicted entry simply means the relay
- * fallback is unavailable for that post — never a crash.
+ * It used to live in a bounded in-memory map. That map was the ONLY copy of a
+ * relayed post's text: the Discord listener subscribes to new messages and does
+ * no history scraping, so a message Scout has seen once is gone. A restart
+ * therefore left a persisted job row that could never be completed — the
+ * resolver chain would find nothing, fail non-retriably, and an accepted news
+ * item would vanish with a single log line.
+ *
+ * The payload now goes into the job row itself, in the same INSERT, so a queued
+ * job is recoverable entirely from SQLite. There is no cache to diverge from
+ * it and no eviction policy to reason about.
  */
-export interface RelayStore {
-  put(message: RelayedMessage): void;
-  get(canonicalId: string): RelayedMessage | null;
-  drop(canonicalId: string): void;
-  size(): number;
-}
-
-export function createRelayStore(maxEntries = 500): RelayStore {
-  const entries = new Map<string, RelayedMessage>();
-  return {
-    put(message: RelayedMessage): void {
-      const key = message.url.canonicalId;
-      // Re-inserting moves the key to the end of the iteration order, which is
-      // what makes the eviction below least-recently-added.
-      entries.delete(key);
-      entries.set(key, message);
-      while (entries.size > maxEntries) {
-        const oldest = entries.keys().next().value;
-        if (oldest === undefined) break;
-        entries.delete(oldest);
-      }
-    },
-    get: (canonicalId) => entries.get(canonicalId) ?? null,
-    drop: (canonicalId) => void entries.delete(canonicalId),
-    size: () => entries.size,
-  };
-}
 
 export interface UrlWorkerDeps {
   db: ScoutDb;
@@ -65,8 +50,6 @@ export interface UrlWorkerDeps {
   resolver: PostResolver;
   logger: Logger;
   allowedAccounts: string[];
-  /** Shared with the relay resolver so both see the same payloads. */
-  relayStore: RelayStore;
   /** Source id these posts are attributed to for scoring/health purposes. */
   relaySourceId: string;
   onPost: (post: RawPost, context: UrlPostContext) => Promise<void>;
@@ -91,8 +74,6 @@ export interface UrlWorker {
 export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
   const { db, logger } = deps;
 
-  const relayed = deps.relayStore;
-
   function submit(message: RelayedMessage): void {
     const { url } = message;
 
@@ -111,13 +92,20 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       return;
     }
 
-    relayed.put(message);
-
+    // The content goes down with the job, in one statement. The post is not
+    // "accepted" until both are on disk — there is no window in which a row
+    // exists whose payload lives only in this process.
     const job = deps.queue.enqueue({
       postId: url.canonicalId,
       url: url.canonicalUrl,
       sourceChannel: message.sourceChannelId,
       sourceKind: message.sourceKind,
+      relayPayload: serializeRelayPayload({
+        v: 1,
+        rawMessage: message.rawMessage,
+        receivedAt: message.receivedAt,
+        canonicalUrl: url.canonicalUrl,
+      }),
     });
 
     if (!job) {
@@ -136,29 +124,30 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       throw Object.assign(new Error(`unparseable url: ${job.url}`), { retriable: false });
     }
 
-    const context = relayed.get(job.postId);
+    // Read off the job row, which came from SQLite. A job recovered after a
+    // restart is therefore indistinguishable from one processed immediately.
+    const payload = parseRelayPayload(job.relayPayload);
 
     let resolved;
     try {
       resolved = await deps.resolver.resolve(url);
     } catch (err) {
       const error = err as RetrievalError;
-      // A permanently failed job will never be retried, so its relay payload is
-      // dead weight — drop it rather than leaking it for the life of the process.
-      if (error.retriable === false) relayed.drop(job.postId);
-      // Surface retriability to the queue so a rate limit backs off but a
-      // deleted post does not spin.
+      // The payload deliberately stays on the row. A failed job is exactly the
+      // one that may still be retried or reopened by a later relay of the same
+      // post, and it is the queue that releases the payload, on success only.
       throw Object.assign(new Error(error.message), { retriable: error.retriable ?? true });
     }
 
     // A resolver that returned nothing usable is a failed retrieval, not an
     // empty news item.
     if (!resolved.text.trim()) {
-      relayed.drop(job.postId);
       throw Object.assign(new Error('resolved post had no text'), { retriable: false });
     }
 
-    const discordReceivedAt = context?.receivedAt ?? null;
+    // When Scout saw it — never the publication time. Preserved across a
+    // restart because it travels with the payload rather than in memory.
+    const discordReceivedAt = payload?.receivedAt || null;
     const createdAt = isoNow();
 
     db.posts.upsert({
@@ -204,8 +193,8 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
       publishedAt: resolved.publishedAt,
       retrievalSource: resolved.retrievalSource,
     });
-
-    relayed.drop(job.postId);
+    // The payload is released by the queue when it marks the job DONE — after
+    // this returns, and only on success.
   }
 
   return { submit, handle };

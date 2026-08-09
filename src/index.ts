@@ -9,10 +9,9 @@ import { createEdgarAdapter } from './ingest/adapters/edgar.js';
 import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
-import { createJobQueue } from './ingest/queue.js';
+import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import {
   createUrlWorker,
-  createRelayStore,
   isFreshForTrading,
   UNKNOWN_PUBLICATION_TIME,
 } from './ingest/urlWorker.js';
@@ -378,10 +377,6 @@ export async function main(): Promise<void> {
   }
 
   // ── 24/7 URL ingestion ─────────────────────────────────────────────────────
-  // One bounded store shared by the worker and the relay resolver, so a payload
-  // is written once, read once, and evicted — rather than accumulating in two
-  // maps for the life of the process.
-  const relayStore = createRelayStore(500);
 
   // Relay content FIRST. When the permitted relay already carries the text,
   // that is both faster than an upstream request and needs no credential — it
@@ -404,9 +399,13 @@ export async function main(): Promise<void> {
           retrievalSource: stored.retrievalSource,
         };
       }),
+      // Relay content, read from the job row rather than from memory. This is
+      // what makes a job recoverable after a restart: the message that carried
+      // the content is never seen again, so the copy on disk is the only one
+      // that can exist by the time a recovered job runs.
       createRelayResolver((url) => {
-        const relay = relayStore.get(url.canonicalId);
-        return relay ? { rawMessage: relay.rawMessage } : null;
+        const payload = parseRelayPayload(db.jobs.relayPayload(url.canonicalId));
+        return payload ? { rawMessage: payload.rawMessage } : null;
       }),
       createXApiResolver({
         bearerToken: cfg.x.bearerToken,
@@ -457,7 +456,6 @@ export async function main(): Promise<void> {
     resolver,
     logger: log.child('url-worker'),
     allowedAccounts: cfg.ingestion.allowedXAccounts,
-    relayStore,
     relaySourceId: RELAY_SOURCE_ID,
     onPost: async (post) => {
       // Feed the health monitor so a relay that goes quiet is distinguishable

@@ -17,8 +17,13 @@ export interface JobRepo {
   scheduleRetry(jobId: string, attempts: number, error: string, nextAttemptAt: string): void;
   /** Recover jobs a crashed process left RUNNING. Returns how many. */
   requeueRunning(nowIso: string): number;
-  /** Requeue a terminally failed post so a later relay can retry it. */
-  reopen(postId: string, nowIso: string): void;
+  /**
+   * Requeue a terminally failed post so a later relay can retry it. A fresh
+   * payload replaces the stored one; passing null keeps what is already there.
+   */
+  reopen(postId: string, nowIso: string, relayPayload?: string | null): void;
+  /** The stored payload for a post id, if the job still holds one. */
+  relayPayload(postId: string): string | null;
   /**
    * Requeue rows stuck RUNNING since before `before` that no live worker owns.
    * `owned` is the set of job ids this process is actually working on.
@@ -39,12 +44,13 @@ interface JobRow {
   attempts: number;
   last_error: string | null;
   next_attempt_at: string | null;
+  relay_payload: string | null;
   created_at: string;
   completed_at: string | null;
 }
 
 const COLUMNS = `job_id, post_id, url, source_channel, source_kind, status, attempts,
-                 last_error, next_attempt_at, created_at, completed_at`;
+                 last_error, next_attempt_at, relay_payload, created_at, completed_at`;
 
 function toJob(row: JobRow): Job {
   return {
@@ -57,6 +63,7 @@ function toJob(row: JobRow): Job {
     attempts: toNumber(row.attempts),
     lastError: toNullableText(row.last_error),
     nextAttemptAt: toNullableText(row.next_attempt_at),
+    relayPayload: toNullableText(row.relay_payload),
     createdAt: toText(row.created_at),
     completedAt: toNullableText(row.completed_at),
   };
@@ -70,7 +77,7 @@ export function createJobRepo(db: SqliteDatabase): JobRepo {
       const result = stmts
         .get(
           `INSERT OR IGNORE INTO processing_jobs (${COLUMNS})
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
         )
         .run(
           job.jobId,
@@ -82,6 +89,7 @@ export function createJobRepo(db: SqliteDatabase): JobRepo {
           job.attempts,
           job.lastError,
           job.nextAttemptAt,
+          job.relayPayload,
           job.createdAt,
           job.completedAt,
         );
@@ -120,10 +128,15 @@ export function createJobRepo(db: SqliteDatabase): JobRepo {
         .get(
           `UPDATE processing_jobs
               SET status = ?, completed_at = ?, last_error = ?,
-                  attempts = COALESCE(?, attempts)
+                  attempts = COALESCE(?, attempts),
+                  -- Released ONLY on success. A failed or exhausted job keeps
+                  -- its payload: that is exactly when it is still needed, either
+                  -- for a re-relay that reopens the row or for a human looking
+                  -- at why it never resolved.
+                  relay_payload = CASE WHEN ? = 'DONE' THEN NULL ELSE relay_payload END
             WHERE job_id = ?`,
         )
-        .run(status, at, error ?? null, attempts ?? null, jobId);
+        .run(status, at, error ?? null, attempts ?? null, status, jobId);
     },
 
     scheduleRetry(jobId, attempts, error, nextAttemptAt): void {
@@ -147,15 +160,25 @@ export function createJobRepo(db: SqliteDatabase): JobRepo {
       return result.changes;
     },
 
-    reopen(postId: string, nowIso: string): void {
+    reopen(postId: string, nowIso: string, relayPayload?: string | null): void {
       stmts
         .get(
           `UPDATE processing_jobs
               SET status = 'QUEUED', attempts = 0, last_error = NULL,
-                  next_attempt_at = ?, completed_at = NULL
+                  next_attempt_at = ?, completed_at = NULL,
+                  relay_payload = COALESCE(?, relay_payload)
             WHERE post_id = ? AND status IN ('FAILED','FAILED_RETRIEVAL')`,
         )
-        .run(nowIso, postId);
+        .run(nowIso, relayPayload ?? null, postId);
+    },
+
+    relayPayload(postId: string): string | null {
+      const row = stmts
+        .get<{ relay_payload: string | null }>(
+          `SELECT relay_payload FROM processing_jobs WHERE post_id = ?`,
+        )
+        .get(postId);
+      return toNullableText(row?.relay_payload);
     },
 
     stuckRunning(before: string, owned: string[]): number {

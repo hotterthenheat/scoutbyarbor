@@ -346,6 +346,31 @@ https://truthsocial.com/@realDonaldTrump/posts/113456789  ──→ truth:113456
 The same post relayed through five channels, twice in one channel, or again after
 a redeploy produces exactly one event.
 
+### A restart cannot lose an accepted post
+
+A relayed post's content arrives exactly once, in a Discord message Scout never
+sees again — the listener subscribes to new messages and does no history
+scraping. So the relaying message is written into the job row itself,
+`processing_jobs.relay_payload`, **in the same INSERT that creates the job**.
+A queued job is recoverable entirely from SQLite; nothing about processing it
+depends on the process that accepted it still being alive.
+
+```
+message arrives ─→ INSERT job + payload  (one statement, on disk)
+                          │
+             ┌────────────┴────────────┐
+      processed now              restart, then processed
+             │                          │
+             └────────────┬─────────────┘
+                    same alert, once
+```
+
+The payload is released only when the job completes successfully. A failing or
+retrying job keeps it — that is precisely when it is still needed, either for
+the next attempt or for a later relay of the same post that reopens the row.
+There is deliberately no in-memory cache of it: a second copy is a second thing
+to be wrong.
+
 ### Retrieval
 
 `PostResolver` is an interface, and nothing outside `src/ingest/resolver.ts`

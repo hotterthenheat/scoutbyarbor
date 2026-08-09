@@ -28,8 +28,55 @@ export interface Job {
   attempts: number;
   lastError: string | null;
   nextAttemptAt: string | null;
+  /**
+   * Serialized `RelayPayload` — everything needed to process this job without
+   * the Discord message that created it. Written in the same INSERT as the job,
+   * so a queued job is never missing the content it needs. Null once the job
+   * has completed successfully, and for jobs that carry no relay content
+   * (the webhook path stores its content in `posts` instead).
+   */
+  relayPayload: string | null;
   createdAt: string;
   completedAt: string | null;
+}
+
+/**
+ * What a relayed message contributes beyond the job's own columns.
+ *
+ * Versioned because this is persisted state: a payload written by one build is
+ * read by the next one after a deploy, and a shape change must not turn a
+ * recoverable job into an unparseable one.
+ */
+export interface RelayPayload {
+  v: 1;
+  /** The relaying message verbatim. The relay parser's only input. */
+  rawMessage: string;
+  /** When Scout saw it. NEVER the post's publication time. */
+  receivedAt: string;
+  canonicalUrl: string;
+}
+
+export function serializeRelayPayload(payload: RelayPayload): string {
+  return JSON.stringify(payload);
+}
+
+/** Tolerant by design: a payload that will not parse must not crash a worker. */
+export function parseRelayPayload(raw: string | null): RelayPayload | null {
+  if (!raw) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const candidate = value as Partial<RelayPayload>;
+    if (typeof candidate.rawMessage !== 'string' || !candidate.rawMessage) return null;
+    return {
+      v: 1,
+      rawMessage: candidate.rawMessage,
+      receivedAt: typeof candidate.receivedAt === 'string' ? candidate.receivedAt : '',
+      canonicalUrl: typeof candidate.canonicalUrl === 'string' ? candidate.canonicalUrl : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Attempt 1 immediate, then 1s, 3s, 10s. Then the job is done trying. */
@@ -40,14 +87,22 @@ const STUCK_JOB_MS = 10 * 60_000;
 /** How often to look for them. */
 const STUCK_CHECK_MS = 60_000;
 
+export interface EnqueueInput {
+  postId: string;
+  url: string;
+  sourceChannel: string | null;
+  sourceKind: SourceKind;
+  /**
+   * Persisted atomically with the job. Supplying it is what makes the job
+   * recoverable after a restart; omitting it is correct only for sources whose
+   * content is already durable elsewhere, such as the webhook path.
+   */
+  relayPayload?: string | null;
+}
+
 export interface JobQueue {
   /** Enqueue, or return null when this post id is already known. */
-  enqueue(input: {
-    postId: string;
-    url: string;
-    sourceChannel: string | null;
-    sourceKind: SourceKind;
-  }): Job | null;
+  enqueue(input: EnqueueInput): Job | null;
   start(): void;
   stop(): void;
   /** Drain the queue once and resolve when it is empty — used by tests. */
@@ -93,12 +148,7 @@ export function createJobQueue(deps: JobQueueDeps): JobQueue {
     }
   }
 
-  function enqueue(input: {
-    postId: string;
-    url: string;
-    sourceChannel: string | null;
-    sourceKind: SourceKind;
-  }): Job | null {
+  function enqueue(input: EnqueueInput): Job | null {
     const iso = now().toISOString();
     const job: Job = {
       jobId: `job-${input.postId}`,
@@ -110,11 +160,14 @@ export function createJobQueue(deps: JobQueueDeps): JobQueue {
       attempts: 0,
       lastError: null,
       nextAttemptAt: iso,
+      relayPayload: input.relayPayload ?? null,
       createdAt: iso,
       completedAt: null,
     };
     // UNIQUE(post_id) makes this the durable dedupe layer: the same post from
-    // five channels, or after a restart, inserts once.
+    // five channels, or after a restart, inserts once. The payload rides along
+    // in the same statement, so a row can never exist without the content it
+    // needs to be processed.
     if (jobs.insertIfAbsent(job)) return job;
 
     // A job that failed terminally must not poison the post id forever. A
@@ -123,7 +176,9 @@ export function createJobQueue(deps: JobQueueDeps): JobQueue {
     // already SUCCEEDED stays blocked — that is the dedupe guarantee.
     const existing = jobs.byPostId(input.postId);
     if (existing && (existing.status === 'FAILED' || existing.status === 'FAILED_RETRIEVAL')) {
-      jobs.reopen(input.postId, iso);
+      // A fresh relay of the same post carries fresh content; when it carries
+      // none, the payload already on the row is the best available and is kept.
+      jobs.reopen(input.postId, iso, input.relayPayload ?? null);
       logger.info('retrying a previously failed post', {
         postId: input.postId,
         previousError: existing.lastError,
