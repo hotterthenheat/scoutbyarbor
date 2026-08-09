@@ -90,7 +90,7 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
     const seenIds = feedState.seenIds ?? new Set<string>();
 
     for (const item of items) {
-      const publishedMs = Date.parse(item.published);
+      const publishedMs = item.published ? Date.parse(item.published) : Number.NaN;
       if (seenIds.has(item.id)) continue;
       // Strictly older than the watermark is definitely stale; equal timestamps
       // fall through to the id check above.
@@ -104,14 +104,26 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
         text: item.text,
         eventTime: Number.isFinite(publishedMs) ? new Date(publishedMs).toISOString() : ingestionTime,
         ingestionTime,
-        meta: { feedTitle: item.title, rss: true },
+        meta: {
+          feedTitle: item.title,
+          rss: true,
+          // The feed's own publication time, or null when it did not carry
+          // one. eventTime above falls back to receipt time so the pipeline
+          // can order the post; publishedAt must NOT, because the freshness
+          // gate reads it and receipt time always looks fresh.
+          publishedAt: Number.isFinite(publishedMs) ? new Date(publishedMs).toISOString() : null,
+        },
       });
       seenIds.add(item.id);
     }
 
     posts.sort((a, b) => Date.parse(a.eventTime) - Date.parse(b.eventTime));
 
-    const newest = items.reduce((max, i) => Math.max(max, Date.parse(i.published) || 0), 0);
+    // An item with no publication time cannot advance the watermark.
+    const newest = items.reduce(
+      (max, i) => Math.max(max, (i.published ? Date.parse(i.published) : 0) || 0),
+      0,
+    );
     state.set(source.id, {
       ...(etag ? { etag } : {}),
       ...(lastModified ? { lastModified } : {}),
@@ -206,7 +218,13 @@ interface FeedItem {
   title: string;
   text: string;
   link: string | null;
-  published: string;
+  /**
+   * What the feed actually said, or null when it said nothing. NOT defaulted
+   * to now: the ordering timestamp may fall back to receipt time, but the
+   * publication time may not — the freshness gate reads it, and receipt time
+   * always measures as seconds old.
+   */
+  published: string | null;
 }
 
 /** Handles the RSS 2.0 / Atom shape differences in one place. */
@@ -252,11 +270,13 @@ export function parseFeed(parser: XMLParser, xml: string): FeedItem[] {
       // Headline first, then the summary — matches how the normalizer splits.
       text: summary ? `${title} — ${summary}` : title,
       link,
-      published: published || new Date().toISOString(),
+      published: published || null,
     });
   }
 
-  return items.sort((a, b) => (Date.parse(b.published) || 0) - (Date.parse(a.published) || 0));
+  // Undated items sort last rather than being treated as brand new.
+  const at = (i: FeedItem): number => (i.published ? Date.parse(i.published) : 0) || 0;
+  return items.sort((a, b) => at(b) - at(a));
 }
 
 function asArray(value: unknown): Record<string, unknown>[] | null {

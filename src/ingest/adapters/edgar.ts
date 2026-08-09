@@ -103,6 +103,8 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
         eventTime: Number.isFinite(filedAt) ? new Date(filedAt).toISOString() : ingestionTime,
         ingestionTime,
         meta: {
+          // The filing time, or null when the feed did not carry one.
+          publishedAt: Number.isFinite(filedAt) ? new Date(filedAt).toISOString() : null,
           form: parsed?.form ?? entry.category ?? '',
           company: parsed?.company ?? '',
           cik: parsed?.cik ?? '',
@@ -180,6 +182,7 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
         eventTime: entry.updated || isoNow(),
         ingestionTime: isoNow(),
         meta: {
+          publishedAt: entry.updated || null,
           form: parsed?.form ?? '',
           company: parsed?.company ?? '',
           cik: parsed?.cik ?? '',

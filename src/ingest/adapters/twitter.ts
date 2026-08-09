@@ -148,6 +148,7 @@ export function createTwitterAdapter(deps: TwitterAdapterDeps): IngestAdapter {
         eventTime: tweet.created_at ?? ingestionTime,
         ingestionTime,
         meta: {
+          publishedAt: tweet.created_at ?? null,
           isRetweet,
           isQuote,
           cashtags: (tweet.entities?.cashtags ?? []).map((c) => c.tag),

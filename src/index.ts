@@ -257,8 +257,16 @@ export async function main(): Promise<void> {
 
         // Freshness is judged on publication time alone. An old headline may
         // still appear in #scout-news, but it is not a fresh trading event.
+        //
+        // There is deliberately NO fallback to eventTime here. eventTime is the
+        // pipeline's ordering timestamp and falls back to receipt time when a
+        // source did not supply a publication time — so using it would mean an
+        // event whose real publication time is unknown always measures as
+        // seconds old, sails through the gate, and reaches Sprout stamped with
+        // the moment Scout happened to see it. Every adapter now states
+        // meta.publishedAt explicitly, null included.
         const publishedAt =
-          typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : raw.eventTime;
+          typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : null;
         const freshness = isFreshForTrading(publishedAt, cfg.sprout.maxAgeMinutes);
 
         for (const channel of result.channels) {

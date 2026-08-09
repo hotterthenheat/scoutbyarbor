@@ -566,6 +566,21 @@ reclaimed after ten minutes, and an unresolvable row releases its claim rather
 than becoming permanently invisible. Tests drive two concurrent runs and assert
 each event reaches Sprout exactly once.
 
+**A pass cannot outlive its own claims.** With Sprout degraded, a hundred rows
+each burning the full request timeout would take longer than the stale-claim
+window — so the next run would start re-sending rows the first was still
+working through. Passes are bounded and hand back what they did not reach,
+reported as `deferred` rather than silently capped.
+
+**A delivery interrupted mid-flight is still recoverable.** The outcome row is
+written when the Sprout request settles, which during an outage is ten seconds
+later. A deploy or a crash inside that window would leave no row at all, and the
+replay would be blind to exactly the events the outage caused. So a `PENDING`
+row is written *before* the request; one still sitting there five minutes later
+is a delivery that started and never reported back, and the replay picks it up.
+The freshness gate is re-run on it like anything else — recovering a delivery is
+not a licence to send stale news to a trading system.
+
 Every pass logs the six counts an operator needs:
 
 ```json

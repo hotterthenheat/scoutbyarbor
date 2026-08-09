@@ -32,7 +32,7 @@ export function createManualAdapter(): ManualAdapter {
         text,
         eventTime: opts.eventTime ?? now,
         ingestionTime: now,
-        meta: { manual: true },
+        meta: { manual: true, publishedAt: opts.eventTime ?? null },
       };
       queue.push(post);
       return post;
