@@ -849,6 +849,88 @@ sources:
       confirmation rather than inflating credibility on every Fed story.
 
   # ══════════════════════════════════════════════════════════════════════════
+  # FINNHUB — POLLED MARKET NEWS
+  #
+  # Scout ASKS for the news on a timer. Nothing has to be pasted, forwarded or
+  # pushed by anyone, which is what separates this from the webhook: a webhook
+  # sits waiting for a sender, and there is no free sender for X.
+  #
+  # Needs FINNHUB_API_KEY. Without it the adapter is not registered at all — no
+  # failing polls, no health noise — exactly as with an absent X token.
+  #
+  # Finnhub is a TRANSPORT. Each item names the outlet that actually reported
+  # it, and that outlet is what provenance shows and what corroboration counts.
+  # A story is never attributed to "Finnhub".
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: finnhub:general
+    name: Finnhub — Market News
+    sourceType: finnhub
+    category: MARKET
+    priority: 82
+    enabled: true
+    official: false
+    qualityScore: 78
+    noiseScore: 45
+    macroScore: 70
+    microScore: 75
+    geopoliticalScore: 40
+    filterProfile: strict
+    expectedIntervalMs: 1800000
+    notes: >-
+      General market wire, refreshed every poll. Strict factuality gate because
+      an aggregator carries commentary alongside reporting.
+
+  - id: finnhub:merger
+    name: Finnhub — M&A
+    sourceType: finnhub
+    category: EQUITY
+    priority: 84
+    enabled: true
+    official: false
+    qualityScore: 80
+    noiseScore: 35
+    macroScore: 20
+    microScore: 92
+    geopoliticalScore: 10
+    filterProfile: strict
+    expectedIntervalMs: 86400000
+    notes: Merger and acquisition headlines — single-name by definition.
+
+  - id: finnhub:forex
+    name: Finnhub — FX
+    sourceType: finnhub
+    category: MACRO
+    priority: 70
+    enabled: false
+    official: false
+    qualityScore: 70
+    noiseScore: 55
+    macroScore: 80
+    microScore: 10
+    geopoliticalScore: 35
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: >-
+      Off by default. Enable if you want currency coverage; it overlaps heavily
+      with the macro feeds and mostly repeats them.
+
+  - id: finnhub:crypto
+    name: Finnhub — Crypto
+    sourceType: finnhub
+    category: CRYPTO
+    priority: 55
+    enabled: false
+    official: false
+    qualityScore: 60
+    noiseScore: 70
+    macroScore: 15
+    microScore: 40
+    geopoliticalScore: 10
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: Off by default — high volume, low signal for an equities desk.
+
+  # ══════════════════════════════════════════════════════════════════════════
   # SEC FILINGS ENGINE (§16)
   # EDGAR "current events" atom feeds. Materiality is classified before
   # anything reaches a channel — most filings never alert.

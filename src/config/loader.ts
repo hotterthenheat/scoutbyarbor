@@ -28,7 +28,7 @@ const sourceEntrySchema = z.object({
   name: z.string().min(1),
   handle: z.string().nullable().optional(),
   url: z.string().nullable().optional(),
-  sourceType: z.enum(['x', 'rss', 'edgar', 'manual']),
+  sourceType: z.enum(['x', 'rss', 'edgar', 'manual', 'finnhub']),
   category: z.enum([...CATEGORIES, 'MIXED'] as [string, ...string[]]),
   priority: z.number().int().min(0).max(100),
   enabled: z.boolean(),

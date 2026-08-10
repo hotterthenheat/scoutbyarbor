@@ -64,6 +64,8 @@ const schema = z.object({
   ADMIN_INPUT_CHANNEL_IDS: list(),
 
   X_BEARER_TOKEN: z.string().default(''),
+  FINNHUB_API_KEY: z.string().default(''),
+  FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   X_POLL_INTERVAL_MS: numeric(90_000),
   X_REQUEST_BUDGET_PER_WINDOW: numeric(180),
 
@@ -224,6 +226,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       bearerToken: parsed.X_BEARER_TOKEN,
       pollIntervalMs: parsed.X_POLL_INTERVAL_MS,
       requestBudgetPerWindow: parsed.X_REQUEST_BUDGET_PER_WINDOW,
+    },
+    finnhub: {
+      apiKey: parsed.FINNHUB_API_KEY,
+      pollIntervalMs: parsed.FINNHUB_POLL_INTERVAL_MS,
     },
     sec: {
       userAgent: parsed.SEC_USER_AGENT,

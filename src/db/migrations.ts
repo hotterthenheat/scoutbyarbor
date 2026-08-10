@@ -34,6 +34,8 @@ export interface MigrationResult {
   added: Array<{ table: string; column: string }>;
   /** Columns SQLite cannot add to an existing table. */
   skipped: Array<{ table: string; column: string; reason: string }>;
+  /** True when the sources table had to be rebuilt to drop a stale CHECK. */
+  rebuilt?: boolean;
 }
 
 /** SQLite rejects ADD COLUMN for these, whatever the rest of the definition says. */
@@ -210,5 +212,64 @@ export function applyAdditiveMigrations(db: SqliteDatabase, schemaSql: string): 
     }
   }
 
+  result.rebuilt = relaxSourceTypeCheck(db);
   return result;
+}
+
+/**
+ * Drops the hard-coded `source_type IN (…)` list from an existing database.
+ *
+ * The list was duplicated in SQL, and SQLite has no ALTER for a CHECK — so
+ * adding an ingestion adapter made every deployed database reject the new type
+ * with `CHECK constraint failed`, on a table that cannot be altered in place.
+ * The valid set belongs in one place (SOURCE_TYPES) enforced by the config
+ * loader before a row is ever written, so the constraint is removed rather than
+ * extended. Extending it would only defer the same problem to the next adapter.
+ *
+ * A table rebuild is the only way. It runs once: afterwards the CHECK is gone
+ * and the detection below no longer matches.
+ */
+export function relaxSourceTypeCheck(db: SqliteDatabase): boolean {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sources'")
+    .get() as { sql?: string } | undefined;
+
+  const sql = row?.sql ?? '';
+  if (!/CHECK\s*\(\s*source_type\s+IN/i.test(sql)) return false;
+
+  // Column list from the LIVE table, so the copy works whatever migrations have
+  // already run. Reading it from schema.sql could name a column this database
+  // does not have yet.
+  const columns = (db.prepare('PRAGMA table_info(sources)').all() as Array<{ name: string }>)
+    .map((c) => `"${c.name}"`)
+    .join(', ');
+
+  const rebuilt = sql
+    .replace(/CHECK\s*\(\s*source_type\s+IN\s*\([^)]*\)\s*\)/i, '')
+    // The comma the removed constraint left behind, e.g. `TEXT NOT NULL ,`.
+    .replace(/\s+,/g, ',')
+    .replace(/CREATE TABLE (IF NOT EXISTS )?"?sources"?/i, 'CREATE TABLE sources_migrated');
+
+  // Foreign keys must be off for the drop-and-rename, and PRAGMA cannot change
+  // inside a transaction — hence the ordering here.
+  const hadForeignKeys = db.pragma('foreign_keys', { simple: true }) === 1;
+  if (hadForeignKeys) db.pragma('foreign_keys = OFF');
+  try {
+    db.exec('BEGIN');
+    db.exec(rebuilt);
+    db.exec(`INSERT INTO sources_migrated (${columns}) SELECT ${columns} FROM sources`);
+    db.exec('DROP TABLE sources');
+    db.exec('ALTER TABLE sources_migrated RENAME TO sources');
+    // Dropped with the old table; schema.sql recreates them right after this.
+    db.exec('CREATE INDEX IF NOT EXISTS idx_sources_enabled  ON sources(enabled, source_type)');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_sources_priority ON sources(priority DESC)');
+    db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  } finally {
+    if (hadForeignKeys) db.pragma('foreign_keys = ON');
+  }
+
+  return true;
 }

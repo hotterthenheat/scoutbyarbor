@@ -22,7 +22,12 @@ CREATE TABLE IF NOT EXISTS sources (
   name                TEXT NOT NULL,
   handle              TEXT,
   url                 TEXT,
-  source_type         TEXT NOT NULL CHECK (source_type IN ('x','rss','edgar','manual')),
+  -- No CHECK list here on purpose. The valid set is defined once, in
+  -- SOURCE_TYPES, and enforced by the config loader before a row is ever
+  -- written. A duplicate list in SQL cannot be altered in place — SQLite has no
+  -- ALTER for a CHECK — so adding an adapter meant rebuilding the table on
+  -- every deployed database. One definition, in the place that can change.
+  source_type         TEXT NOT NULL,
   category            TEXT NOT NULL,
   priority            INTEGER NOT NULL DEFAULT 50,
   enabled             INTEGER NOT NULL DEFAULT 1,

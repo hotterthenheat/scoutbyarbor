@@ -13,7 +13,7 @@ export interface SourceConfigEntry {
   name: string;
   handle?: string | null;
   url?: string | null;
-  sourceType: 'x' | 'rss' | 'edgar' | 'manual';
+  sourceType: 'x' | 'rss' | 'edgar' | 'manual' | 'finnhub';
   category: Category | 'MIXED';
   priority: number;
   enabled: boolean;
@@ -138,6 +138,16 @@ export interface ScoutEnv {
     bearerToken: string;
     pollIntervalMs: number;
     requestBudgetPerWindow: number;
+  };
+  /**
+   * Finnhub market news. A POLLED aggregator: Scout asks for the news on a
+   * timer rather than waiting to be pushed, which is what makes it automatic.
+   * Empty apiKey leaves the adapter unregistered entirely, exactly as an absent
+   * X token does — no failing polls, no health noise.
+   */
+  finnhub: {
+    apiKey: string;
+    pollIntervalMs: number;
   };
   sec: {
     userAgent: string;

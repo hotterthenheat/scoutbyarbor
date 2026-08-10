@@ -16,6 +16,7 @@ import { createRssAdapter } from './ingest/adapters/rss.js';
 import { createEdgarAdapter } from './ingest/adapters/edgar.js';
 import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
+import { createFinnhubAdapter } from './ingest/adapters/finnhub.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
@@ -750,6 +751,18 @@ export async function main(): Promise<void> {
   // unpollable and being unused are different things.
   const xPollingEnabled = Boolean(cfg.x.bearerToken);
 
+  // Same rule as the X adapter: registered ONLY when a credential exists.
+  // Without one it would report every Finnhub source as a failed poll forever,
+  // and an absent optional key is a configuration, not a fault.
+  const finnhubEnabled = Boolean(cfg.finnhub.apiKey);
+  log.info(
+    finnhubEnabled
+      ? 'FINNHUB: CONFIGURED — polled market news every ' +
+          Math.round(cfg.finnhub.pollIntervalMs / 1000) +
+          's'
+      : 'FINNHUB: NOT CONFIGURED (set FINNHUB_API_KEY to poll market news)',
+  );
+
   const ingest = createIngestManager({
     db,
     adapters: [
@@ -764,6 +777,15 @@ export async function main(): Promise<void> {
             }),
           ]
         : []),
+      ...(finnhubEnabled
+        ? [
+            createFinnhubAdapter({
+              apiKey: cfg.finnhub.apiKey,
+              timeoutMs: 15_000,
+              logger: log.child('finnhub'),
+            }),
+          ]
+        : []),
       manual,
     ],
     logger: log.child('ingest'),
@@ -771,6 +793,7 @@ export async function main(): Promise<void> {
       rss: cfg.rss.pollIntervalMs,
       edgar: cfg.sec.pollIntervalMs,
       x: cfg.x.pollIntervalMs,
+      finnhub: cfg.finnhub.pollIntervalMs,
       manual: 5_000,
     },
     onPosts: async (posts) => {

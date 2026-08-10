@@ -8,6 +8,7 @@ import {
   parseSchema,
   stripSqlComments,
   applyAdditiveMigrations,
+  relaxSourceTypeCheck,
 } from '../src/db/migrations.js';
 import { setLogLevel } from '../src/util/logger.js';
 
@@ -227,5 +228,117 @@ describe('schema parsing', () => {
     );`);
 
     expect(table?.columns.map((c) => c.name)).toEqual(['a', 'b']);
+  });
+});
+
+/**
+ * A CHECK constraint that lists valid values cannot be altered in place —
+ * SQLite has no ALTER for one — so the moment an ingestion adapter is added,
+ * every database already on disk rejects the new type and Scout cannot write a
+ * source row at all. The list belonged in one place (SOURCE_TYPES, enforced by
+ * the config loader before a row is written), so the constraint is removed
+ * rather than extended: extending it defers the identical problem to the next
+ * adapter.
+ */
+describe('a database carrying the old source_type CHECK', () => {
+  const LEGACY = `CREATE TABLE sources (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, handle TEXT, url TEXT,
+    source_type TEXT NOT NULL CHECK (source_type IN ('x','rss','edgar','manual')),
+    category TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 50,
+    enabled INTEGER NOT NULL DEFAULT 1, verified INTEGER NOT NULL DEFAULT 0,
+    quality_score INTEGER NOT NULL DEFAULT 70, noise_score INTEGER NOT NULL DEFAULT 30,
+    macro_score INTEGER NOT NULL DEFAULT 50, micro_score INTEGER NOT NULL DEFAULT 50,
+    geopolitical_score INTEGER NOT NULL DEFAULT 50,
+    filter_profile TEXT NOT NULL DEFAULT 'standard'
+      CHECK (filter_profile IN ('standard','strict')),
+    official INTEGER NOT NULL DEFAULT 0, org TEXT,
+    expected_interval_ms INTEGER NOT NULL DEFAULT 900000, notes TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`;
+
+  function legacyDb(path: string): Database.Database {
+    const raw = new Database(path);
+    raw.exec(LEGACY);
+    raw
+      .prepare(
+        'INSERT INTO sources (id,name,source_type,category,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+      )
+      .run('rss:fed', 'Fed', 'rss', 'FED', '2026-01-01', '2026-01-01');
+    return raw;
+  }
+
+  it('rejects a new source type before the migration', () => {
+    const raw = legacyDb(join(dir, 'legacy-before.db'));
+    expect(() =>
+      raw
+        .prepare(
+          'INSERT INTO sources (id,name,source_type,category,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+        )
+        .run('finnhub:general', 'FH', 'finnhub', 'MARKET', '2026-01-01', '2026-01-01'),
+    ).toThrow(/CHECK constraint failed/);
+    raw.close();
+  });
+
+  it('accepts it after, without losing a row', () => {
+    const path = join(dir, 'legacy-after.db');
+    legacyDb(path).close();
+
+    const db = openDatabase(path);
+    db.migrate();
+
+    db.raw
+      .prepare(
+        'INSERT INTO sources (id,name,source_type,category,created_at,updated_at) VALUES (?,?,?,?,?,?)',
+      )
+      .run('finnhub:general', 'FH', 'finnhub', 'MARKET', '2026-01-01', '2026-01-01');
+
+    const ids = (db.raw.prepare('SELECT id FROM sources ORDER BY id').all() as Array<{
+      id: string;
+    }>).map((r) => r.id);
+    // The pre-existing row survived the table rebuild.
+    expect(ids).toEqual(['finnhub:general', 'rss:fed']);
+    db.close();
+  });
+
+  it('leaves the OTHER check constraint alone', () => {
+    const path = join(dir, 'legacy-other.db');
+    legacyDb(path).close();
+
+    const db = openDatabase(path);
+    db.migrate();
+
+    const sql = (
+      db.raw.prepare("SELECT sql FROM sqlite_master WHERE name = 'sources'").get() as {
+        sql: string;
+      }
+    ).sql;
+    expect(/CHECK\s*\(\s*source_type/i.test(sql), 'source_type CHECK survived').toBe(false);
+    expect(/CHECK\s*\(\s*filter_profile/i.test(sql), 'filter_profile CHECK was lost').toBe(true);
+    db.close();
+  });
+
+  it('rebuilds the indexes it had to drop', () => {
+    const path = join(dir, 'legacy-idx.db');
+    legacyDb(path).close();
+
+    const db = openDatabase(path);
+    db.migrate();
+
+    const names = (
+      db.raw
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'sources'")
+        .all() as Array<{ name: string }>
+    ).map((r) => r.name);
+    expect(names).toContain('idx_sources_enabled');
+    expect(names).toContain('idx_sources_priority');
+    db.close();
+  });
+
+  it('is a no-op on a database that never had the constraint', () => {
+    const path = join(dir, 'modern.db');
+    const db = openDatabase(path);
+    db.migrate();
+    // Already migrated by migrate(); a second call must find nothing to do.
+    expect(relaxSourceTypeCheck(db.raw)).toBe(false);
+    db.close();
   });
 });

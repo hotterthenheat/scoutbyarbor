@@ -15,7 +15,7 @@
  * four-field `RenderableAlert` and structurally cannot carry any of it.
  */
 
-export type Origin = 'x' | 'discord' | 'rss' | 'edgar' | 'other';
+export type Origin = 'x' | 'discord' | 'rss' | 'edgar' | 'wire' | 'other';
 
 /** One source that contributed to an event. */
 export interface SourceAttribution {
@@ -78,10 +78,13 @@ export function originOf(sourceId: string): Origin {
   if (id.startsWith('x:')) return 'x';
   if (id.startsWith('rss:')) return 'rss';
   if (id.startsWith('edgar:')) return 'edgar';
+  // An aggregator carries other outlets' reporting. The origin is the wire it
+  // came over; WHO reported it is the publisher, recorded separately below.
+  if (id.startsWith('finnhub:')) return 'wire';
   return 'other';
 }
 
-const ORDER: Origin[] = ['x', 'discord', 'rss', 'edgar', 'other'];
+const ORDER: Origin[] = ['x', 'discord', 'rss', 'edgar', 'wire', 'other'];
 
 /**
  * Builds one contributor record from a post and the source row it came from.
@@ -138,6 +141,25 @@ export function attributionFrom(input: {
       ...(author ? { author } : {}),
       ...(relayedBy ? { relayedBy } : {}),
       ...(preserved ? {} : { attributionPreserved: false }),
+      ...(input.publishedAt ? { firstSeenAt: input.publishedAt } : {}),
+    };
+  }
+
+  // An aggregator names the outlet that actually reported the story. Labelling
+  // it "Finnhub" would name the pipe rather than the reporter — the same
+  // mistake as crediting a forwarding bot — and would make CNBC and Reuters
+  // reporting one story look like one source reporting twice.
+  const publisher = str(meta.publisher);
+  if (kind === 'wire' && publisher) {
+    return {
+      kind,
+      sourceId: input.sourceId,
+      // Corroboration counts OUTLETS, so the publisher is the identity. The
+      // aggregator's own id would collapse every story it carries into one.
+      ...(str(meta.publisherOrg) ? { org: str(meta.publisherOrg)! } : {}),
+      label: publisher,
+      account: publisher,
+      relayedBy: input.sourceName ?? input.sourceId,
       ...(input.publishedAt ? { firstSeenAt: input.publishedAt } : {}),
     };
   }

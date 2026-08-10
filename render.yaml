@@ -92,6 +92,12 @@ services:
       - key: DISCORD_INTEL_TOKEN
         sync: false
 
+      # ── Finnhub polled market news. The automatic route that needs no
+      # permission from anyone; free tier is enough. Unset = adapter not
+      # registered at all. ──
+      - key: FINNHUB_API_KEY
+        sync: false
+
       # ── OPTIONAL. Scout runs fully without this ──
       # The primary ingestion path reads the content the permitted relay already
       # posted alongside the link, which needs no credential. An X API resolver
