@@ -103,6 +103,10 @@ export interface DiscordDeps {
 
 export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
   const { logger, channels, dryRun } = deps;
+  // An unconfigured optional channel is a standing fact, not an event. Logged
+  // once per channel instead of once per alert, which on a busy wire was
+  // hundreds of identical lines a day around anything that mattered.
+  const warnedMissing = new Set<ChannelKey>();
   let client: Client | null = null;
   let ready = false;
   let dryRunCounter = 0;
@@ -178,7 +182,13 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
 
     const channelId = channelIdFor(channelKey);
     if (!channelId) {
-      logger.warn('no channel id configured', { channelKey });
+      if (!warnedMissing.has(channelKey)) {
+        warnedMissing.add(channelKey);
+        logger.warn('no channel id configured; alerts for it are skipped', {
+          channelKey,
+          envVar: CHANNEL_ENV_VARS[channelKey],
+        });
+      }
       return null;
     }
     const channel = await resolveChannel(channelId);
