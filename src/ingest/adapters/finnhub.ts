@@ -7,7 +7,7 @@ import type {
 } from '../../core/types.js';
 import type { Logger } from '../../util/logger.js';
 import { isoNow } from '../../util/time.js';
-import { normalizeWhitespace, stripHtml } from '../../util/text.js';
+import { normalizeWhitespace, stripHtml, describeFetchError } from '../../util/text.js';
 
 /**
  * Finnhub market-news adapter.
@@ -218,16 +218,14 @@ export function createFinnhubAdapter(deps: FinnhubAdapterDeps): IngestAdapter {
             itemCount: fresh,
             latencyMs: Date.now() - startedAt,
           });
-        } catch (err) {
-          deps.logger.warn('finnhub poll failed', {
-            sourceId: source.id,
-            err: (err as Error).message,
-          });
+        } catch (rawErr) {
+          const message = describeFetchError(rawErr, deps.timeoutMs);
+          deps.logger.warn('finnhub poll failed', { sourceId: source.id, err: message });
           outcomes.push({
             sourceId: source.id,
             ok: false,
             itemCount: 0,
-            error: (err as Error).message,
+            error: message,
             latencyMs: Date.now() - startedAt,
           });
         }

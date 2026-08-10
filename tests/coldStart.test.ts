@@ -349,3 +349,29 @@ describe('the ephemeral-storage override', () => {
     opened.close();
   });
 });
+
+/**
+ * A dashboard is only useful if its error text tells you what to do. An
+ * aborted request surfaces as the DOM's `This operation was aborted`, which
+ * names neither the cause (a deadline Scout set) nor the fix.
+ */
+describe('describing a fetch failure', () => {
+  it('says a timeout is a timeout, with the deadline', async () => {
+    const { describeFetchError } = await import('../src/util/text.js');
+    const aborted = Object.assign(new Error('This operation was aborted'), {
+      name: 'AbortError',
+    });
+    expect(describeFetchError(aborted, 25_000)).toBe('timed out after 25s');
+  });
+
+  it('names a DNS failure as one', async () => {
+    const { describeFetchError } = await import('../src/util/text.js');
+    const dns = Object.assign(new Error('fetch failed'), { cause: { code: 'ENOTFOUND' } });
+    expect(describeFetchError(dns, 15_000)).toMatch(/DNS lookup failed/);
+  });
+
+  it('leaves an already-clear message alone', async () => {
+    const { describeFetchError } = await import('../src/util/text.js');
+    expect(describeFetchError(new Error('HTTP 404 Not Found'), 15_000)).toBe('HTTP 404 Not Found');
+  });
+});

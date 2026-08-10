@@ -767,7 +767,7 @@ export async function main(): Promise<void> {
     db,
     adapters: [
       createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 15_000, logger: log.child('rss') }),
-      createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 15_000, logger: log.child('edgar') }),
+      createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 25_000, logger: log.child('edgar') }),
       ...(xPollingEnabled
         ? [
             createTwitterAdapter({
@@ -781,7 +781,11 @@ export async function main(): Promise<void> {
         ? [
             createFinnhubAdapter({
               apiKey: cfg.finnhub.apiKey,
-              timeoutMs: 15_000,
+              // 25s, not 15s. Both EDGAR and Finnhub hit a 15s deadline in
+              // production — EDGAR throttles aggressively and a cold aggregator
+              // response is not fast. A timeout shorter than the endpoint is
+              // slow reports a working feed as broken.
+              timeoutMs: 25_000,
               logger: log.child('finnhub'),
             }),
           ]

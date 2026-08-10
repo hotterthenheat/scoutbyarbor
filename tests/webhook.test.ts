@@ -584,6 +584,35 @@ describe('metrics and health', () => {
    * already recorded on every failed poll — it simply never reached /metrics.
    */
   it('reports WHY a source is degraded, not only that it is', async () => {
+    // The source must exist and be ENABLED: health for a source Scout no longer
+    // polls is stale by definition, and reporting it would mean a feed disabled
+    // BECAUSE it was broken went on being listed as broken forever.
+    db.sources.upsertMany([
+      {
+        id: 'rss:bea-news',
+        name: 'BEA',
+        handle: null,
+        url: 'https://www.bea.gov/rss.xml',
+        sourceType: 'rss',
+        category: 'ECONOMIC',
+        priority: 90,
+        enabled: true,
+        verified: true,
+        qualityScore: 90,
+        noiseScore: 10,
+        macroScore: 90,
+        microScore: 20,
+        geopoliticalScore: 10,
+        filterProfile: 'standard',
+        official: true,
+        org: 'bea',
+        expectedIntervalMs: 900_000,
+        notes: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
     db.health.upsert({
       sourceId: 'rss:bea-news',
       state: 'DISCONNECTED',
@@ -605,6 +634,53 @@ describe('metrics and health', () => {
     expect(entry?.lastError).toBe('HTTP 404 fetching https://www.bea.gov/rss.xml');
     expect(entry?.consecutiveFailures).toBe(4);
     expect(entry?.state).toBe('DISCONNECTED');
+  });
+
+  it('stops reporting a source once it is disabled', async () => {
+    // Turning a broken feed off is the fix. If it kept appearing as broken, the
+    // fix would look like it had not worked — and a genuine failure would be
+    // buried under feeds nobody is polling any more.
+    db.sources.upsertMany([
+      {
+        id: 'rss:retired',
+        name: 'Retired feed',
+        handle: null,
+        url: 'https://example.invalid/gone.xml',
+        sourceType: 'rss',
+        category: 'MACRO',
+        priority: 50,
+        enabled: false,
+        verified: false,
+        qualityScore: 50,
+        noiseScore: 50,
+        macroScore: 50,
+        microScore: 50,
+        geopoliticalScore: 50,
+        filterProfile: 'standard',
+        official: false,
+        org: null,
+        expectedIntervalMs: 900_000,
+        notes: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    db.health.upsert({
+      sourceId: 'rss:retired',
+      state: 'DISCONNECTED',
+      lastSuccessAt: null,
+      lastItemAt: null,
+      lastErrorAt: new Date().toISOString(),
+      lastError: 'HTTP 404 Not Found',
+      consecutiveFailures: 62,
+      expectedIntervalMs: 900_000,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const body = (await (await fetch(`${baseUrl}/metrics`)).json()) as {
+      sources: { degraded: Array<Record<string, unknown>> };
+    };
+    expect(body.sources.degraded.find((d) => d.sourceId === 'rss:retired')).toBeUndefined();
   });
 
   it('counts requests, rejections, accepts and duplicates', async () => {

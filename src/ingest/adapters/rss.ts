@@ -3,7 +3,7 @@ import type { IngestAdapter, IngestResult, RawPost, Source, SourceVerification }
 import type { Logger } from '../../util/logger.js';
 import { deterministicId } from '../../util/id.js';
 import { isoNow } from '../../util/time.js';
-import { normalizeWhitespace, stripHtml } from '../../util/text.js';
+import { normalizeWhitespace, stripHtml, describeFetchError } from '../../util/text.js';
 
 /**
  * RSS / Atom adapter.
@@ -202,7 +202,8 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
             itemCount,
             latencyMs: Date.now() - started,
           });
-        } catch (err) {
+        } catch (rawErr) {
+          const err = new Error(describeFetchError(rawErr, deps.timeoutMs));
           const current = state.get(source.id) ?? { seeded: false };
           current.failures = (current.failures ?? 0) + 1;
           if (current.failures >= BACKOFF_AFTER_FAILURES) {

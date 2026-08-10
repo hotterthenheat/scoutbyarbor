@@ -92,11 +92,15 @@ describe('reading the feed', () => {
   });
 
   it('reads the publisher timestamp as publication time', async () => {
-    const when = Math.floor(Date.parse('2026-08-10T13:58:00.000Z') / 1000);
+    // Relative to now, not a fixed date: the adapter drops items older than its
+    // cold-start window, so a hard-coded timestamp makes this pass in the
+    // morning and fail in the afternoon.
+    const whenMs = Date.now() - 4 * 60_000;
+    const when = Math.floor(whenMs / 1000);
     const { adapter } = adapterReturning([item({ datetime: when })]);
     const post = (await adapter.poll([SOURCE])).posts[0]!;
 
-    expect(post.meta.publishedAt).toBe('2026-08-10T13:58:00.000Z');
+    expect(post.meta.publishedAt).toBe(new Date(when * 1000).toISOString());
     expect(post.meta.publishedAtKnown).toBe(true);
   });
 

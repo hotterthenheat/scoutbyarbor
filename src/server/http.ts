@@ -380,7 +380,13 @@ export function createServer_(deps: ServerDeps): ScoutServer {
       const jobs = db.jobs.countsByStatus();
       const statuses = db.newsEvents.countsByStatus(since);
       const deliveries = db.deliveries.countsByStatus(since);
-      const healthRows = db.health.all();
+      // Health is only meaningful for sources that are actually polled. A
+      // source disabled in config keeps its last health row forever — so a feed
+      // switched off precisely BECAUSE it was broken went on being reported as
+      // broken, which makes the fix look like it did not work and buries any
+      // genuine failure underneath.
+      const enabledIds = new Set(db.sources.enabled().map((s) => s.id));
+      const healthRows = db.health.all().filter((r) => enabledIds.has(r.sourceId));
 
       const feedHealth: Record<string, number> = {};
       for (const row of healthRows) {

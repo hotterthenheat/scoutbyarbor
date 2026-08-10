@@ -224,3 +224,26 @@ export function decodeEntities(s: string): string {
 export function stripHtml(s: string): string {
   return normalizeWhitespace(decodeEntities(s.replace(/<[^>]*>/g, ' ')));
 }
+
+/**
+ * A fetch failure, said in a way an operator can act on.
+ *
+ * An aborted request surfaces as `This operation was aborted` — the DOM's
+ * wording, and meaningless on a dashboard. It names neither the cause (a
+ * deadline Scout itself set) nor the fix (raise the timeout, or the endpoint is
+ * genuinely slow). The rest are passed through untouched: `HTTP 404 Not Found`
+ * already says everything it needs to.
+ */
+export function describeFetchError(err: unknown, timeoutMs: number): string {
+  const error = err as { name?: string; message?: string; cause?: { code?: string } };
+  const message = error?.message ?? String(err);
+
+  if (error?.name === 'AbortError' || message.toLowerCase().includes('operation was aborted')) {
+    return `timed out after ${Math.round(timeoutMs / 1000)}s`;
+  }
+  const code = error?.cause?.code;
+  if (code === 'ENOTFOUND') return `DNS lookup failed (${code}) — check the hostname`;
+  if (code === 'ECONNREFUSED') return `connection refused (${code})`;
+  if (code === 'CERT_HAS_EXPIRED') return "the feed's TLS certificate has expired";
+  return code ? `${message} (${code})` : message;
+}
