@@ -722,8 +722,12 @@ Order matters — each step depends on the one before it.
 6. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
    `https://<scout-domain>/webhook/news` plus that token.
 7. Set `SPROUT_URL` and `SPROUT_TOKEN`.
-8. Populate `config/calendar.yaml` with the real release schedule — every entry
-   needs an explicit UTC offset.
+8. Populate `config/calendar.yaml` from the **published** BLS and Fed schedules.
+   It ships empty on purpose: a reminder routes to `#scout-news`,
+   `#trading-floor` **and** `#spx-trading`, so a guessed date announces
+   "CPI TOMORROW" to the trading channels for a release that is not happening.
+   Every entry needs an explicit UTC offset. Leaving it empty is a valid
+   configuration — it simply means no reminders.
 9. `npm run sources:verify`. X checks report SKIPPED without a credential; that
    is expected and is not a deploy blocker.
 10. Send one test webhook and confirm it appears in `#scout-news`.

@@ -82,4 +82,21 @@ describe('the shipped calendar file', () => {
       expect(Number.isNaN(Date.parse(event.scheduledAt)), event.id).toBe(false);
     }
   });
+
+  /**
+   * A reminder goes to #scout-news, #trading-floor AND #spx-trading. A guessed
+   * date does not produce a harmless note in a side channel — it announces
+   * "CPI TOMORROW" to the trading channels for a release that is not happening.
+   * So the repository ships no dates at all; they are populated per deployment
+   * from the published BLS and Fed schedules.
+   */
+  it('ships empty, so no invented date can reach a trading channel', () => {
+    expect(loadCalendar().events).toEqual([]);
+  });
+
+  it('an empty calendar is valid, not an error', () => {
+    const { events } = loadCalendar();
+    // No entries means no reminders due, at any time, rather than a throw.
+    expect(dueReminders(events, at('2026-08-11T12:30:00Z'))).toEqual([]);
+  });
 });
