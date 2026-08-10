@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlert, renderAlert, assertNoLeakedMetadata, renderAlertEmbed } from '../src/render/alert.js';
+import { buildAlert, renderAlert, assertNoLeakedMetadata, renderAlertEmbed, presentHeadline, mastheadOf } from '../src/render/alert.js';
 import { formatAlertTimestamp } from '../src/util/time.js';
 
 /**
@@ -367,5 +367,51 @@ describe('the alert as a Discord embed', () => {
     const embed = renderAlertEmbed(alert) as Record<string, unknown>;
     expect(embed.title).toBe(alert.headline);
     expect(embed.url).toBeUndefined();
+  });
+});
+
+/**
+ * Typography.
+ *
+ * Upper-casing every headline was right when every source was a squawk —
+ * "FED CUTS RATES BY 50 BPS" is how that wire writes, and matching it reads as
+ * urgency. A 90-character newspaper sentence in the same treatment does not
+ * read as urgent, it reads as shouting, and capitals strip out the word shapes
+ * the eye navigates by.
+ */
+describe('headline casing', () => {
+  it('shouts a short wire flash', () => {
+    expect(presentHeadline('Fed cuts rates by 50 bps')).toBe('FED CUTS RATES BY 50 BPS');
+  });
+
+  it('leaves a long sentence headline alone', () => {
+    const long =
+      "Wednesday's crucial CPI report will show tamer inflation, according to prediction markets";
+    expect(presentHeadline(long)).toBe(long);
+  });
+
+  it('does not edit a source that already shouted', () => {
+    // Lower-casing a wire's own voice would be editing the source.
+    const wire = 'TRUMP: IRAN ASKING FOR COMPENSATION FOR DAMAGE DONE DURING THE CONFLICT';
+    expect(presentHeadline(wire)).toBe(wire);
+  });
+});
+
+describe('the footer masthead', () => {
+  it('shortens a feed name to the outlet', () => {
+    // "CNBC — Top News" is for whoever configures the source. A reader does not
+    // care which CNBC feed carried it.
+    expect(mastheadOf('CNBC — Top News')).toBe('CNBC');
+    expect(mastheadOf('Federal Reserve — Press Releases')).toBe('Federal Reserve');
+  });
+
+  it('leaves a name that is already a masthead', () => {
+    expect(mastheadOf('MarketWatch')).toBe('MarketWatch');
+    expect(mastheadOf('@DeItaone')).toBe('@DeItaone');
+  });
+
+  it('returns null for nothing, so the footer is the brand alone', () => {
+    expect(mastheadOf(undefined)).toBeNull();
+    expect(mastheadOf('   ')).toBeNull();
   });
 });

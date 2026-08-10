@@ -25,6 +25,47 @@ import { normalizeWhitespace, truncate } from '../util/text.js';
 
 export const BODY_MAX_CHARS = 320;
 
+/**
+ * Above this length, a headline is a sentence and not a wire flash.
+ *
+ * Upper-casing everything was right when every source was a squawk:
+ * "FED CUTS RATES BY 50 BPS" is how that wire writes, and matching it reads as
+ * urgency. A 90-character CNBC sentence in the same treatment does not read as
+ * urgent, it reads as shouting — and the eye has nowhere to rest, because
+ * capitals remove the word shapes it navigates by.
+ *
+ * So short headlines keep the flash treatment and long ones keep their own
+ * casing. The threshold is where a headline stops being a flash and starts
+ * being prose.
+ */
+const FLASH_MAX_CHARS = 60;
+
+/**
+ * A headline as it should appear.
+ *
+ * A source that already SHOUTED is left alone — that is the wire's own voice,
+ * and lower-casing it would be editing the source. A sentence-case headline
+ * over the flash length keeps its casing.
+ */
+/**
+ * "CNBC — Top News" → "CNBC". "Federal Reserve — Press Releases" → "Federal
+ * Reserve". A feed's name is for whoever configures it; its masthead is for
+ * whoever reads it.
+ */
+export function mastheadOf(source: string | undefined): string | null {
+  const name = source?.trim();
+  if (!name) return null;
+  const cut = name.split(/\s+[—–-]\s+/)[0]?.trim();
+  return cut && cut.length > 0 ? cut : name;
+}
+
+export function presentHeadline(headline: string): string {
+  const letters = headline.replace(/[^A-Za-z]/g, '');
+  const alreadyUpper = letters.length > 0 && letters === letters.toUpperCase();
+  if (alreadyUpper) return headline;
+  return headline.length <= FLASH_MAX_CHARS ? headline.toUpperCase() : headline;
+}
+
 export interface BuildAlertInput {
   banner: string;
   headline: string;
@@ -34,7 +75,7 @@ export interface BuildAlertInput {
 }
 
 export function buildAlert(input: BuildAlertInput): RenderableAlert {
-  const headline = normalizeWhitespace(input.headline).toUpperCase();
+  const headline = presentHeadline(normalizeWhitespace(input.headline));
   const body = normalizeWhitespace(input.body ?? '');
 
   return {
@@ -138,7 +179,13 @@ export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unkn
   const brand = norm.brandFooter?.trim();
   // Outlet first, always. Attribution is information and branding is not, so
   // the signature follows the reporter rather than displacing it.
-  const footer = [source, brand].filter(Boolean).join('  ·  ');
+  //
+  // The outlet is shortened to the masthead: config names a source
+  // "CNBC — Top News" so an operator can tell two CNBC feeds apart, but a
+  // reader does not care which of them carried it. Discord already appends its
+  // own separator and timestamp after this string, so anything longer than the
+  // masthead crowds a line that is not ours alone.
+  const footer = [mastheadOf(source), brand].filter(Boolean).join(' · ');
   const publishedAt = norm.publishedAt ? Date.parse(norm.publishedAt) : NaN;
 
   return {

@@ -851,6 +851,29 @@ noise:
     - about to explode
     - about to rip
     - loading up
+    - "according to prediction"
+    - "prediction market"
+    - "prediction markets"
+    - "betting market"
+    - "odds on"
+    - "traders are betting"
+    - "punters"
+    - "will show"
+    - "is expected to show"
+    - "what to expect"
+    - "ahead of wednesday"
+    - "ahead of thursday"
+    - "ahead of friday"
+    - "ahead of monday"
+    - "ahead of tuesday"
+    - "preview:"
+    - "week ahead"
+    - "what to watch this week"
+    - "could be the"
+    - "may be poised"
+    - "set to rally"
+    - "set to fall"
+    - "poised to"
 
   engagementBait:
     - like if
