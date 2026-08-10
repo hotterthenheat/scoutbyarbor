@@ -2,15 +2,22 @@ import { Client, GatewayIntentBits, Events, type Message } from 'discord.js';
 import type { Logger } from '../util/logger.js';
 import { detectPostUrls, type DetectedUrl } from './urls.js';
 import type { SourceKind } from './queue.js';
+import { envelopeFromMessage } from './discordIntel/intake.js';
+import type { DiscordMessageEnvelope } from './discordIntel/types.js';
 
 /**
- * Watches configured Discord channels for X post URLs and hands them straight
- * to the queue — event-driven, not polled, and with no history scraping.
+ * Watches configured Discord channels — for X post URLs to resolve, and for
+ * intelligence in an intake channel. Event-driven, not polled, and with no
+ * history scraping.
  *
  * This listener needs MessageContent, unlike the publishing client which does
  * not, so the two connections are deliberately separate: the publisher keeps
  * the narrowest possible intents, and only this component asks for the
- * privileged one.
+ * privileged one. Both roles share this one connection rather than opening a
+ * third: they need identical intents and see the same event stream.
+ *
+ * Scout reads only channels it has been invited to, with ordinary bot
+ * permissions. There is no user token and no self-bot anywhere in this path.
  */
 
 export interface RelayedMessage {
@@ -41,8 +48,30 @@ export interface DiscordListenerDeps {
   newsChannelIds: string[];
   truthSocialChannelIds: string[];
   adminChannelIds: string[];
+  /**
+   * Channels Scout reads as an intelligence source: the whole message, not just
+   * the links in it. Config decides which channels these are, and config also
+   * guarantees none of them is a destination.
+   */
+  intakeChannelIds?: string[];
   logger: Logger;
   onUrl: (message: RelayedMessage) => void;
+  onIntake?: (envelope: DiscordMessageEnvelope) => void;
+}
+
+/**
+ * Whether a message is one Scout itself posted.
+ *
+ * Extracted so the rule can be tested without a gateway connection. Both ids
+ * must be present and equal: an absent self id means Scout does not yet know
+ * who it is, and guessing in either direction there is worse than the
+ * configuration guard that already keeps sources and destinations disjoint.
+ */
+export function isOwnMessage(
+  authorId: string | null | undefined,
+  selfId: string | null | undefined,
+): boolean {
+  return Boolean(authorId && selfId && authorId === selfId);
 }
 
 export function createDiscordListener(deps: DiscordListenerDeps): DiscordListener {
@@ -55,10 +84,39 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
   for (const id of deps.truthSocialChannelIds) kindByChannel.set(id, 'truth_social');
   for (const id of deps.adminChannelIds) kindByChannel.set(id, 'admin');
 
+  const intakeChannels = new Set((deps.intakeChannelIds ?? []).map((id) => id.trim()).filter(Boolean));
+
+  // A channel configured as both a URL-relay channel and an intake channel would
+  // otherwise be read twice — once for the links in it and once as a whole
+  // message. Intake is the more complete reading, so it wins, and the overlap is
+  // reported rather than silently resolved.
+  for (const id of intakeChannels) {
+    if (kindByChannel.delete(id)) {
+      logger.warn(
+        'channel is configured for both URL relay and intelligence intake; reading it as intake only',
+        { channelId: id },
+      );
+    }
+  }
+
   function handleMessage(message: Message): void {
+    // Scout's own posts, always, before anything else looks at them.
+    //
+    // Scout publishes alerts into Discord. If one of those ever came back in as
+    // an input it would be re-classified, re-published and re-read, and the
+    // resulting loop would look from the outside like an extremely busy news
+    // day. Config keeps sources and destinations disjoint; this is the guard
+    // that holds even if a channel id is one day pasted into the wrong field.
+    if (isOwnMessage(message.author?.id, client?.user?.id)) return;
+
+    if (intakeChannels.has(message.channelId)) {
+      if (!deps.onIntake) return;
+      deps.onIntake(envelopeFromMessage(message, { receivedAt: new Date().toISOString() }));
+      return;
+    }
+
     const kind = kindByChannel.get(message.channelId);
     if (!kind) return;
-    if (message.author?.bot && message.author.id === client?.user?.id) return; // our own posts
 
     // The message body, plus anything Discord expanded into an embed — some
     // relays put the headline in the embed rather than the message text.
@@ -94,7 +152,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
 
   return {
     async start(): Promise<void> {
-      if (kindByChannel.size === 0) {
+      if (kindByChannel.size === 0 && intakeChannels.size === 0) {
         logger.info('no input channels configured; URL ingestion is idle');
         return;
       }
@@ -146,7 +204,10 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
       await new Promise<void>((resolve, reject) => {
         const onReady = (): void => {
           ready = true;
-          logger.info('listening for post URLs', { channels: [...kindByChannel.keys()] });
+          logger.info('listening', {
+            urlChannels: [...kindByChannel.keys()],
+            intakeChannels: [...intakeChannels],
+          });
           resolve();
         };
         client?.once('clientReady', onReady);
@@ -162,7 +223,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
     },
 
     isReady: () => ready,
-    watching: () => [...kindByChannel.keys()],
+    watching: () => [...kindByChannel.keys(), ...intakeChannels],
   };
 }
 

@@ -19,6 +19,8 @@
  * official feed can replace the webhook later without the pipeline noticing.
  */
 
+import type { RelayAttribution } from './relay.js';
+
 /** An attachment as Discord describes it. Retained for audit, never rendered. */
 export interface DiscordAttachment {
   id: string | null;
@@ -72,6 +74,17 @@ export interface DiscordMessageEnvelope {
   editedTimestamp: string | null;
   /** When Scout received it. NEVER substituted for `timestamp`. */
   receivedAt: string;
+  /**
+   * What survived the hop, when this message reached Scout by being forwarded
+   * into an intake channel rather than posted by its own author.
+   *
+   * Absent for the webhook path, where the bridge names the source directly.
+   * Present and honest for the intake path — including when the answer is that
+   * the original author could not be recovered. `authorName` above is always
+   * the account that PUT the message in the channel; who originally said it
+   * lives here, and is null when nobody can say.
+   */
+  relay?: RelayAttribution;
 }
 
 /**
@@ -100,6 +113,13 @@ export interface DiscordChannelConfig {
   sourceId: string;
   name: string;
   enabled: boolean;
+  /**
+   * Scout's own bot reads this channel over the gateway. Requires only ordinary
+   * permissions — View Channel, Read Message History, Read Message Content — on
+   * a server the operator controls. False means the channel is delivered by an
+   * authorized bridge to POST /webhook/discord instead.
+   */
+  intake: boolean;
   qualityScore: number;
   noiseScore: number;
   filterProfile: 'standard' | 'strict';

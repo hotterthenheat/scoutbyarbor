@@ -40,6 +40,18 @@ export interface SourceAttribution {
   channel?: string;
   /** Discord message author — the bot or person that posted it. */
   author?: string;
+  /**
+   * The account that carried the message the last hop into Scout, when that is
+   * NOT the source. A forwarding bot is transport; recording it here rather
+   * than in `author` is what stops it being read as the byline.
+   */
+  relayedBy?: string;
+  /**
+   * False when a relay dropped the original author. The event is still real and
+   * still worth publishing — Scout simply cannot say who said it, and says so
+   * instead of crediting whoever forwarded it.
+   */
+  attributionPreserved?: boolean;
   /** When this source reported it. Publication time when known. */
   firstSeenAt?: string;
 }
@@ -93,17 +105,39 @@ export function attributionFrom(input: {
     typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
   if (kind === 'discord') {
-    const author = str(meta.authorName) ?? str(input.author);
-    const channel = str(meta.channelName) ?? str(meta.channelId);
+    // A message forwarded into an intake channel has two accounts attached: the
+    // one that originally said it and the one that carried it here. Only the
+    // first is a source. `originAuthor` is set exactly when the original
+    // survived the hop, so preferring it — and refusing to fall back to the
+    // carrier when it is absent — is what keeps a forwarding bot out of the
+    // byline. `attributionPreserved: false` is a real answer, not a gap to fill.
+    const preserved = meta.attributionPreserved !== false;
+    const relayedBy = str(meta.carrierName);
+    const author = preserved
+      ? (str(meta.originAuthor) ?? str(meta.authorName) ?? str(input.author))
+      : undefined;
+    // The origin's channel and server, not Scout's mailbox.
+    const channel = str(meta.originChannel) ?? str(meta.channelName) ?? str(meta.channelId);
+    const server = str(meta.originServer) ?? str(meta.guildId);
+
     return {
       kind,
       sourceId: input.sourceId,
       ...(input.org ? { org: input.org } : {}),
-      // The feed that actually said it. That is the thing worth naming.
-      label: author ?? channel ?? input.sourceName ?? input.sourceId,
-      ...(str(meta.guildId) ? { server: str(meta.guildId)! } : {}),
+      // The feed that actually said it. That is the thing worth naming — and
+      // when nothing said it, the label says "unattributed" out loud.
+      label:
+        author ??
+        (preserved
+          ? (channel ?? input.sourceName ?? input.sourceId)
+          : relayedBy
+            ? `unattributed via ${relayedBy}`
+            : 'unattributed'),
+      ...(server ? { server } : {}),
       ...(channel ? { channel } : {}),
       ...(author ? { author } : {}),
+      ...(relayedBy ? { relayedBy } : {}),
+      ...(preserved ? {} : { attributionPreserved: false }),
       ...(input.publishedAt ? { firstSeenAt: input.publishedAt } : {}),
     };
   }
@@ -151,6 +185,16 @@ export function mergeAttribution(
   match.channel ??= incoming.channel;
   match.server ??= incoming.server;
   match.account ??= incoming.account;
+  match.relayedBy ??= incoming.relayedBy;
+
+  // The same story arriving a second time WITH its attribution intact upgrades
+  // an earlier "unattributed" record. Learning who said it is new information;
+  // discarding it to preserve the first, emptier answer would be perverse.
+  if (match.attributionPreserved === false && incoming.attributionPreserved !== false && incoming.author) {
+    delete match.attributionPreserved;
+    match.author = incoming.author;
+    match.label = incoming.label;
+  }
   return out;
 }
 

@@ -255,6 +255,12 @@ const discordChannelSchema = z.object({
   sourceId: z.string().min(1).max(120),
   name: z.string().min(1).max(120).optional(),
   enabled: z.boolean().optional(),
+  /**
+   * Scout's own bot reads this channel over the gateway, with ordinary bot
+   * permissions on a server the operator controls. Default false: a channel is
+   * delivered by an authorized bridge unless it is explicitly an intake channel.
+   */
+  intake: z.boolean().optional(),
   qualityScore: z.number().min(0).max(100).optional(),
   noiseScore: z.number().min(0).max(100).optional(),
   filterProfile: z.enum(['standard', 'strict']).optional(),
@@ -314,6 +320,7 @@ export function loadDiscordSources(
       sourceId: c.sourceId,
       name: c.name ?? c.sourceId,
       enabled: c.enabled ?? true,
+      intake: c.intake ?? false,
       qualityScore: c.qualityScore ?? 70,
       noiseScore: c.noiseScore ?? 30,
       filterProfile: c.filterProfile ?? 'standard',
@@ -330,6 +337,30 @@ export function loadDiscordSources(
     ...(d.spx_macro ? { spxMacro: d.spx_macro.trim() } : {}),
     ...(d.tickers ? { tickers: d.tickers.trim() } : {}),
   };
+
+  // A channel cannot be both a source and a destination.
+  //
+  // Scout would publish an alert into it, read that alert back as intelligence,
+  // and re-publish — a loop that looks like a busy news day from the outside.
+  // The self-message guard in the listener stops the exact-same-bot case, but
+  // relying on it means one refactor away from a feedback loop in production.
+  // Configuration is where this belongs: the two roles are disjoint by
+  // construction, and a mistake fails at boot rather than at 09:31.
+  const destinationIds = new Map<string, string>([
+    ...(destinations.general ? ([[destinations.general, 'destinations.general']] as const) : []),
+    ...(destinations.spxMacro ? ([[destinations.spxMacro, 'destinations.spx_macro']] as const) : []),
+    ...(destinations.tickers ? ([[destinations.tickers, 'destinations.tickers']] as const) : []),
+  ]);
+
+  for (const channel of channels) {
+    const role = destinationIds.get(channel.id);
+    if (!role) continue;
+    throw new Error(
+      `Discord channel ${channel.id} is configured both as a source (${channel.sourceId}) and as ` +
+        `${role} in discord-sources.yaml. Scout would publish there and then read its own alerts ` +
+        'back in as intelligence. Give the intake channel and the output channel different ids.',
+    );
+  }
 
   return { version: parsed.version, channels, destinations };
 }

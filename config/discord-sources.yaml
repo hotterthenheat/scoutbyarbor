@@ -7,20 +7,39 @@
 #
 # ── HOW MESSAGES GET HERE ────────────────────────────────────────────────────
 #
-# Scout does not read these channels itself. It cannot: reading a server you do
-# not administer requires either a bot the server owner installed, or automating
-# a personal account — and the second is a self-bot, which violates Discord's
-# terms and gets the account terminated. Scout implements neither.
+# Two ways, and they feed the same allowlist, worker and pipeline.
 #
-# What Scout provides is the RECEIVING half. An authorized bridge — a bot the
-# server owner installs, an official API/partner feed, or any relay you are
-# permitted to run — POSTs messages to:
+# 1. INTAKE CHANNEL (`intake: true`). Scout's own bot reads a channel in a
+#    server you control, using ordinary permissions — View Channel, Read
+#    Message History, Read Message Content, Send Messages — plus the MESSAGE
+#    CONTENT intent in the developer portal. Anything you post or forward there
+#    becomes an input. This is how you feed Scout from a server it is not in:
+#    forward the message, and Scout reads the forward.
 #
-#     POST /webhook/discord     Authorization: Bearer $DISCORD_INTEL_TOKEN
+# 2. AUTHORIZED BRIDGE (the default). A bot the server owner installed, an
+#    official API or partner feed, or any relay you are permitted to run POSTs
+#    messages to:
 #
-# The provider interface behind that endpoint is deliberately transport-
-# agnostic, so an authorized gateway feed can be plugged in later without
-# touching the pipeline.
+#        POST /webhook/discord   Authorization: Bearer $DISCORD_INTEL_TOKEN
+#
+# What Scout will NOT do is read a server it was not invited to by automating a
+# personal account. A user token, session cookie, browser replay or self-bot
+# violates Discord's terms and gets the account terminated — taking the servers,
+# the intake channel and Scout's own feed down with it. The intake channel above
+# solves the same problem with permissions you are allowed to have.
+#
+# ── ATTRIBUTION THROUGH A FORWARD ────────────────────────────────────────────
+#
+# A forwarded message has two accounts attached: whoever originally said it and
+# whoever forwarded it. Only the first is a source, and Scout never promotes the
+# forwarder into the byline.
+#
+# What survives the hop depends on how it was forwarded. Discord's native
+# forward carries the original content, embeds and TIMESTAMP but deliberately
+# not the original author — so such an event is recorded as `unattributed via
+# <forwarder>` rather than credited to anyone. Relay bots that stamp the
+# original author onto the embed preserve both halves, and are read accordingly.
+# Scout does not guess the missing half.
 #
 # ── FILTERING ────────────────────────────────────────────────────────────────
 #
@@ -53,8 +72,17 @@ version: 1
 # An event that is BOTH macro and single-name reaches both. An event that is
 # neither reaches general only. The decision is the market-impact classifier's,
 # never the source's.
+#
+# NO CHANNEL MAY BE BOTH A DESTINATION AND A SOURCE. Scout would publish an
+# alert into it, read that alert back as intelligence and re-publish — a loop
+# that looks like a very busy news day from the outside. The loader rejects the
+# overlap at boot rather than letting it be discovered in production.
+#
+# `general` is intentionally unset here: 1513342006342979635 is now the INTAKE
+# channel below, so the general feed needs its own channel. Set
+# DISCORD_CHANNEL_NEWS to it, or fill `general` in here — Scout refuses to boot
+# with neither, because every qualified alert routes there.
 destinations:
-  general: "1513342006342979635"
   spx_macro: "1510553508351311922"
   tickers: "1510553837897781259"
 
@@ -62,6 +90,26 @@ destinations:
 # An ALLOWLIST. A message from a channel not listed here is rejected outright,
 # not merely deprioritised.
 channels:
+  # Scout's own intake channel. Post or forward anything here and it becomes an
+  # input — no bridge, no API key, no token beyond the bot's own.
+  - id: "1513342006342979635"
+    sourceId: discord:scout-intake
+    name: Scout Intake
+    enabled: true
+    intake: true
+    # The intake channel is exactly as trustworthy as what gets forwarded into
+    # it, which varies. A middling seed lets a genuinely important forward
+    # compete without letting an idle one through; the market-impact test still
+    # decides whether anything reaches a trading channel.
+    qualityScore: 70
+    noiseScore: 30
+    filterProfile: standard
+    # Empty: anyone who can post in the intake channel can feed Scout. Since the
+    # channel is in a server you control, its permissions ARE the allowlist. Add
+    # names here to narrow it further — matched against whoever posts in the
+    # channel, which for a forward is the forwarder, not the original author.
+    authors: []
+
   - id: "1081082844807434292"
     sourceId: discord:arbor-intel
     name: Arbor Intelligence Source
@@ -85,6 +133,8 @@ channels:
 #       sourceId: discord:flow-alerts    # Scout source id; must start `discord:`
 #       name: Flow Alerts
 #       enabled: true
+#       intake: false                    # true = Scout's own bot reads it
+#                                        # false/absent = a bridge POSTs it in
 #       qualityScore: 85                 # 0-100, seeds the sourceQuality component
 #       noiseScore: 25                   # 0-100, higher means noisier
 #       filterProfile: standard          # standard | strict

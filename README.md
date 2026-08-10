@@ -180,41 +180,103 @@ Discord ───┘                                                  #trading-f
                                                               #spx-trading → Sprout
 ```
 
+### Two ways in
+
+**The intake channel.** Scout's own bot reads a channel you control and treats
+what lands there as intelligence. It needs only ordinary permissions — View
+Channel, Read Message History, Read Message Content, Send Messages — plus the
+MESSAGE CONTENT intent in the developer portal. Post or forward anything into
+it and it becomes an input. No bridge, no API key, no credential beyond the bot
+token Scout already has.
+
+**An authorized bridge.** A bot the server owner installed, an official or
+partner feed, or any relay you are permitted to run POSTs to
+`/webhook/discord`. `DiscordIntelProvider` in
+`src/ingest/discordIntel/types.ts` is the seam.
+
+```
+intake channel   ─┐   (Scout's own bot, ordinary permissions)
+                  ├─→ allowlist → queue → the same pipeline
+authorized bridge ┘   (POST /webhook/discord)
+```
+
 ### What Scout does not do
 
-Scout does not read Discord servers it has not been invited to. It cannot: that
-requires either a bot the server owner installed, or automating a personal
-account. The second is a self-bot — it violates Discord's terms and gets the
-account terminated — and Scout implements none of it: no user tokens, no session
-replay, no browser automation, no undocumented gateway use.
+Scout does not read Discord servers it has not been invited to by automating a
+personal account. A user token, session cookie, browser replay or self-bot
+violates Discord's terms and gets the account terminated — taking the servers,
+the intake channel and Scout's own feed down with it. Scout implements none of
+it: no user tokens, no session replay, no browser automation, no undocumented
+gateway use. **This holds regardless of who is willing to accept the risk**;
+the failure mode is the loss of the very access it was meant to buy.
 
-What Scout provides is the **receiving half**:
+Three permitted routes exist for a server Scout is not in, in order of how
+little work they need afterwards:
 
-```
-authorized bridge ──POST /webhook/discord──→ Scout
-  (a bot the owner installed, an official/partner
-   feed, or any relay you are permitted to run)
-```
+1. **Follow the channel.** If it is an Announcement channel, Discord's own
+   channel-following mirrors it into a channel Scout reads — automatically,
+   with the original author and a link back to the source intact. Nothing is
+   forwarded by hand. Scout detects these (`relayMethod: crosspost`) and treats
+   the attribution as fully preserved. Try this first.
+2. **Ask the server owner** for a bot invite or an outgoing webhook.
+3. **Forward into the intake channel** yourself. See the attribution rules
+   below for what that costs.
 
-`DiscordIntelProvider` in `src/ingest/discordIntel/types.ts` is the seam. An
-authorized gateway feed implements that interface and starts delivering
-envelopes; nothing downstream changes.
+### Attribution through a relay
+
+A forwarded message has two accounts attached: whoever originally said it and
+whoever carried it the last hop. Only the first is a source, and **Scout never
+promotes the carrier into the byline.** When the original author cannot be
+recovered, the event is recorded as `unattributed via <carrier>` — an honest
+blank rather than a plausible wrong answer, which on a trading alert is the
+worse of the two.
+
+What survives depends on how it arrived:
+
+| How it arrived | Author | Origin | Original timestamp |
+| --- | --- | --- | --- |
+| `crosspost` — Discord channel-following | ✅ | ✅ | ✅ |
+| `embed_author` — a relay bot that stamps the byline | ✅ | ✅ | ✅ |
+| `text_prefix` — `Forwarded from X in #y:` | ✅ | partial | — |
+| `forward_snapshot` — Discord's native forward | ❌ | ✅ | ✅ |
+| `message_link` — a bare permalink | ❌ | ✅ | — |
+| `direct` — posted by its own author | ✅ | ✅ | ✅ |
+
+Discord's native forward is the one that loses the author: the API sends the
+content, embeds and original timestamp, and deliberately omits who wrote it.
+Scout reports that split rather than collapsing it — such an event still
+publishes and still routes on its content, it simply carries no byline.
+
+Forwarding is a **hop, not a publication**. The freshness gate reads the
+original timestamp, so a headline forwarded an hour late is an hour old, and
+catching up on yesterday's reading does not manufacture a wire full of fresh
+trading events.
 
 ### Configuration
 
-`config/discord-sources.yaml` is an **allowlist** and ships empty. A message
-from an unconfigured channel is rejected — not deprioritised.
+`config/discord-sources.yaml` is an **allowlist**. A message from an
+unconfigured channel is rejected — not deprioritised.
 
 ```yaml
 channels:
   - id: "1234567890123456789"
     sourceId: discord:flow-alerts     # must start `discord:` — provenance depends on it
+    intake: true                      # Scout's own bot reads it; omit for a bridge
     qualityScore: 85
     authors:                          # optional; empty accepts every author
       - name: unusual_whales_crier
         qualityScore: 90
       - name: OwlsKeyLevelsBot
 ```
+
+An author allowlist on an intake channel matches whoever **posts in that
+channel** — for a forward, the forwarder. It controls who may feed Scout, which
+is a different question from who originally said the thing.
+
+**No channel may be both a source and a destination.** Scout would publish an
+alert into it, read that alert back as intelligence and re-publish, and the loop
+would look from the outside like a very busy news day. The loader rejects the
+overlap at boot, and the listener additionally ignores Scout's own messages.
 
 Each channel becomes a row in `sources`, so `qualityScore` feeds the same
 `sourceQuality` component an X account uses. It changes how a message competes.
@@ -227,10 +289,12 @@ runs the Discord bridge, so neither can push into the other's source.
 
 ### Publication time
 
-A Discord message carries a real timestamp, and Scout uses it — preferring an
-embed's own timestamp when present, since a relay bot usually stamps the embed
-with the upstream event time rather than when it got round to posting. If the
-bridge supplies no timestamp at all, `publishedAt` is **null** and the event
+A Discord message carries a real timestamp, and Scout uses it — most upstream
+first: an embed's own timestamp, then the original message's timestamp when a
+forward preserved it, then the message's own. A relay bot usually stamps the
+embed with the upstream event time rather than when it got round to posting, and
+a forward carries the original's time rather than the forward's. If nothing
+supplies a timestamp at all, `publishedAt` is **null** and the event
 reaches `#scout-news` while being withheld from Sprout. The receipt time is
 never promoted, exactly as on the X path.
 

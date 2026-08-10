@@ -18,6 +18,8 @@ import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
+import { describeRelay } from './ingest/discordIntel/relay.js';
+import type { DiscordMessageEnvelope } from './ingest/discordIntel/types.js';
 import {
   createUrlWorker,
   isFreshForTrading,
@@ -530,6 +532,52 @@ export async function main(): Promise<void> {
   });
   discordIntelRef = discordIntel;
 
+  /**
+   * Admit a Discord message and queue it durably.
+   *
+   * ONE path, used by both the webhook bridge and Scout's own intake channel.
+   * A message that arrives by gateway gets the same allowlist, the same durable
+   * payload, the same retry policy and the same pipeline as one that arrives by
+   * POST — the transport is not allowed to be a second implementation.
+   */
+  function acceptDiscordEnvelope(envelope: DiscordMessageEnvelope): {
+    accepted: boolean;
+    duplicate: boolean;
+    rejected: boolean;
+    eventId: string;
+    reason: string;
+  } {
+    const admission = discordIntel.admit(envelope);
+    if (!admission.admitted) {
+      return {
+        accepted: false,
+        duplicate: false,
+        rejected: true,
+        eventId: '',
+        reason: admission.reason,
+      };
+    }
+
+    // The envelope rides down with the job in one statement, so a message
+    // accepted here is processable after a restart — neither a bridge nor a
+    // Discord gateway will deliver it a second time.
+    const job = queue.enqueue({
+      postId: admission.postId,
+      url: admission.url,
+      sourceChannel: envelope.channelId,
+      sourceKind: 'discord',
+      relayPayload: admission.payload,
+    });
+
+    return {
+      accepted: job !== null,
+      duplicate: job === null,
+      rejected: false,
+      eventId: admission.postId,
+      reason: job === null ? 'already queued or processed' : 'queued',
+    };
+  }
+
   const urlWorker = createUrlWorker({
     db,
     queue,
@@ -566,16 +614,47 @@ export async function main(): Promise<void> {
     await publisher.publishSystem(`INGESTION ALLOWLIST IS OPEN\n\n${warning}`);
   }
 
+  // Channels Scout's own bot reads directly. Ordinary permissions on a server
+  // the operator controls — no bridge, no credential beyond the bot token.
+  const intakeChannelIds = discordSources.channels
+    .filter((c) => c.enabled && c.intake)
+    .map((c) => c.id);
+
   const listener = createDiscordListener({
     token: cfg.discord.token,
     newsChannelIds: cfg.discord.newsSourceChannelIds,
     truthSocialChannelIds: cfg.discord.truthSocialChannelIds,
     adminChannelIds: cfg.discord.adminInputChannelIds,
+    intakeChannelIds,
     logger: log.child('listener'),
     onUrl: (message) => {
       urlWorker.submit(message);
     },
+    // Durably queue and return. The gateway callback must not wait for
+    // classification, Discord or Sprout — exactly as the webhook does not.
+    onIntake: (envelope) => {
+      const result = acceptDiscordEnvelope(envelope);
+      log.child('intake').debug('intake message', {
+        messageId: envelope.messageId,
+        channelId: envelope.channelId,
+        relayMethod: envelope.relay?.method,
+        attributionPreserved: envelope.relay?.authorPreserved,
+        attribution: envelope.relay ? describeRelay(envelope.relay) : null,
+        accepted: result.accepted,
+        reason: result.reason,
+      });
+    },
   });
+
+  if (intakeChannelIds.length > 0) {
+    log.info('intelligence intake channels', {
+      channels: intakeChannelIds,
+      note:
+        'Scout reads these with ordinary bot permissions. Forwarded messages keep their ' +
+        'original attribution where Discord preserves it, and are recorded as unattributed ' +
+        'where it does not.',
+    });
+  }
 
   // A separate gateway connection from the publisher, deliberately: the
   // listener needs the privileged MessageContent intent, and if that is not
@@ -767,40 +846,7 @@ export async function main(): Promise<void> {
     // The Discord intelligence source. Durably queues and returns; nothing here
     // awaits classification, Discord or Sprout.
     discordIntel: cfg.webhook.discordIntelToken
-      ? {
-          token: cfg.webhook.discordIntelToken,
-          accept: (envelope) => {
-            const admission = discordIntel.admit(envelope);
-            if (!admission.admitted) {
-              return {
-                accepted: false,
-                duplicate: false,
-                rejected: true,
-                eventId: '',
-                reason: admission.reason,
-              };
-            }
-
-            // The envelope rides down with the job in one statement, so a
-            // message accepted here is processable after a restart — the
-            // bridge will not deliver it a second time.
-            const job = queue.enqueue({
-              postId: admission.postId,
-              url: admission.url,
-              sourceChannel: envelope.channelId,
-              sourceKind: 'discord',
-              relayPayload: admission.payload,
-            });
-
-            return {
-              accepted: job !== null,
-              duplicate: job === null,
-              rejected: false,
-              eventId: admission.postId,
-              reason: job === null ? 'already queued or processed' : 'queued',
-            };
-          },
-        }
+      ? { token: cfg.webhook.discordIntelToken, accept: acceptDiscordEnvelope }
       : undefined,
     webhook: cfg.webhook.token
       ? {
@@ -882,8 +928,14 @@ export async function main(): Promise<void> {
     watching: listener.watching().length,
     admin: cfg.webhook.adminToken ? 'enabled at POST /admin/replay' : 'not configured',
     webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
-    discordIntel: cfg.webhook.discordIntelToken
-      ? `enabled at POST /webhook/discord, ${discordIntel.filter.channelIds().length} channel(s)`
+    // Two independent ways in, and reporting only the webhook would call the
+    // Discord source "not configured" while an intake channel was feeding it.
+    discordIntake:
+      intakeChannelIds.length > 0
+        ? `${intakeChannelIds.length} channel(s) read by Scout's own bot`
+        : 'not configured',
+    discordWebhook: cfg.webhook.discordIntelToken
+      ? `enabled at POST /webhook/discord, ${discordIntel.filter.channelIds().length} allowlisted channel(s)`
       : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
     replay: replayTimer ? `every ${cfg.replay.intervalMinutes}m` : 'off',
