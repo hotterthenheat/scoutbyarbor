@@ -6,28 +6,50 @@ import type {
   SourceVerification,
 } from '../../core/types.js';
 import type { Logger } from '../../util/logger.js';
+import type { CreditBudget } from './creditBudget.js';
 import { isoNow } from '../../util/time.js';
 import { normalizeWhitespace, stripHtml, describeFetchError } from '../../util/text.js';
 
 /**
- * Truth Social adapter.
+ * Truth Social adapter, with two transports behind one ID scheme.
  *
- * Truth Social runs a Mastodon-compatible server and exposes the standard
- * public account endpoints. Scout reads those directly: no credential, no key,
- * no cost, and nothing that works around an access control.
+ * ── DIRECT ───────────────────────────────────────────────────────────────────
+ *
+ * Truth Social runs a Mastodon-compatible server with standard public account
+ * endpoints:
  *
  *   GET /api/v1/accounts/lookup?acct=<handle>       → the account
  *   GET /api/v1/accounts/<id>/statuses              → the posts
  *
- * ── WHY NOT THE USUAL TOOLING ────────────────────────────────────────────────
+ * No credential, no key, no cost. This is the preferred transport and it is
+ * what runs when no vendor key is configured.
  *
- * The published tools for this route every request through FlareSolverr, whose
- * only purpose is solving Cloudflare's bot challenge. Scout does not, because
- * the endpoints above answer plain JSON without one — and because defeating a
- * protection a site deployed is the same line as a self-bot, whatever it is
- * pointed at. If Truth Social closes these endpoints, the correct response is
- * that this adapter stops working, not that it starts pretending to be a
- * browser.
+ * The published tooling for this route sends every request through
+ * FlareSolverr, whose only purpose is solving Cloudflare's bot challenge. Scout
+ * does not, and will not: defeating a protection a site deployed is the same
+ * line as a self-bot, whatever it is pointed at. When the endpoint answers with
+ * a challenge, this transport stops.
+ *
+ * ── VENDOR ───────────────────────────────────────────────────────────────────
+ *
+ * It did stop. From a datacenter IP the public endpoints return HTTP 403, so on
+ * the deployed instance every Truth Social source sat DISCONNECTED. The second
+ * transport reads the same posts from Scrape Creators, a commercial API the
+ * operator subscribes to. That is an ordinary paid data feed — the same
+ * relationship Scout already has with Finnhub — and it is not a bypass: the
+ * request goes to the vendor's own API with the operator's own key, and the
+ * vendor's data sourcing is the vendor's business.
+ *
+ * It is, however, METERED, which is a constraint the direct transport never
+ * had. See `creditBudget.ts`: polling is a standing order to spend money.
+ *
+ * ── ONE ID SCHEME ACROSS BOTH ────────────────────────────────────────────────
+ *
+ * Whichever transport reads a post, the canonical id is `truth:<status id>` —
+ * identical to what the webhook path derives. A post seen directly, read
+ * through the vendor, and pushed by somebody's relay must collapse into ONE
+ * event, and dedupe is by canonical id. Switching transports must never
+ * republish the wire's recent history.
  *
  * ── PUBLICATION TIME ─────────────────────────────────────────────────────────
  *
@@ -42,6 +64,17 @@ const MAX_SEEN_IDS = 500;
 /** Per request. The endpoint caps it well above this; being polite is free. */
 const PAGE_LIMIT = 20;
 
+const DEFAULT_VENDOR_BASE = 'https://api.scrapecreators.com';
+/**
+ * Posts fetched per vendor poll.
+ *
+ * Deliberately tiny. The direct transport pages 20 at a time because pages are
+ * free there; on the vendor every post on the page is billed on every poll,
+ * seen or not. Three is enough to survive a burst between two 30s polls without
+ * paying for seventeen posts Scout already published.
+ */
+const DEFAULT_VENDOR_PAGE_LIMIT = 3;
+
 export interface TruthSocialAdapterDeps {
   /** Identifies Scout to the server. Reused from the SEC setting. */
   userAgent: string;
@@ -49,6 +82,22 @@ export interface TruthSocialAdapterDeps {
   logger: Logger;
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /**
+   * Scrape Creators. Supplying a key switches every Truth Social source onto
+   * the vendor transport; omitting it keeps the free direct one.
+   */
+  vendor?: {
+    apiKey: string;
+    baseUrl?: string;
+    /**
+     * Posts requested per poll. This is the price of a poll, not a tuning
+     * detail: the vendor bills per post returned, so a page of 20 costs 20
+     * credits every time it is fetched — including the 19 already seen.
+     */
+    pageLimit?: number;
+    /** Refuses the request when the daily cap is reached. */
+    budget?: CreditBudget;
+  };
 }
 
 interface TruthAccount {
@@ -83,6 +132,37 @@ export function canonicalTruthId(statusId: string): string {
   return `truth:${statusId.trim()}`;
 }
 
+/**
+ * Pulls the status list out of a vendor response.
+ *
+ * The vendor's docs are not reachable from the build environment, so the exact
+ * envelope is unverified. Rather than guess one key and ship a source that
+ * silently returns nothing, this accepts a bare array or any of the usual
+ * wrappers, and the caller reports the actual top-level keys when none match —
+ * so a wrong guess shows up as a named fault on the dashboard within one poll
+ * instead of as an inexplicably quiet feed.
+ */
+export function statusesFromVendor(body: unknown): TruthStatus[] | null {
+  if (Array.isArray(body)) return body as TruthStatus[];
+  if (!body || typeof body !== 'object') return null;
+
+  const record = body as Record<string, unknown>;
+  for (const key of ['posts', 'data', 'statuses', 'results', 'items', 'timeline']) {
+    const value = record[key];
+    if (Array.isArray(value)) return value as TruthStatus[];
+  }
+  return null;
+}
+
+/** Describes an unrecognised payload precisely enough to fix it. */
+function describeShape(body: unknown): string {
+  if (body === null || body === undefined) return 'empty body';
+  if (Array.isArray(body)) return 'array';
+  if (typeof body !== 'object') return typeof body;
+  const keys = Object.keys(body as Record<string, unknown>).slice(0, 8);
+  return keys.length > 0 ? `object with keys [${keys.join(', ')}]` : 'object with no keys';
+}
+
 export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAdapter {
   const doFetch = deps.fetchImpl ?? fetch;
   const now = deps.now ?? (() => Date.now());
@@ -90,23 +170,43 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
   /** handle → account id. One lookup per process, not per poll. */
   const accountIds = new Map<string, string>();
 
-  async function request(url: string): Promise<unknown> {
+  const vendorKey = deps.vendor?.apiKey?.trim() ?? '';
+  const useVendor = vendorKey.length > 0;
+  const vendorBase = (deps.vendor?.baseUrl?.trim() || DEFAULT_VENDOR_BASE).replace(/\/+$/, '');
+  const vendorPageLimit = Math.max(1, deps.vendor?.pageLimit ?? DEFAULT_VENDOR_PAGE_LIMIT);
+  const budget = deps.vendor?.budget;
+
+  async function request(url: string, headers: Record<string, string>): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), deps.timeoutMs);
     try {
-      const res = await doFetch(url, {
-        signal: controller.signal,
-        headers: { accept: 'application/json', 'user-agent': deps.userAgent },
-      });
+      const res = await doFetch(url, { signal: controller.signal, headers });
 
       if (res.status === 404) throw new Error('account not found (HTTP 404)');
-      if (res.status === 429) throw new Error('rate limited (HTTP 429); backing off until next poll');
-      if (res.status === 403) {
-        // The endpoint answering with a challenge rather than JSON is exactly
-        // the case this adapter refuses to work around.
+      if (res.status === 429) {
+        throw new Error('rate limited (HTTP 429); backing off until next poll');
+      }
+      if (res.status === 401) {
+        throw new Error('HTTP 401 — the API key was rejected. Check SCRAPECREATORS_API_KEY.');
+      }
+      if (res.status === 402) {
         throw new Error(
-          'HTTP 403 — the public API is refusing anonymous reads. Scout does not ' +
-            'circumvent bot protection, so this source stops here.',
+          'HTTP 402 — the vendor account is out of credits. Top up the balance or the ' +
+            'Truth Social sources stay dark.',
+        );
+      }
+      if (res.status === 400) {
+        // Very likely the query parameter name. The vendor states which one is
+        // missing, so pass its wording straight through rather than paraphrase.
+        const detail = await res.text().catch(() => '');
+        throw new Error(`HTTP 400 — the vendor rejected the request: ${detail.slice(0, 200)}`);
+      }
+      if (res.status === 403) {
+        throw new Error(
+          useVendor
+            ? 'HTTP 403 — the vendor refused this resource.'
+            : 'HTTP 403 — the public API is refusing anonymous reads. Scout does not ' +
+              'circumvent bot protection, so this source stops here.',
         );
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -115,6 +215,25 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
       clearTimeout(timer);
     }
   }
+
+  /**
+   * Reserves the worst-case cost of one vendor call.
+   *
+   * The vendor bills per POST returned, so the cost is the page size, not one.
+   * The difference is released once the response is counted.
+   */
+  function reserveCredits(units: number): void {
+    if (!budget) return;
+    if (!budget.tryReserve(units)) {
+      throw new Error(
+        `daily credit budget spent (${budget.limit} credits, ${budget.spent()} used). ` +
+          'Raise SCRAPECREATORS_DAILY_BUDGET, slow TRUTH_POLL_INTERVAL_MS, or top up ' +
+          'the vendor balance.',
+      );
+    }
+  }
+
+  // ── DIRECT TRANSPORT ──────────────────────────────────────────────────────
 
   async function accountIdFor(source: Source): Promise<string> {
     const handle = acctOf(source.handle ?? '');
@@ -126,6 +245,7 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
     const base = source.url?.trim() || 'https://truthsocial.com';
     const body = (await request(
       `${base}/api/v1/accounts/lookup?acct=${encodeURIComponent(handle)}`,
+      { accept: 'application/json', 'user-agent': deps.userAgent },
     )) as TruthAccount;
 
     const id = body?.id?.trim();
@@ -134,6 +254,54 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
     deps.logger.info('resolved truth social account', { handle, accountId: id });
     return id;
   }
+
+  async function statusesDirect(source: Source): Promise<TruthStatus[]> {
+    const accountId = await accountIdFor(source);
+    const base = source.url?.trim() || 'https://truthsocial.com';
+    const body = await request(
+      `${base}/api/v1/accounts/${accountId}/statuses?limit=${PAGE_LIMIT}&exclude_replies=true`,
+      { accept: 'application/json', 'user-agent': deps.userAgent },
+    );
+
+    if (!Array.isArray(body)) throw new Error('statuses endpoint did not return an array');
+    return body as TruthStatus[];
+  }
+
+  // ── VENDOR TRANSPORT ──────────────────────────────────────────────────────
+
+  async function statusesViaVendor(source: Source): Promise<TruthStatus[]> {
+    const handle = acctOf(source.handle ?? '');
+    if (!handle) throw new Error(`source ${source.id} has no handle`);
+
+    // Ask for as little as possible. Every post on the page is billable whether
+    // or not Scout has already seen it, so the page size IS the cost of a poll
+    // — the one lever that matters on a metered per-post feed.
+    reserveCredits(vendorPageLimit);
+    let returned = vendorPageLimit;
+    try {
+      const body = await request(
+        `${vendorBase}/v1/truthsocial/user/posts?handle=${encodeURIComponent(handle)}` +
+          `&limit=${vendorPageLimit}`,
+        { accept: 'application/json', 'x-api-key': vendorKey, 'user-agent': deps.userAgent },
+      );
+
+      const statuses = statusesFromVendor(body);
+      if (!statuses) {
+        throw new Error(
+          `vendor returned an unrecognised payload (${describeShape(body)}); ` +
+            'the status list could not be located',
+        );
+      }
+      returned = statuses.length;
+      return statuses;
+    } finally {
+      // A call that returned fewer posts than the page allows cost less. A call
+      // that threw keeps the full reservation, which is the safe direction.
+      budget?.settle(vendorPageLimit, returned);
+    }
+  }
+
+  const fetchStatuses = useVendor ? statusesViaVendor : statusesDirect;
 
   function toPost(status: TruthStatus, source: Source): RawPost | null {
     const id = status.id?.trim();
@@ -166,7 +334,9 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
         publishedAtKnown: publishedAt !== null,
         provenance: 'truth_social',
         platform: 'truth_social',
-        retrievalSource: 'truthsocial-api',
+        // The transport is how Scout obtained the post, never who said it. The
+        // byline stays the account either way.
+        retrievalSource: useVendor ? 'scrapecreators-api' : 'truthsocial-api',
         statusId: id,
         relayHandle: handle ? `@${handle}` : null,
       },
@@ -184,18 +354,11 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
       for (const source of sources) {
         const startedAt = Date.now();
         try {
-          const accountId = await accountIdFor(source);
-          const base = source.url?.trim() || 'https://truthsocial.com';
-          const body = (await request(
-            `${base}/api/v1/accounts/${accountId}/statuses?limit=${PAGE_LIMIT}&exclude_replies=true`,
-          )) as unknown;
-
-          if (!Array.isArray(body)) throw new Error('statuses endpoint did not return an array');
-
+          const body = await fetchStatuses(source);
           const seen = seenBySource.get(source.id) ?? new Set<string>();
           let fresh = 0;
 
-          for (const status of body as TruthStatus[]) {
+          for (const status of body) {
             const post = toPost(status, source);
             if (!post) continue;
             if (seen.has(post.sourcePostId)) continue;
@@ -243,6 +406,15 @@ export function createTruthSocialAdapter(deps: TruthSocialAdapterDeps): IngestAd
 
     async verify(source: Source): Promise<SourceVerification> {
       try {
+        if (useVendor) {
+          const statuses = await statusesViaVendor(source);
+          return {
+            sourceId: source.id,
+            ok: true,
+            resolvedId: acctOf(source.handle ?? ''),
+            detail: `vendor transport, ${statuses.length} post(s)`,
+          };
+        }
         const id = await accountIdFor(source);
         return { sourceId: source.id, ok: true, resolvedId: id, detail: `account ${id}` };
       } catch (err) {

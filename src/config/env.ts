@@ -72,6 +72,19 @@ const schema = z.object({
   //
   // X stays slower because its cadence is governed by a request budget rather
   // than by freshness, and polling it harder just exhausts the window earlier.
+  // Scrape Creators. Set the key and every Truth Social source reads through
+  // the vendor instead of the public endpoints, which is the only route that
+  // works from a datacenter IP. Unset = the free direct transport.
+  //
+  // METERED, so the budget is a required part of the configuration rather than
+  // a tuning knob: three accounts polled every 30s is 8,640 requests a day.
+  SCRAPECREATORS_API_KEY: z.string().default(''),
+  SCRAPECREATORS_BASE_URL: z.string().default('https://api.scrapecreators.com'),
+  // Counted in CREDITS, which the vendor bills per post returned — not per
+  // request. A page of 3 costs 3 credits every poll, seen posts included.
+  SCRAPECREATORS_DAILY_BUDGET: z.coerce.number().int().positive().default(90),
+  SCRAPECREATORS_PAGE_LIMIT: z.coerce.number().int().positive().default(3),
+
   TRUTH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   X_POLL_INTERVAL_MS: numeric(90_000),
@@ -261,7 +274,13 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       apiKey: parsed.FINNHUB_API_KEY,
       pollIntervalMs: parsed.FINNHUB_POLL_INTERVAL_MS,
     },
-    truthSocial: { pollIntervalMs: parsed.TRUTH_POLL_INTERVAL_MS },
+    truthSocial: {
+      pollIntervalMs: parsed.TRUTH_POLL_INTERVAL_MS,
+      vendorApiKey: parsed.SCRAPECREATORS_API_KEY,
+      vendorBaseUrl: parsed.SCRAPECREATORS_BASE_URL,
+      vendorDailyBudget: parsed.SCRAPECREATORS_DAILY_BUDGET,
+      vendorPageLimit: parsed.SCRAPECREATORS_PAGE_LIMIT,
+    },
     sec: {
       userAgent: parsed.SEC_USER_AGENT,
       pollIntervalMs: parsed.SEC_POLL_INTERVAL_MS,

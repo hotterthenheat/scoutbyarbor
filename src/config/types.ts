@@ -155,6 +155,13 @@ export interface ScoutEnv {
    */
   truthSocial: {
     pollIntervalMs: number;
+    /** Scrape Creators. Empty = read the public endpoints directly. */
+    vendorApiKey: string;
+    vendorBaseUrl: string;
+    /** Credits permitted per UTC day. The vendor bills per post returned. */
+    vendorDailyBudget: number;
+    /** Posts fetched per poll — the price of a poll, in credits. */
+    vendorPageLimit: number;
   };
   sec: {
     userAgent: string;

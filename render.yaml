@@ -98,6 +98,21 @@ services:
       - key: FINNHUB_API_KEY
         sync: false
 
+      # ── Truth Social via Scrape Creators. REQUIRED on Render: the public
+      # Truth Social endpoints return HTTP 403 to datacenter IPs, so without
+      # this every Truth Social source sits DISCONNECTED.
+      #
+      # Billed PER POST RETURNED, so polling spends money continuously. The
+      # budget below is a hard stop in credits, persisted across restarts and
+      # reset at UTC midnight — size it to the balance actually purchased.
+      # credits/hour = accounts × polls-per-hour × page-limit. ──
+      - key: SCRAPECREATORS_API_KEY
+        sync: false
+      - key: SCRAPECREATORS_DAILY_BUDGET
+        value: "90"
+      - key: SCRAPECREATORS_PAGE_LIMIT
+        value: "3"
+
       # ── OPTIONAL. Scout runs fully without this ──
       # The primary ingestion path reads the content the permitted relay already
       # posted alongside the link, which needs no credential. An X API resolver

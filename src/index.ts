@@ -18,6 +18,7 @@ import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createFinnhubAdapter } from './ingest/adapters/finnhub.js';
 import { createTruthSocialAdapter } from './ingest/adapters/truthSocial.js';
+import { createCreditBudget } from './ingest/adapters/creditBudget.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
@@ -824,6 +825,52 @@ export async function main(): Promise<void> {
       : 'FINNHUB: NOT CONFIGURED (set FINNHUB_API_KEY to poll market news)',
   );
 
+  // Truth Social's public endpoints refuse datacenter IPs, so on a hosted
+  // deployment the vendor transport is the only one that works. It bills per
+  // request, which makes the runway a startup-time fact worth stating: a wire
+  // that goes quiet at noon because a balance ran out should not be a mystery.
+  const truthVendorEnabled = Boolean(cfg.truthSocial.vendorApiKey);
+  const truthBudget = truthVendorEnabled
+    ? createCreditBudget({
+        db,
+        vendor: 'scrapecreators',
+        limit: cfg.truthSocial.vendorDailyBudget,
+      })
+    : undefined;
+
+  if (truthVendorEnabled && truthBudget) {
+    const accounts = db.sources.enabled().filter((s) => s.sourceType === 'truthsocial').length;
+    const pollsPerDay = Math.floor(86_400_000 / cfg.truthSocial.pollIntervalMs);
+    // Per POST, not per request: one poll costs a whole page.
+    const creditsPerHour =
+      accounts * Math.floor(3_600_000 / cfg.truthSocial.pollIntervalMs) * cfg.truthSocial.vendorPageLimit;
+    const minutesOfRunway =
+      creditsPerHour > 0 ? Math.round((truthBudget.remaining() / creditsPerHour) * 60) : 0;
+
+    log.info('TRUTH SOCIAL: VENDOR TRANSPORT (Scrape Creators)', {
+      accounts,
+      pollIntervalSec: Math.round(cfg.truthSocial.pollIntervalMs / 1000),
+      pageLimit: cfg.truthSocial.vendorPageLimit,
+      creditsPerDayAtThisCadence: accounts * pollsPerDay * cfg.truthSocial.vendorPageLimit,
+      dailyBudget: truthBudget.limit,
+      spentToday: truthBudget.spent(),
+      minutesOfRunway,
+    });
+
+    // The budget stopping polling is not a failure, but a wire that dies at
+    // noon because a balance ran out should never be a mystery. Stated at boot
+    // because the alternative is discovering it from an empty channel.
+    log.warn(
+      'truth social is on a metered feed billed per post. At this cadence the daily ' +
+        'budget buys roughly the runway shown, after which polling stops until the UTC ' +
+        'day rolls over. Slow TRUTH_POLL_INTERVAL_MS, cut SCRAPECREATORS_PAGE_LIMIT, ' +
+        'disable accounts, or top up the balance.',
+      { creditsPerHour, remainingToday: truthBudget.remaining(), minutesOfRunway },
+    );
+  } else {
+    log.info('TRUTH SOCIAL: DIRECT TRANSPORT (no vendor key; public endpoints only)');
+  }
+
   const ingest = createIngestManager({
     db,
     adapters: [
@@ -838,12 +885,23 @@ export async function main(): Promise<void> {
             }),
           ]
         : []),
-      // No credential of any kind, so it is always registered — unlike the X
-      // and Finnhub adapters, there is nothing that could be missing.
+      // Always registered — the direct transport needs no credential, so unlike
+      // the X and Finnhub adapters there is nothing that could be missing. A
+      // vendor key only changes HOW it reads, never whether it runs.
       createTruthSocialAdapter({
         userAgent: cfg.sec.userAgent,
         timeoutMs: 25_000,
         logger: log.child('truth'),
+        ...(truthVendorEnabled
+          ? {
+              vendor: {
+                apiKey: cfg.truthSocial.vendorApiKey,
+                baseUrl: cfg.truthSocial.vendorBaseUrl,
+                pageLimit: cfg.truthSocial.vendorPageLimit,
+                budget: truthBudget,
+              },
+            }
+          : {}),
       }),
       ...(finnhubEnabled
         ? [
