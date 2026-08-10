@@ -249,6 +249,13 @@ describe('a textual attribution header', () => {
       'US CPI RISES 3.1% Y/Y',
     ],
     ['@DeItaone: US CPI RISES 3.1% Y/Y', '@DeItaone', null, 'US CPI RISES 3.1% Y/Y'],
+    // What a simple forwarding bot emits: f"**{author.display_name}**: {text}"
+    [
+      '**Walter Bloomberg**: US CPI RISES 3.1% Y/Y',
+      'Walter Bloomberg',
+      null,
+      'US CPI RISES 3.1% Y/Y',
+    ],
   ];
 
   for (const [content, author, channel, rest] of cases) {
@@ -267,6 +274,23 @@ describe('a textual attribution header', () => {
     expect(parsed.attribution.method).toBe('direct');
     expect(parsed.content).toBe('@DeItaone: ');
   });
+
+  /**
+   * The dangerous false positive. `**BREAKING**:` is how a wire opens a
+   * headline, and reading it as a byline would invent an author called
+   * BREAKING and delete the word from the story at the same time.
+   */
+  for (const marker of ['BREAKING', 'ALERT', 'JUST IN', 'Developing', 'URGENT']) {
+    it(`does not read "**${marker}**:" as a byline`, () => {
+      const content = `**${marker}**: US CPI RISES 3.1% Y/Y VS 3.0% EXPECTED`;
+      const parsed = parseRelay(candidate({ content }));
+
+      expect(parsed.attribution.method).toBe('direct');
+      expect(parsed.attribution.origin.author).not.toBe(marker);
+      // And the word is still in the headline.
+      expect(parsed.content).toBe(content);
+    });
+  }
 
   it('does not mistake a mid-sentence handle for a byline', () => {
     const parsed = parseRelay(

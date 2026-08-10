@@ -176,9 +176,47 @@ const TEXT_HEADERS: Array<{ re: RegExp; author: number; channel: number | null }
     author: 2,
     channel: 1,
   },
+  // **Walter Bloomberg**: headline
+  //
+  // What a simple forwarding bot emits — `f"**{author.display_name}**: {text}"`
+  // — and the loosest pattern here, since a bolded lead-in is also how a wire
+  // writes `**BREAKING**:`. NOT_AN_AUTHOR below is what keeps the two apart.
+  { re: /^\s*\*{2}([^\n*]{1,60})\*{2}\s*[:—-]\s+(?=\S)/, author: 1, channel: null },
   // @DeItaone: headline
   { re: /^\s*(@[A-Za-z0-9_.]{2,60})\s*[:—-]\s+/, author: 1, channel: null },
 ];
+
+/**
+ * Words that lead a headline rather than name a source.
+ *
+ * `**BREAKING**: US CPI RISES 3.1%` is a wire convention, not a byline. Reading
+ * it as one would invent an author called BREAKING *and* delete the word from
+ * the headline — inventing attribution and losing content in one move.
+ */
+const NOT_AN_AUTHOR = new Set([
+  'breaking',
+  'alert',
+  'urgent',
+  'update',
+  'updated',
+  'live',
+  'exclusive',
+  'just in',
+  'justin',
+  'developing',
+  'flash',
+  'watch',
+  'new',
+  'news',
+  'important',
+  'reminder',
+  'note',
+  'headline',
+  'market alert',
+  'heads up',
+  'psa',
+  'fyi',
+]);
 
 /** `#breaking-news • Some Server` or `Some Server • #breaking-news`. */
 const FOOTER_PARTS = /^\s*(.{1,120}?)\s*[•·|]\s*(.{1,120}?)\s*$/;
@@ -497,6 +535,9 @@ function parseTextHeader(
 
     const author = clean(match[pattern.author]);
     if (!author) continue;
+    // A headline marker is not a source. Falling through leaves the text whole
+    // and the event unattributed, which is the correct pair of answers.
+    if (NOT_AN_AUTHOR.has(author.toLowerCase().replace(/[!.:\s]+$/, '').trim())) continue;
 
     const channel = pattern.channel === null ? null : clean(match[pattern.channel]);
     const rest = content.slice(match[0].length).trim();
