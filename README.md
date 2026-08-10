@@ -773,6 +773,15 @@ stopped sending timestamps. Scout will not guess one, so those events reach
 `#scout-news` and are deliberately withheld from Sprout. That is a conversation
 with the source, not a code change.
 
+**Always read `count` alongside `avg` on `latencyMs.byStage`.** `sourceToScout`
+and `total` are measured from the source's stated publication time, so an event
+that never had one contributes no sample rather than a 0ms one. A relay that
+stops sending timestamps therefore shows `sourceToScout.count` falling toward
+zero, not a latency that magically improves. `scoutToDiscord` is always
+measurable — it is the part Scout is responsible for — so a large gap between
+its count and `sourceToScout`'s count is itself the finding: Scout is fast, and
+you cannot see how fast the source is.
+
 `replay.deferredTotal` above zero means a pass ran out of its time budget and
 handed work to the next one — expected while Sprout is degraded, and worth
 investigating if it persists once Sprout is healthy.

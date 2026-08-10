@@ -506,6 +506,9 @@ function buildNewsEvent(args: {
   const { ctx } = args;
   const latency = computeLatency({
     eventTime: ctx.raw.eventTime,
+    // Explicitly null when the source stated no publication time, so
+    // source→Scout reports "no sample" rather than a fabricated 0ms.
+    publishedAt: typeof ctx.raw.meta.publishedAt === 'string' ? ctx.raw.meta.publishedAt : null,
     ingestionTime: ctx.raw.ingestionTime,
     processingTime: args.processedAt,
     discordTime: null,

@@ -10,6 +10,18 @@ import { msBetween } from '../util/time.js';
 
 export interface ComputeLatencyInput {
   eventTime: string;
+  /**
+   * What the source actually said, or null when it said nothing.
+   *
+   * This is NOT interchangeable with eventTime. eventTime falls back to the
+   * receipt time so the pipeline always has something to order by, which means
+   * measuring source→Scout against it produces exactly 0ms whenever the
+   * publication time is unknown — a reading indistinguishable from an
+   * instantaneous relay. Half the point of this metric is deciding whether the
+   * relay is fast enough to trade on, and a fabricated zero is worse than no
+   * number at all, because it looks like an answer.
+   */
+  publishedAt?: string | null;
   ingestionTime: string;
   processingTime?: string | null;
   discordTime?: string | null;
@@ -27,10 +39,17 @@ export function computeLatency(input: ComputeLatencyInput): LatencyRecord {
     return value;
   };
 
-  const sourceToScoutMs = nonNegative(
-    msBetween(input.eventTime, input.ingestionTime),
-    'sourceToScout',
-  );
+  // `undefined` means the caller did not say — fall back to the old behaviour
+  // so callers that never had a publication time to give are unaffected.
+  // Explicit `null` means the source genuinely had none, and that is
+  // unmeasurable rather than instant.
+  const knownPublishedAt =
+    input.publishedAt === undefined ? input.eventTime : input.publishedAt;
+
+  const sourceToScoutMs =
+    knownPublishedAt === null
+      ? null
+      : nonNegative(msBetween(knownPublishedAt, input.ingestionTime), 'sourceToScout');
 
   const scoutToDiscordMs = input.discordTime
     ? nonNegative(
@@ -39,9 +58,13 @@ export function computeLatency(input: ComputeLatencyInput): LatencyRecord {
       )
     : null;
 
-  const totalMs = input.discordTime
-    ? nonNegative(msBetween(input.eventTime, input.discordTime), 'total')
-    : null;
+  // End to end means publication → Discord. Without a publication time there is
+  // no "end to end" to report; scoutToDiscordMs above still covers the part
+  // Scout is actually responsible for.
+  const totalMs =
+    input.discordTime && knownPublishedAt !== null
+      ? nonNegative(msBetween(knownPublishedAt, input.discordTime), 'total')
+      : null;
 
   return {
     eventTime: input.eventTime,

@@ -177,8 +177,16 @@ export function createPublisher(deps: PublisherDeps): Publisher {
       newsEventId: outcome.newsEvent.id,
       sourceId: outcome.newsEvent.source,
       sourceToScoutMs: outcome.newsEvent.latency.sourceToScoutMs,
+      // Always measurable: this is the part Scout is responsible for.
       scoutToDiscordMs: Math.max(0, msBetween(from, discordTime)),
-      totalMs: Math.max(0, msBetween(outcome.newsEvent.timestamp, discordTime)),
+      // End to end only means something when publication time was known. A null
+      // sourceToScoutMs is exactly that signal, and newsEvent.timestamp falls
+      // back to receipt time — so measuring from it would report Scout's own
+      // few hundred milliseconds as the reader's total wait.
+      totalMs:
+        outcome.newsEvent.latency.sourceToScoutMs === null
+          ? null
+          : Math.max(0, msBetween(outcome.newsEvent.timestamp, discordTime)),
       recordedAt: discordTime,
     });
     db.metrics.record('alerts_sent', 1, {

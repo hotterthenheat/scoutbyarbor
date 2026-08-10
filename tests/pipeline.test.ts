@@ -202,10 +202,34 @@ describe('persistence (§24)', () => {
   it('records the latency stamps separately (§22)', async () => {
     const eventTime = new Date(Date.now() - 500).toISOString();
     const out = await pipeline.process(
-      raw('BOJ RAISES POLICY RATE TO 0.75%', { eventTime, ingestionTime: new Date().toISOString() }),
+      raw('BOJ RAISES POLICY RATE TO 0.75%', {
+        eventTime,
+        ingestionTime: new Date().toISOString(),
+        meta: { publishedAt: eventTime },
+      }),
     );
     expect(out.newsEvent.latency.sourceToScoutMs).toBeGreaterThanOrEqual(0);
     expect(out.newsEvent.latency.eventTime).toBe(eventTime);
+  });
+
+  /**
+   * source→Scout answers "how long after publication did Scout hear about it".
+   * With no publication time there is no answer, and reporting 0ms would look
+   * like an instantaneous relay — the most flattering possible reading of the
+   * one number used to judge whether the relay is fast enough to trade on.
+   */
+  it('reports no source latency rather than 0ms when publication time is unknown', async () => {
+    const out = await pipeline.process(
+      raw('ECB HOLDS RATES STEADY AT 2.00% AS GROWTH SLOWS', {
+        // eventTime falls back to receipt time, exactly as the relay path does.
+        eventTime: new Date().toISOString(),
+        ingestionTime: new Date().toISOString(),
+        meta: { publishedAt: null },
+      }),
+    );
+
+    expect(out.newsEvent.latency.sourceToScoutMs).toBeNull();
+    expect(out.newsEvent.latency.totalMs).toBeNull();
   });
 
   it('makes the raw payload carry what the alert must not (§27)', async () => {
