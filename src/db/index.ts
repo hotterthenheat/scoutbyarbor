@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 
 import { createSourceRepo, type SourceRepo } from './repositories/sources.js';
@@ -47,6 +48,13 @@ export type { PostRepo, StoredPost } from './repositories/posts.js';
 export type { DeliveryRepo, DeliveryRecord, DeliveryStatus } from './repositories/deliveries.js';
 
 export interface ScoutDb {
+  /**
+   * The file actually opened. Normally the configured DATABASE_PATH; different
+   * only when the ephemeral override had to relocate it. Everything that
+   * reports on storage reads this rather than the configured value, so an
+   * operator is never told about a file Scout is not using.
+   */
+  path: string;
   raw: SqliteDatabase;
   sources: SourceRepo;
   rawPosts: RawPostRepo;
@@ -211,52 +219,74 @@ function isTruthy(value: string | undefined): boolean {
   return value === 'true' || value === '1' || value === 'yes';
 }
 
-export function openDatabase(path: string, options: OpenOptions = {}): ScoutDb {
-  const env = options.env ?? process.env;
-
-  if (path !== ':memory:' && !path.startsWith('file::memory:')) {
-    const dir = dirname(resolve(path));
-
-    if (!existsSync(dir)) {
-      // On Render the database directory is a disk mount, and a mount that is
-      // attached always exists. Creating it here would succeed — on the
-      // container's ephemeral root filesystem — and Scout would run happily
-      // with a database that every deploy silently wipes, reposting old
-      // headlines into the trading channels as breaking news.
-      //
-      // Refusing to start is the correct failure. A deploy that fails loudly
-      // gets fixed; one that boots with amnesia does not.
-      // ALLOW_EPHEMERAL_DATABASE is the deliberate override.
-      //
-      // Render will not let a disk be attached until a service has deployed at
-      // least once, which makes the guard below a genuine chicken-and-egg for a
-      // first deploy. So there is a way through — an explicit one, that has to
-      // be typed, and that Scout then complains about on every single boot
-      // until it is removed. What must never exist is a SILENT path to
-      // ephemeral storage.
-      if (env.RENDER && !isTruthy(env.ALLOW_EPHEMERAL_DATABASE)) {
-        throw new Error(
-          `DATABASE_PATH="${path}" resolves to ${dir}, which does not exist. On Render that ` +
-            'directory is the persistent disk mount, so this means the disk is not attached — ' +
-            'creating it would put the database on ephemeral storage and every deploy would ' +
-            'wipe the dedupe history, the delivery log and the calendar state. Attach a disk ' +
-            'and point DATABASE_PATH at a file directly under its mountPath (e.g. mountPath ' +
-            '/var/data, DATABASE_PATH /var/data/scout.db).\n\n' +
-            'Render only allows a disk once a service has deployed successfully. To get that ' +
-            'first deploy, set ALLOW_EPHEMERAL_DATABASE=true, attach the disk, then REMOVE the ' +
-            'variable. Scout will run — and warn on every boot — until you do.',
-        );
-      }
-      mkdirSync(dir, { recursive: true });
-    }
+/**
+ * Where the database file will actually be opened.
+ *
+ * On Render the configured directory is a disk mount, and an attached mount
+ * always exists. Creating it instead would succeed — on the container's
+ * ephemeral root filesystem — and Scout would run happily with a database that
+ * every deploy silently wipes, reposting old headlines into the trading
+ * channels as breaking news. Refusing to start is the correct failure there: a
+ * deploy that fails loudly gets fixed; one that boots with amnesia does not.
+ *
+ * ALLOW_EPHEMERAL_DATABASE is the deliberate way through, because Render will
+ * not attach a disk until a service has deployed successfully — a real
+ * chicken-and-egg on a first deploy. Exported so the CLI and the boot report
+ * agree with each other about which file is in use.
+ */
+export function resolveDatabasePath(
+  path: string,
+  env: NodeJS.ProcessEnv,
+): { path: string; relocatedFrom: string | null } {
+  if (path === ':memory:' || path.startsWith('file::memory:')) {
+    return { path, relocatedFrom: null };
   }
 
-  const db: SqliteDatabase = new Database(path);
+  const absolute = resolve(path);
+  const dir = dirname(absolute);
+  if (existsSync(dir)) return { path: absolute, relocatedFrom: null };
+
+  if (env.RENDER && !isTruthy(env.ALLOW_EPHEMERAL_DATABASE)) {
+    throw new Error(
+      `DATABASE_PATH="${path}" resolves to ${dir}, which does not exist. On Render that ` +
+        'directory is the persistent disk mount, so this means the disk is not attached — ' +
+        'creating it would put the database on ephemeral storage and every deploy would ' +
+        'wipe the dedupe history, the delivery log and the calendar state. Attach a disk ' +
+        'and point DATABASE_PATH at a file directly under its mountPath (e.g. mountPath ' +
+        '/var/data, DATABASE_PATH /var/data/scout.db).\n\n' +
+        'Render only allows a disk once a service has deployed successfully. To get that ' +
+        'first deploy, set ALLOW_EPHEMERAL_DATABASE=true, attach the disk, then REMOVE the ' +
+        'variable. Scout will run — and warn on every boot — until you do.',
+    );
+  }
+
+  try {
+    mkdirSync(dir, { recursive: true });
+    return { path: absolute, relocatedFrom: null };
+  } catch {
+    // The configured path is usually the FUTURE mount — /var/data — and a
+    // container user cannot create a directory under /var. Failing here would
+    // leave the override useless for the one case it exists to serve. So
+    // relocate to somewhere writable: DATABASE_PATH keeps pointing at the
+    // mount, and attaching the disk plus dropping the override is all that is
+    // left to do — no retyping the path now and again later.
+    const fallback = join(tmpdir(), 'scout-ephemeral', basename(absolute));
+    mkdirSync(dirname(fallback), { recursive: true });
+    return { path: fallback, relocatedFrom: absolute };
+  }
+}
+
+export function openDatabase(path: string, options: OpenOptions = {}): ScoutDb {
+  const env = options.env ?? process.env;
+  const resolved = resolveDatabasePath(path, env);
+
+  const db: SqliteDatabase = new Database(resolved.path);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
 
   return {
+    path: resolved.path,
     raw: db,
     sources: createSourceRepo(db),
     rawPosts: createRawPostRepo(db),

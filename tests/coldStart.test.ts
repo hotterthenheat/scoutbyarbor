@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openDatabase, type ScoutDb } from '../src/db/index.js';
+import { openDatabase, resolveDatabasePath, type ScoutDb } from '../src/db/index.js';
 import { createPrimer } from '../src/ingest/priming.js';
 import { createIngestManager } from '../src/ingest/manager.js';
 import { storageStatus, recordBoot } from '../src/db/storage.js';
@@ -199,6 +199,50 @@ describe('the ephemeral-storage override', () => {
     expect(() => openDatabase(missing(), { env: { RENDER: 'true' } })).toThrow(
       /ALLOW_EPHEMERAL_DATABASE=true/,
     );
+  });
+
+  /**
+   * The configured path is usually the FUTURE mount — /var/data — and a
+   * container user cannot create a directory under /var. Failing there would
+   * make the override useless for the exact case it exists to serve, so it
+   * relocates instead and DATABASE_PATH never has to change.
+   */
+  it('relocates to writable storage when the configured directory cannot be created', () => {
+    // On Render the real failure is EACCES under /var. Reproduced portably by
+    // putting a FILE where a parent directory would have to be, which makes
+    // mkdir fail regardless of the user the tests happen to run as.
+    const blocker = join(dir, 'not-a-directory');
+    writeFileSync(blocker, 'a file, not a mount point');
+    const configured = join(blocker, 'data', 'scout.db');
+
+    const env = { RENDER: 'true', ALLOW_EPHEMERAL_DATABASE: 'true' };
+    const resolved = resolveDatabasePath(configured, env);
+
+    expect(resolved.path).not.toBe(configured);
+    expect(resolved.relocatedFrom).toBe(configured);
+    expect(resolved.path.endsWith('scout.db')).toBe(true);
+
+    // Genuinely usable, not merely a different string.
+    rmSync(resolved.path, { force: true });
+    const opened = openDatabase(configured, { env });
+    opened.migrate();
+    expect(opened.path).toBe(resolved.path);
+    expect(existsSync(opened.path)).toBe(true);
+    // And it reports the file it is USING, so an operator is never told about
+    // a path Scout never opened.
+    expect(storageStatus(opened, opened.path).path).toBe(resolved.path);
+    opened.close();
+    rmSync(resolved.path, { force: true });
+  });
+
+  it('does not relocate when the configured directory is writable', () => {
+    const path = join(dir, 'nested', 'scout.db');
+    const resolved = resolveDatabasePath(path, {
+      RENDER: 'true',
+      ALLOW_EPHEMERAL_DATABASE: 'true',
+    });
+    expect(resolved.relocatedFrom).toBeNull();
+    expect(resolved.path).toBe(path);
   });
 
   it('boots when the override is set explicitly', () => {

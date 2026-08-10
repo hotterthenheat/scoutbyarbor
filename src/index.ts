@@ -9,6 +9,7 @@ import {
 } from './config/loader.js';
 import { openDatabase } from './db/index.js';
 import { databaseExistsAt, recordBoot, formatStorageLine } from './db/storage.js';
+import { resolve as resolvePath } from 'node:path';
 import { createPipeline } from './pipeline/index.js';
 import { createIngestManager } from './ingest/manager.js';
 import { createRssAdapter } from './ingest/adapters/rss.js';
@@ -100,10 +101,24 @@ export async function main(): Promise<void> {
   const db = openDatabase(cfg.databasePath);
   db.migrate();
 
+  // `db.path` rather than the configured value: under the ephemeral override
+  // the two differ, and reporting on a file Scout is not using would make the
+  // one diagnostic that matters — does state survive a deploy — a lie.
+  if (db.path !== resolvePath(cfg.databasePath)) {
+    log.warn('DATABASE RELOCATED', {
+      configured: cfg.databasePath,
+      using: db.path,
+      why:
+        'the configured directory could not be created (ALLOW_EPHEMERAL_DATABASE is set, so ' +
+        'Scout relocated rather than refusing to start). Attach the disk and remove the ' +
+        'override; DATABASE_PATH does not need to change.',
+    });
+  }
+
   // The boot counter lives in the database, so it can only survive if the file
   // survives. Reading "boot #1" after a redeploy is proof the disk is missing.
   const storage = recordBoot(db, {
-    databasePath: cfg.databasePath,
+    databasePath: db.path,
     existedAtBoot,
     nowIso: isoNow(),
   });
@@ -891,7 +906,7 @@ export async function main(): Promise<void> {
         }
       : undefined,
     readiness: () => [
-      { name: 'database', ok: databaseReachable(), detail: cfg.databasePath },
+      { name: 'database', ok: databaseReachable(), detail: db.path },
       {
         name: 'discord-publisher',
         ok: cfg.dryRun || discord.isReady(),
