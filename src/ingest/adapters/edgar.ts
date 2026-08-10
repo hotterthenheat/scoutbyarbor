@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 import type { IngestAdapter, IngestResult, RawPost, Source, SourceVerification } from '../../core/types.js';
 import type { Logger } from '../../util/logger.js';
+import { describeFetchError } from '../../util/text.js';
 import { parseEdgarTitle, extract8kItems } from '../../pipeline/classify/filings.js';
 import { deterministicId } from '../../util/id.js';
 import { isoNow } from '../../util/time.js';
@@ -151,12 +152,15 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
             latencyMs: Date.now() - started,
           });
         } catch (err) {
-          deps.logger.warn('edgar poll failed', { sourceId: source.id, err: err as Error });
+          // "This operation was aborted" is the DOM's wording for a deadline
+          // Scout itself set, and says nothing an operator can act on.
+          const message = describeFetchError(err, deps.timeoutMs);
+          deps.logger.warn('edgar poll failed', { sourceId: source.id, err: message });
           result.outcomes.push({
             sourceId: source.id,
             ok: false,
             itemCount: 0,
-            error: (err as Error).message,
+            error: message,
             latencyMs: Date.now() - started,
           });
         }

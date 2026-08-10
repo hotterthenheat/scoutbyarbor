@@ -31,7 +31,11 @@ export interface HealthMonitor {
 export interface HealthMonitorDeps {
   db: ScoutDb;
   logger: Logger;
-  onWarning: (message: string) => Promise<void>;
+  /**
+   * Where a health transition is announced. Optional: a caller that only wants
+   * the state machine — the CLI, a test — should not have to supply a channel.
+   */
+  onWarning?: (message: string) => Promise<void>;
   now?: () => Date;
 }
 
@@ -85,8 +89,12 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
       updatedAt: iso,
       lastSuccessAt: outcome.ok ? iso : current.lastSuccessAt,
       lastItemAt: outcome.itemCount > 0 ? iso : current.lastItemAt,
-      lastErrorAt: outcome.ok ? current.lastErrorAt : iso,
-      lastError: outcome.ok ? current.lastError : (outcome.error ?? 'unknown error'),
+      // Cleared on success. A retained error outlives the problem: a feed that
+      // recovered still reported its last failure forever, so it read as broken
+      // while polling perfectly well — and the fix that healed it looked like it
+      // had done nothing.
+      lastErrorAt: outcome.ok ? null : iso,
+      lastError: outcome.ok ? null : (outcome.error ?? 'unknown error'),
       consecutiveFailures: outcome.ok ? 0 : current.consecutiveFailures + 1,
     };
 
@@ -173,7 +181,10 @@ export function createHealthMonitor(deps: HealthMonitorDeps): HealthMonitor {
       : ['```', 'SOURCE RECOVERED', '', `${name}  (${sourceId})`, `${from} → ${to}`, '```'].join('\n');
 
     logger[bad ? 'warn' : 'info']('source health transition', { sourceId, from, to });
-    await deps.onWarning(message).catch((err) => {
+    // Guarded, because it is optional. Called unconditionally it threw an
+    // unhandled rejection out of a timer — invisible in production only because
+    // the one caller there happens to pass it.
+    await deps.onWarning?.(message)?.catch((err) => {
       logger.warn('could not deliver health warning', { err: err as Error });
     });
   }

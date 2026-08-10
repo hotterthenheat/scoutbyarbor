@@ -197,3 +197,38 @@ describe('latency (§22)', () => {
     expect(s.p99).toBe(5000);
   });
 });
+
+/**
+ * An error that outlives the problem is worse than no error at all: the feed
+ * reads as broken while polling perfectly well, and the change that healed it
+ * looks like it did nothing. Production showed three feeds stuck this way with
+ * a failure count of zero.
+ */
+describe('a source that recovers', () => {
+  it('stops reporting the error it no longer has', () => {
+    const h = createHealthMonitor({ db, logger: log });
+
+    h.recordPoll({
+      sourceId: 'rss:fed-press-all',
+      ok: false,
+      itemCount: 0,
+      error: 'timed out after 25s',
+      latencyMs: 25_000,
+    });
+    // recordPoll updates memory; evaluate() is what writes it down.
+    h.evaluate();
+
+    let row = db.health.byId('rss:fed-press-all');
+    expect(row?.lastError).toBe('timed out after 25s');
+    expect(row?.consecutiveFailures).toBe(1);
+
+    h.recordPoll({ sourceId: 'rss:fed-press-all', ok: true, itemCount: 2, latencyMs: 120 });
+    h.evaluate();
+
+    row = db.health.byId('rss:fed-press-all');
+    expect(row?.consecutiveFailures).toBe(0);
+    expect(row?.lastError, 'a stale error survived a successful poll').toBeNull();
+    expect(row?.lastErrorAt).toBeNull();
+  });
+});
+

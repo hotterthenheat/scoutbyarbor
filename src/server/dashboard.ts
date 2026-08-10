@@ -104,6 +104,14 @@ export function dashboardHtml(): string {
   </section>
 
   <section>
+    <h2>Where alerts went</h2>
+    <p class="hint">Published means a channel received it. If this is empty
+      while events are publishing, the sends are failing &mdash; almost always
+      a channel the bot cannot see, or no Send Messages permission there.</p>
+    <div id="deliveries"></div>
+  </section>
+
+  <section>
     <h2>Ingestion routes</h2>
     <div id="routes"></div>
   </section>
@@ -159,8 +167,11 @@ function render(m) {
   const rows = (m.sources && m.sources.degraded) || [];
   // Broken means failing to fetch. Quiet means fetching fine and publishing
   // nothing. Counting them together made a healthy wire look like a wreck.
-  const broken = rows.filter((r) => (r.consecutiveFailures || 0) > 0 || r.lastError);
-  const quiet = rows.filter((r) => !((r.consecutiveFailures || 0) > 0 || r.lastError));
+  // Failures, and only failures. A source whose last poll SUCCEEDED is not
+  // broken however recently it failed — classifying on a leftover error string
+  // kept recovered feeds in the broken list indefinitely.
+  const broken = rows.filter((r) => (r.consecutiveFailures || 0) > 0);
+  const quiet = rows.filter((r) => !((r.consecutiveFailures || 0) > 0));
   const ev = (m.events && m.events.byStatus) || {};
   const published = ev.PUBLISHED || 0;
 
@@ -194,6 +205,20 @@ function render(m) {
         '<td class="dim">' + esc(r.state) + '</td>' +
         '<td class="dim">' + esc(r.lastItemAt || 'nothing yet') + '</td></tr>').join('') +
       '</table>';
+
+  const dest = m.deliveriesByDestination || {};
+  const destNames = Object.keys(dest);
+  $('deliveries').innerHTML = destNames.length === 0
+    ? '<div class="empty">Nothing delivered yet.</div>'
+    : '<table><tr><th>Destination</th><th>Sent</th><th>Failed</th><th>Skipped</th></tr>' +
+      destNames.map((name) => {
+        const row = dest[name] || {};
+        const failed = row.FAILED || 0;
+        return '<tr><td>' + esc(name) + '</td>' +
+          '<td class="' + ((row.SENT || 0) > 0 ? 'ok' : 'dim') + '">' + esc(row.SENT || 0) + '</td>' +
+          '<td class="' + (failed > 0 ? 'bad' : 'dim') + '">' + esc(failed) + '</td>' +
+          '<td class="dim">' + esc(row.SKIPPED || 0) + '</td></tr>';
+      }).join('') + '</table>';
 
   const d = m.discord || {}, w = m.webhook || {};
   const route = (name, on, detail) =>

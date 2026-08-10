@@ -151,7 +151,31 @@ export function createPublisher(deps: PublisherDeps): Publisher {
 
     for (const channelKey of channels) {
       const sent = await discord.send(channelKey, content);
-      if (!sent) continue;
+
+      if (!sent) {
+        // A send that failed used to be skipped in silence, so an event counted
+        // as PUBLISHED while Discord received nothing — the wire looked healthy
+        // and the channels stayed empty. The usual causes are a channel id the
+        // bot cannot see and a missing Send Messages permission, and neither is
+        // discoverable from a metric that says everything published.
+        logger.error('DISCORD SEND FAILED — the alert did not reach the channel', {
+          channelKey,
+          newsEventId: outcome.newsEvent.id,
+          hint:
+            'is the bot in that server, can it see the channel, and does it have ' +
+            'Send Messages there?',
+        });
+        db.deliveries.record({
+          eventId: eventId ?? outcome.newsEvent.id,
+          destination: channelKey,
+          status: 'FAILED',
+          discordMessageId: null,
+          sentAt: null,
+          error: 'discord send failed — channel unreachable or no permission',
+          createdAt: isoNow(),
+        });
+        continue;
+      }
 
       sentChannels.push(channelKey);
       messageIds[channelKey] = sent.messageId;
@@ -165,6 +189,18 @@ export function createPublisher(deps: PublisherDeps): Publisher {
         messageId: sent.messageId,
         threadId: null,
         sentAt: isoNow(),
+      });
+
+      // Recorded for the same reason the failure above is: "published" has to
+      // mean a channel actually received it.
+      db.deliveries.record({
+        eventId: eventId ?? outcome.newsEvent.id,
+        destination: channelKey,
+        status: 'SENT',
+        discordMessageId: sent.messageId,
+        sentAt: isoNow(),
+        error: null,
+        createdAt: isoNow(),
       });
     }
     return sentChannels;
