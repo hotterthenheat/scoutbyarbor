@@ -714,23 +714,28 @@ Order matters — each step depends on the one before it.
    embed. The webhook path does not need it.
 4. Set the real channel IDs — `npm run discord:setup` creates any that are
    missing and prints them in the exact variable names to paste back.
-5. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
+5. Set `ALLOWED_X_ACCOUNTS` to the handles your relay actually posts. Empty
+   means every account is accepted, so anyone who can post in a watched channel
+   can reach `#trading-floor` and `#spx-trading`. Scout warns on boot, in the
+   log stream and in `#scout-system`, if this is empty while it is watching
+   channels — but do not deploy relying on the warning.
+6. Set `SCOUT_WEBHOOK_TOKEN` and give the upstream source
    `https://<scout-domain>/webhook/news` plus that token.
-6. Set `SPROUT_URL` and `SPROUT_TOKEN`.
-7. Populate `config/calendar.yaml` with the real release schedule — every entry
+7. Set `SPROUT_URL` and `SPROUT_TOKEN`.
+8. Populate `config/calendar.yaml` with the real release schedule — every entry
    needs an explicit UTC offset.
-8. `npm run sources:verify`. X checks report SKIPPED without a credential; that
+9. `npm run sources:verify`. X checks report SKIPPED without a credential; that
    is expected and is not a deploy blocker.
-9. Send one test webhook and confirm it appears in `#scout-news`.
-10. Send a major-event webhook (a CPI or FOMC headline) and confirm it reaches
+10. Send one test webhook and confirm it appears in `#scout-news`.
+11. Send a major-event webhook (a CPI or FOMC headline) and confirm it reaches
     `#trading-floor` **and** `#spx-trading`.
-11. Confirm Sprout received it.
-12. Send the identical event again — expect `200 duplicate` and no second alert.
-13. Stop Sprout, send an event, confirm Discord still publishes and the delivery
+12. Confirm Sprout received it.
+13. Send the identical event again — expect `200 duplicate` and no second alert.
+14. Stop Sprout, send an event, confirm Discord still publishes and the delivery
     is recorded `FAILED`.
-14. Restart Sprout and wait one replay interval; confirm still-fresh events
+15. Restart Sprout and wait one replay interval; confirm still-fresh events
     recover on their own.
-15. Confirm a stale event is skipped rather than delivered — `/metrics` and the
+16. Confirm a stale event is skipped rather than delivered — `/metrics` and the
     replay log both show the reason.
 
 Then let it run through real market hours. What is worth having next is latency

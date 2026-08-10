@@ -466,6 +466,26 @@ export async function main(): Promise<void> {
   });
   urlWorkerRef = urlWorker;
 
+  // An empty allowlist admits every account, which means anyone who can post in
+  // a watched channel can put a URL into the trading channels. That is §13's
+  // failure exactly, and it is silent — the wire looks healthy while its input
+  // is open. Not fatal, because a locked-down private channel is a legitimate
+  // setup, but it must never be something you discover afterwards.
+  const watchedChannelCount =
+    cfg.discord.newsSourceChannelIds.length +
+    cfg.discord.truthSocialChannelIds.length +
+    cfg.discord.adminInputChannelIds.length;
+
+  if (watchedChannelCount > 0 && cfg.ingestion.allowedXAccounts.length === 0) {
+    const warning =
+      'ALLOWED_X_ACCOUNTS is empty while URL ingestion is watching ' +
+      `${watchedChannelCount} channel(s). Every account is currently accepted, so anyone who ` +
+      'can post in a watched channel can put a link into #trading-floor and #spx-trading. ' +
+      'Set ALLOWED_X_ACCOUNTS to the handles your relay actually posts.';
+    log.warn('INGESTION ALLOWLIST IS OPEN', { warning, watchedChannels: watchedChannelCount });
+    await publisher.publishSystem(`INGESTION ALLOWLIST IS OPEN\n\n${warning}`);
+  }
+
   const listener = createDiscordListener({
     token: cfg.discord.token,
     newsChannelIds: cfg.discord.newsSourceChannelIds,
