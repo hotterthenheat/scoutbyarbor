@@ -939,7 +939,11 @@ export async function main(): Promise<void> {
       : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
     replay: replayTimer ? `every ${cfg.replay.intervalMinutes}m` : 'off',
-    tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),
+    // Read from the RESOLVED map, not the raw env. Destinations declared in
+    // config/discord-sources.yaml override the env vars, so reading env alone
+    // reported "no trading channels" on a correctly configured deployment —
+    // sending an operator to look for a problem that was not there.
+    tradingChannelsConfigured: Boolean(routedChannels.tradingFloor && routedChannels.spx),
   });
 
   // ── Shutdown ───────────────────────────────────────────────────────────────
