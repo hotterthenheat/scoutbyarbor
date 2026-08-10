@@ -284,8 +284,30 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
           continue;
         }
 
-        const me = (channel as TextChannel).guild?.members?.me;
+        // Fetched, not read from cache.
+        //
+        // discord.js caches the bot's member object at connect time, and a role
+        // granted AFTER that — which is the normal order, since you invite the
+        // bot and then give it access — leaves the cached copy showing the old
+        // permissions. The check then reports a channel as unreachable that the
+        // bot can post to perfectly well, which is a worse failure than the one
+        // it exists to catch: it sends an operator to fix something already
+        // fixed.
+        const guild = (channel as TextChannel).guild;
+        const me = guild ? await guild.members.fetchMe({ force: true }).catch(() => null) : null;
         const perms = me ? (channel as TextChannel).permissionsFor(me) : null;
+
+        // Administrator bypasses every channel overwrite, so it is checked
+        // first rather than being caught by the per-permission tests below.
+        if (perms?.has(PermissionFlagsBits.Administrator)) {
+          out.push({
+            key,
+            channelId,
+            ok: true,
+            detail: `#${(channel as TextChannel).name} (administrator)`,
+          });
+          continue;
+        }
         if (perms && !perms.has(PermissionFlagsBits.ViewChannel)) {
           out.push({ key, channelId, ok: false, detail: 'missing View Channel permission' });
           continue;
