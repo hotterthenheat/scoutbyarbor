@@ -130,7 +130,11 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
 
     let resolved;
     try {
-      resolved = await deps.resolver.resolve(url);
+      // The id the job was queued under is passed through. For a webhook event
+      // that id came from the relay's own payload and is what the content was
+      // stored against; deriving one from the URL instead would miss it and
+      // send an event Scout already holds to an external resolver.
+      resolved = await deps.resolver.resolve(url, { postId: job.postId });
     } catch (err) {
       const error = err as RetrievalError;
       // The payload deliberately stays on the row. A failed job is exactly the

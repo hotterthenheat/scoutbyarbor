@@ -20,7 +20,8 @@
     "db:migrate": "tsx src/cli/index.ts db:migrate",
     "discord:setup": "tsx src/cli/index.ts discord:setup",
     "replay": "tsx src/cli/index.ts replay",
-    "deliveries:replay": "tsx src/cli/index.ts deliveries:replay"
+    "deliveries:replay": "tsx src/cli/index.ts deliveries:replay",
+    "smoke": "bash scripts/smoke.sh"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

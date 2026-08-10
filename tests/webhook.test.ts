@@ -349,6 +349,46 @@ describe('the id becomes the shared dedupe key', () => {
   });
 });
 
+/**
+ * A relay is free to number its own posts. `id` is the dedupe key and `url` is
+ * where the post lives; nothing requires the two to encode the same number, and
+ * a relay keying off its own database will send ids that do not.
+ *
+ * Scout stores the pushed text under the id from `id`. If retrieval re-derives
+ * an id from the URL instead, it looks in the wrong place, finds nothing, and
+ * falls through to an X API resolver that on this deployment does not exist —
+ * so a pushed event whose text Scout is already holding fails as
+ * FAILED_RETRIEVAL. Silently, and only for relays that number things their own
+ * way.
+ */
+describe('a relay whose id does not match the number in the url', () => {
+  it('still resolves from the text it pushed', async () => {
+    const response = await post({
+      ...X_EVENT,
+      id: 'relay-internal-000123',
+      url: 'https://x.com/DeItaone/status/2058552301120360937',
+    });
+    expect(response.status).toBe(202);
+
+    await queue.drain();
+
+    // Stored under the relay's id, which is what the job carries.
+    const stored = db.posts.byId('x:relay-internal-000123');
+    expect(stored?.text).toContain('FED CUTS RATES BY 50 BPS');
+
+    // And it reached the wire rather than dying as FAILED_RETRIEVAL.
+    const alert = sent.find((s) => s.channel === 'news')?.content ?? '';
+    expect(alert, 'a pushed event failed to resolve its own stored text').toContain(
+      'FED CUTS RATES BY 50 BPS',
+    );
+
+    const jobs = db.raw.prepare('SELECT status FROM processing_jobs').all() as Array<{
+      status: string;
+    }>;
+    expect(jobs.map((j) => j.status)).not.toContain('FAILED_RETRIEVAL');
+  });
+});
+
 describe('processing', () => {
   it('runs the same pipeline and posts the normal Scout alert', async () => {
     await post(X_EVENT);

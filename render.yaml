@@ -66,10 +66,17 @@ services:
       - key: SCOUT_WEBHOOK_TOKEN
         sync: false
 
-      # ── Discord intelligence source. A second ingestion path feeding the
-      # same pipeline. Give the bridge https://<scout-domain>/webhook/discord
-      # plus this token, and list its channels in config/discord-sources.yaml.
-      # Must NOT be the same value as SCOUT_WEBHOOK_TOKEN. ──
+      # ── Discord intelligence source — OPTIONAL ──
+      #
+      # ONLY needed for the bridge path: an external bot POSTing to
+      # https://<scout-domain>/webhook/discord. Must NOT be the same value as
+      # SCOUT_WEBHOOK_TOKEN — one goes to the X relay operator and the other to
+      # whoever runs the bridge, so neither can push into the other's source.
+      #
+      # The INTAKE path needs nothing here. A channel marked `intake: true` in
+      # config/discord-sources.yaml is read by Scout's own bot over the gateway,
+      # using DISCORD_BOT_TOKEN and ordinary permissions. Leave this unset if
+      # that is the only Discord source you use.
       - key: DISCORD_INTEL_TOKEN
         sync: false
 
@@ -83,6 +90,12 @@ services:
         sync: false
 
       # ── Primary channels ──
+      #
+      # DISCORD_CHANNEL_NEWS is REQUIRED unless `destinations.general` is set in
+      # config/discord-sources.yaml. Every qualified alert routes there, so Scout
+      # refuses to boot without one. It must NOT be the intake channel — a
+      # channel Scout publishes into and reads from would feed itself.
+      # `npm run discord:setup` creates any missing channel and prints its id.
       - key: DISCORD_CHANNEL_NEWS
         sync: false
       - key: DISCORD_CHANNEL_TRADING_FLOOR

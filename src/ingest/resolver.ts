@@ -51,11 +51,26 @@ export class RetrievalError extends Error {
   }
 }
 
+/**
+ * What the caller already knows about a job, beyond its URL.
+ *
+ * The webhook path stores an event under the canonical id built from the
+ * payload's `id` field, which a relay is free to make its own — an internal
+ * sequence number, a database key, anything. Re-deriving an id from the URL and
+ * looking THAT up finds nothing, and the job falls through to an API resolver
+ * that may not be configured at all. So the id the job was created with travels
+ * with it, and is what the stored resolver asks for first.
+ */
+export interface ResolveHints {
+  /** The canonical id the job was queued under, when the caller knows it. */
+  postId?: string | null;
+}
+
 export interface PostResolver {
   readonly name: string;
   /** Whether this provider is usable with the current configuration. */
   available(): boolean;
-  resolve(url: DetectedUrl): Promise<ResolvedPost>;
+  resolve(url: DetectedUrl, hints?: ResolveHints): Promise<ResolvedPost>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,25 +251,36 @@ export function createStoredPostResolver(
     name: 'stored',
     available: () => true,
 
-    async resolve(url: DetectedUrl): Promise<ResolvedPost> {
-      const stored = lookup(url.canonicalId);
-      if (!stored?.text?.trim()) {
-        throw new RetrievalError('no stored content for this post', false);
+    async resolve(url: DetectedUrl, hints?: ResolveHints): Promise<ResolvedPost> {
+      // The job's own id first. A relay that numbers posts its own way stores
+      // under that id, and the id parsed out of the URL would not find it —
+      // sending a pushed event, whose text Scout already holds, to an API
+      // resolver that may not even be configured.
+      const candidates = [hints?.postId, url.canonicalId].filter(
+        (id): id is string => Boolean(id?.trim()),
+      );
+
+      for (const candidate of candidates) {
+        const stored = lookup(candidate);
+        if (!stored?.text?.trim()) continue;
+        return {
+          postId: candidate,
+          author: stored.author,
+          authorHandle: stored.authorHandle,
+          text: stored.text,
+          // Passed through untouched, including null.
+          publishedAt: stored.publishedAt,
+          canonicalUrl: stored.canonicalUrl || url.canonicalUrl,
+          media: [],
+          retrievalSource: stored.retrievalSource,
+        };
       }
-      return {
-        postId: url.canonicalId,
-        author: stored.author,
-        authorHandle: stored.authorHandle,
-        text: stored.text,
-        // Passed through untouched, including null.
-        publishedAt: stored.publishedAt,
-        canonicalUrl: stored.canonicalUrl || url.canonicalUrl,
-        media: [],
-        retrievalSource: stored.retrievalSource,
-      };
+
+      throw new RetrievalError('no stored content for this post', false);
     },
   };
 }
+
 
 export interface StoredContent {
   author: string | null;
@@ -275,7 +301,7 @@ export function createChainResolver(providers: PostResolver[], logger: Logger): 
     name: 'chain',
     available: () => providers.some((p) => p.available()),
 
-    async resolve(url: DetectedUrl): Promise<ResolvedPost> {
+    async resolve(url: DetectedUrl, hints?: ResolveHints): Promise<ResolvedPost> {
       const failures: string[] = [];
       let retriable = false;
 
@@ -285,7 +311,7 @@ export function createChainResolver(providers: PostResolver[], logger: Logger): 
           continue;
         }
         try {
-          return await provider.resolve(url);
+          return await provider.resolve(url, hints);
         } catch (err) {
           const error = err as RetrievalError;
           if (error.retriable) retriable = true;

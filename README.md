@@ -509,6 +509,15 @@ database uniqueness constraint. The same post pushed twice, sent by two upstream
 sources, arriving after a restart, or seen through **both** the webhook and the
 Discord relay produces exactly one canonical event and one alert.
 
+`id` does **not** have to match the number in `url`. A relay that keys off its
+own database can send `"id": "relay-internal-000123"` with a normal X permalink;
+Scout stores the pushed text under the id it was given and retrieval asks for
+that id, not one re-derived from the URL. (It used to re-derive, which meant a
+relay numbering things its own way had its text stored under one key and looked
+up under another — the event then fell through to an X API resolver that on a
+no-key deployment does not exist, and failed as `FAILED_RETRIEVAL` while Scout
+was holding the text all along.)
+
 `published_at` is stored exactly as supplied and is never replaced by the
 receipt time — `received_at` is its own column. An event with no publication
 time still appears in `#scout-news` but is held from Sprout with the reason
@@ -900,6 +909,18 @@ including the case that a real headline like
 
 Order matters — each step depends on the one before it.
 
+**Step 0 — the two settings that stop a boot.** Both fail loudly rather than
+silently, which is the point, but knowing them in advance saves a deploy cycle:
+
+- `DISCORD_BOT_TOKEN` must be set (or `DRY_RUN=true`).
+- A **general news destination** must exist: `DISCORD_CHANNEL_NEWS`, or
+  `destinations.general` in `config/discord-sources.yaml`. It ships unset
+  because the channel that used to hold it is now the intake channel, and one
+  channel cannot be both — Scout would read its own alerts back in.
+  `npm run discord:setup` creates the missing channel and prints the id.
+
+Everything else is optional. Scout runs with **no API key at all**.
+
 1. Deploy Scout (`render.yaml`; **not** the free instance type, and keep the disk).
 2. **Prove the disk.** Redeploy once, then
    `curl -s https://<scout-domain>/metrics | jq .storage`. `boots` must read 2 or
@@ -937,6 +958,20 @@ Order matters — each step depends on the one before it.
     recover on their own.
 16. Confirm a stale event is skipped rather than delivered — `/metrics` and the
     replay log both show the reason.
+
+Steps 10–13 are automated. Against a running instance:
+
+```sh
+SMOKE_BASE=https://<scout-domain> \
+SCOUT_WEBHOOK_TOKEN=… DISCORD_INTEL_TOKEN=… SCOUT_ADMIN_TOKEN=… \
+npm run smoke
+```
+
+It exercises both webhook paths and their authentication boundary, checks that
+the X token cannot push into the Discord source, verifies idempotency on a
+repeat, confirms no configured secret appears in `/metrics`, and prints what the
+pipeline actually did. A check whose token is unset is skipped, not failed.
+Exits non-zero on any failure, so it works in CI.
 
 Then let it run through real market hours. What is worth having next is latency
 and error data from live traffic, not more tests.
