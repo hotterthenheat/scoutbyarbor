@@ -1064,7 +1064,7 @@ sources:
     sourceType: truthsocial
     category: GEOPOLITICAL
     priority: 70
-    enabled: true
+    enabled: false
     official: false
     qualityScore: 72
     noiseScore: 66
@@ -1075,7 +1075,9 @@ sources:
     expectedIntervalMs: 3600000
     notes: >-
       High volume and mostly political. Strict gate; the market-relevant share is
-      tariffs, sanctions and personnel.
+      tariffs, sanctions and personnel. DISABLED to conserve vendor credits: the
+      transport bills per post returned, so each enabled account multiplies the
+      hourly spend. Re-enable once the balance supports it.
 
   - id: truth:newsmax
     name: Newsmax — Truth Social
@@ -1085,7 +1087,7 @@ sources:
     sourceType: truthsocial
     category: GEOPOLITICAL
     priority: 64
-    enabled: true
+    enabled: false
     official: false
     qualityScore: 66
     noiseScore: 70
@@ -1094,7 +1096,9 @@ sources:
     geopoliticalScore: 80
     filterProfile: strict
     expectedIntervalMs: 3600000
-    notes: Same role as the Fox entry, noisier still.
+    notes: >-
+      Same role as the Fox entry, noisier still. DISABLED alongside it to
+      conserve vendor credits.
 
   # ══════════════════════════════════════════════════════════════════════════
   # FINNHUB — POLLED MARKET NEWS

@@ -226,6 +226,22 @@ describe('the cable-news accounts', () => {
     expect(byId.get('truth:realdonaldtrump')?.org).toBe('trump');
   });
 
+  /**
+   * Both ship DISABLED, and that is a cost decision rather than an editorial
+   * one. The vendor transport bills per post returned, so every enabled account
+   * multiplies the hourly spend — three accounts is three times the burn rate
+   * for the same balance. Only the account the wire exists for is left on.
+   */
+  it('ships disabled, so they cost nothing until the balance supports them', () => {
+    const byId = new Map(loadSourcesFile().sources.map((s) => [s.id, s]));
+
+    expect(byId.get('truth:foxnews')?.enabled).toBe(false);
+    expect(byId.get('truth:newsmax')?.enabled).toBe(false);
+    expect(byId.get('truth:realdonaldtrump')?.enabled, 'the primary account was left off').toBe(
+      true,
+    );
+  });
+
   it('scores them as secondary reporting, not first-hand statement', () => {
     const byId = new Map(loadSourcesFile().sources.map((s) => [s.id, s]));
     const trump = byId.get('truth:realdonaldtrump')!;
