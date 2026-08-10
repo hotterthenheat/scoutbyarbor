@@ -690,31 +690,33 @@ describe('the config file', () => {
    * reads from and what Arbor reads — a silent edit to either is a silent
    * change to where trading intelligence goes.
    */
-  it('allowlists exactly the configured source channels', () => {
+  it('allowlists exactly the configured source channel', () => {
     const { channels } = loadDiscordSources();
-    const byId = new Map(channels.map((c) => [c.id, c]));
 
-    // Scout's own bot reads this one over the gateway.
-    expect(byId.get('1513342006342979635')?.sourceId).toBe('discord:scout-intake');
-    expect(byId.get('1513342006342979635')?.intake).toBe(true);
-    expect(byId.get('1513342006342979635')?.enabled).toBe(true);
-
-    // A bridge POSTs this one in. Not an intake channel.
-    expect(byId.get('1081082844807434292')?.sourceId).toBe('discord:arbor-intel');
-    expect(byId.get('1081082844807434292')?.intake).toBe(false);
-    expect(byId.get('1081082844807434292')?.enabled).toBe(true);
-
-    expect(channels).toHaveLength(2);
+    expect(channels).toHaveLength(1);
+    expect(channels[0]?.id).toBe('1081082844807434292');
+    expect(channels[0]?.sourceId).toBe('discord:arbor-intel');
+    expect(channels[0]?.enabled).toBe(true);
+    // Read by Scout's own bot over the gateway once it is invited to that
+    // server. The webhook bridge remains available for the same channel.
+    expect(channels[0]?.intake).toBe(true);
   });
 
-  it('declares the trading destinations, and does not point one at the intake channel', () => {
-    const { destinations, channels } = loadDiscordSources();
+  it('declares all three destinations', () => {
+    const { destinations } = loadDiscordSources();
+    expect(destinations.general).toBe('1513342006342979635');
     expect(destinations.spxMacro).toBe('1510553508351311922');
     expect(destinations.tickers).toBe('1510553837897781259');
+  });
 
-    // The property, not just the ids: nothing Scout publishes into is anything
-    // Scout reads from. 1513342006342979635 used to be `destinations.general`;
-    // it is now the intake channel, and being both would loop.
+  /**
+   * The invariant behind the layout, not just the ids: nothing Scout publishes
+   * into may be anything Scout reads from. A channel that is both would have
+   * Scout re-ingesting its own alerts, which from the outside looks like an
+   * extremely busy news day rather than a bug.
+   */
+  it('never points a destination at a source channel', () => {
+    const { destinations, channels } = loadDiscordSources();
     const sources = new Set(channels.map((c) => c.id));
     for (const destination of Object.values(destinations)) {
       expect(sources.has(destination), `${destination} is both a source and a destination`).toBe(
