@@ -91,8 +91,16 @@ export function dashboardHtml(): string {
   </section>
 
   <section>
-    <h2>Feeds needing attention</h2>
-    <div id="degraded"></div>
+    <h2>Feeds that are broken</h2>
+    <div id="broken"></div>
+  </section>
+
+  <section>
+    <h2>Feeds that are simply quiet</h2>
+    <p class="hint">Reachable, polling fine, nothing published recently. An
+      agency that releases twice a month sits here permanently and that is
+      correct — it is not a fault, and it is not the same thing as broken.</p>
+    <div id="quiet"></div>
   </section>
 
   <section>
@@ -148,7 +156,11 @@ function render(m) {
                : st.durability === 'UNPROVEN' ? 'warn' : 'bad';
   const src = (m.sources && m.sources.byState) || {};
   const active = src.ACTIVE || 0;
-  const degraded = ((m.sources && m.sources.degraded) || []).length;
+  const rows = (m.sources && m.sources.degraded) || [];
+  // Broken means failing to fetch. Quiet means fetching fine and publishing
+  // nothing. Counting them together made a healthy wire look like a wreck.
+  const broken = rows.filter((r) => (r.consecutiveFailures || 0) > 0 || r.lastError);
+  const quiet = rows.filter((r) => !((r.consecutiveFailures || 0) > 0 || r.lastError));
   const ev = (m.events && m.events.byStatus) || {};
   const published = ev.PUBLISHED || 0;
 
@@ -156,23 +168,32 @@ function render(m) {
     card('Storage', st.durability || '—', durCls),
     card('Boots', st.boots ?? '—'),
     card('Sources active', active, active > 0 ? 'ok' : 'dim'),
-    card('Sources degraded', degraded, degraded > 0 ? 'warn' : 'ok'),
+    card('Sources broken', broken.length, broken.length > 0 ? 'bad' : 'ok'),
+    card('Sources quiet', quiet.length, 'dim'),
     card('Published (24h)', published, published > 0 ? 'ok' : 'dim'),
     card('Duplicates collapsed', (m.events && m.events.duplicatesTotal) || 0),
     card('Queue depth', (m.queue && m.queue.depth) || 0),
     card('Held as stale', (m.events && m.events.staleTotal) || 0),
   ].join('');
 
-  const rows = (m.sources && m.sources.degraded) || [];
-  $('degraded').innerHTML = rows.length === 0
-    ? '<div class="empty">Every source is healthy.</div>'
+  $('broken').innerHTML = broken.length === 0
+    ? '<div class="empty">Nothing is failing to fetch.</div>'
     : '<table><tr><th>Source</th><th>State</th><th>Fails</th><th>Reason</th></tr>' +
-      rows.map((r) =>
+      broken.map((r) =>
         '<tr><td>' + esc(r.sourceId) + '</td>' +
         '<td class="' + (r.state === 'DISCONNECTED' ? 'bad' : 'warn') + '">' + esc(r.state) + '</td>' +
         '<td>' + esc(r.consecutiveFailures ?? 0) + '</td>' +
-        '<td class="err">' + esc(r.lastError || 'no error recorded — the feed is reachable but quiet') +
+        '<td class="err">' + esc(r.lastError || 'no reason recorded') +
         '</td></tr>').join('') + '</table>';
+
+  $('quiet').innerHTML = quiet.length === 0
+    ? '<div class="empty">Every source has published recently.</div>'
+    : '<table><tr><th>Source</th><th>State</th><th>Last item</th></tr>' +
+      quiet.map((r) =>
+        '<tr><td>' + esc(r.sourceId) + '</td>' +
+        '<td class="dim">' + esc(r.state) + '</td>' +
+        '<td class="dim">' + esc(r.lastItemAt || 'nothing yet') + '</td></tr>').join('') +
+      '</table>';
 
   const d = m.discord || {}, w = m.webhook || {};
   const route = (name, on, detail) =>

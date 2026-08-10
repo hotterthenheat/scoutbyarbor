@@ -373,7 +373,11 @@ sources:
     sourceType: rss
     category: ECONOMIC
     priority: 100
-    enabled: true
+    # DISABLED: this URL returned HTTP 404 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 100
     noiseScore: 0
@@ -390,7 +394,11 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 92
-    enabled: true
+    # DISABLED: this URL returned HTTP 404 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 100
     noiseScore: 0
@@ -728,7 +736,11 @@ sources:
     sourceType: rss
     category: EQUITY
     priority: 74
-    enabled: true
+    # DISABLED: this URL returned HTTP 404 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 96
     noiseScore: 25
@@ -781,7 +793,11 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 70
-    enabled: true
+    # DISABLED: this URL returned HTTP 403 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 94
     noiseScore: 30
@@ -817,7 +833,11 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 76
-    enabled: true
+    # DISABLED: this URL returned HTTP 404 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 92
     noiseScore: 45
@@ -835,7 +855,11 @@ sources:
     sourceType: rss
     category: FED
     priority: 84
-    enabled: true
+    # DISABLED: this URL returned HTTP 403 in production. Left here with the
+    # dead URL visible rather than replaced by a guess — an unverified
+    # substitute is a coin flip, and a wrong one fails identically while
+    # looking fixed. Set a verified URL and flip this back to true.
+    enabled: false
     official: true
     qualityScore: 98
     noiseScore: 18

@@ -45,10 +45,35 @@ interface FeedState {
    */
   seenIds?: Set<string>;
   seeded: boolean;
+  /** Consecutive failed fetches, for the backoff below. */
+  failures?: number;
+  /** Epoch ms before which this feed is not worth asking again. */
+  nextAttemptAt?: number;
 }
 
 /** Cap on remembered ids per feed, so the set cannot grow without bound. */
 const MAX_SEEN_IDS = 400;
+
+/**
+ * Backoff for a feed that keeps failing.
+ *
+ * A 404 does not heal on the next poll. Left alone, a dead URL is fetched every
+ * 45 seconds forever — production reached 58 consecutive failures on one feed
+ * in under an hour, which is pointless traffic to someone else's server and
+ * pages of identical log lines around any real failure.
+ *
+ * The feed is never dropped, because a URL CAN come back and silently giving up
+ * on a source is its own failure. It is just asked far less often, and the
+ * health monitor still reports it as broken the whole time.
+ */
+const BACKOFF_AFTER_FAILURES = 3;
+const BACKOFF_BASE_MS = 5 * 60_000;
+const BACKOFF_MAX_MS = 60 * 60_000;
+
+function backoffMs(failures: number): number {
+  const steps = Math.max(0, failures - BACKOFF_AFTER_FAILURES);
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** steps);
+}
 
 export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
   const parser = new XMLParser({
@@ -156,9 +181,21 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
 
       for (const source of sources) {
         const started = Date.now();
+
+        // A feed in backoff is skipped silently — no fetch, and no outcome, so
+        // the health monitor keeps reporting the failure that put it here
+        // rather than being told about a poll that never happened.
+        const backingOff = state.get(source.id)?.nextAttemptAt;
+        if (backingOff !== undefined && started < backingOff) continue;
+
         try {
           const { posts, itemCount } = await pollOne(source);
           result.posts.push(...posts);
+          const healthy = state.get(source.id);
+          if (healthy) {
+            healthy.failures = 0;
+            delete healthy.nextAttemptAt;
+          }
           result.outcomes.push({
             sourceId: source.id,
             ok: true,
@@ -166,6 +203,18 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
             latencyMs: Date.now() - started,
           });
         } catch (err) {
+          const current = state.get(source.id) ?? { seeded: false };
+          current.failures = (current.failures ?? 0) + 1;
+          if (current.failures >= BACKOFF_AFTER_FAILURES) {
+            const wait = backoffMs(current.failures);
+            current.nextAttemptAt = Date.now() + wait;
+            deps.logger.warn('rss feed backing off after repeated failures', {
+              sourceId: source.id,
+              failures: current.failures,
+              retryInMinutes: Math.round(wait / 60_000),
+            });
+          }
+          state.set(source.id, current);
           deps.logger.warn('rss poll failed', { sourceId: source.id, err: err as Error });
           result.outcomes.push({
             sourceId: source.id,
