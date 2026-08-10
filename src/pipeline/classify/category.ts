@@ -44,14 +44,33 @@ const MIN_EVIDENCE = 2.5;
  * to list. Requiring 2.5 points of evidence is right for a CONFIDENT call; it
  * is too strict for "does this belong on a market wire at all".
  *
- * So one point of evidence is enough to publish, with the confidence scored
- * accordingly. That confidence feeds the same scorer as everything else, so a
- * thin classification competes weakly — it reaches the general feed and has to
- * earn a trading channel on the market-impact test like anything else. Nothing
- * here bypasses the noise filters, which run afterwards and catch the clickbait
- * that a loose gate would otherwise let through.
+ * So one point of evidence is enough — but ONLY alongside a recognised market
+ * entity: a ticker, an institution, a country, a commodity, a named policymaker.
+ *
+ * That second condition is not decoration. Without it, "Manchester United BEAT
+ * Arsenal 3-1" classified as EARNINGS, because `beat` is an earnings keyword
+ * and a single keyword was enough. A generic word is not evidence that a story
+ * is about markets; a generic word ATTACHED TO OPEC, or the Fed, or a ticker,
+ * is. OPEC+ cutting output has the entity and passes. A football result has no
+ * entity and never leaves the classifier.
+ *
+ * Confidence is scored accordingly, so a thin classification competes weakly:
+ * it reaches the general feed and still has to earn a trading channel on the
+ * market-impact test. Nothing here bypasses the noise filters, which run
+ * afterwards.
  */
 const FALLBACK_EVIDENCE = 1;
+
+/** Does the text name something a market actually trades or reacts to? */
+function hasMarketEntity(entities: CategoryClassifierInput['entities']): boolean {
+  return (
+    entities.tickers.length > 0 ||
+    entities.organizations.length > 0 ||
+    entities.commodities.length > 0 ||
+    entities.people.length > 0 ||
+    entities.countries.length > 0
+  );
+}
 
 /** Applied when two categories are close; the more specific one should win. */
 const PRECEDENCE: Category[] = [
@@ -150,7 +169,10 @@ export function createCategoryClassifier(taxonomy: TaxonomyFile): CategoryClassi
 
     const winner = ranked[0];
     if (!winner || winner.score < FALLBACK_EVIDENCE) return null;
+
     const weak = winner.score < MIN_EVIDENCE;
+    // A thin call needs a market entity to stand on. See FALLBACK_EVIDENCE.
+    if (weak && !hasMarketEntity(input.entities)) return null;
 
     // Resolve a near-tie toward the more specific category.
     let chosen = winner;

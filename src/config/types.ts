@@ -202,6 +202,13 @@ export interface ScoutEnv {
      * — and an alert whose own timestamp is twenty minutes old reads as a bot
      * that is behind rather than a wire that is fast.
      */
+    /**
+     * Signed at the bottom of every alert, after the outlet that reported it.
+     * Empty prints the outlet alone. Never replaces the outlet — who reported a
+     * story is information; whose wire carried it is branding, and the branding
+     * does not get to stand where the attribution goes.
+     */
+    brandFooter: string;
     maxPublishAgeMinutes: number;
     minPublishScore: number;
     minBreakingScore: number;

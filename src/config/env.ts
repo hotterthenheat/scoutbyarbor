@@ -76,6 +76,9 @@ const schema = z.object({
 
   DATABASE_PATH: z.string().default('./data/scout.db'),
 
+  SCOUT_BRAND_FOOTER: z
+    .string()
+    .default('Scout by Arbor Capital · signal, not noise'),
   MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(20),
   MIN_PUBLISH_SCORE: numeric(60),
   MIN_BREAKING_SCORE: numeric(90),
@@ -239,6 +242,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
     rss: { pollIntervalMs: parsed.RSS_POLL_INTERVAL_MS },
     databasePath: parsed.DATABASE_PATH,
     pipeline: {
+      brandFooter: parsed.SCOUT_BRAND_FOOTER,
       maxPublishAgeMinutes: parsed.MAX_PUBLISH_AGE_MINUTES,
       minPublishScore: parsed.MIN_PUBLISH_SCORE,
       minBreakingScore: parsed.MIN_BREAKING_SCORE,

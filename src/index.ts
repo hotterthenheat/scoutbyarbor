@@ -276,6 +276,7 @@ export async function main(): Promise<void> {
     db,
     logger: log.child('publisher'),
     rawChannelEnabled: cfg.discord.rawChannelEnabled,
+    brandFooter: cfg.pipeline.brandFooter,
   });
 
   // A database on ephemeral storage is the one misconfiguration that is
@@ -825,7 +826,7 @@ export async function main(): Promise<void> {
   const ingest = createIngestManager({
     db,
     adapters: [
-      createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 15_000, logger: log.child('rss') }),
+      createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 25_000, logger: log.child('rss') }),
       createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 25_000, logger: log.child('edgar') }),
       ...(xPollingEnabled
         ? [

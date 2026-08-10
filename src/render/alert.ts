@@ -122,6 +122,8 @@ export interface AlertEmbedInput {
   url?: string | null;
   /** The outlet that reported it — "CNBC", "@DeItaone". Shown in the footer. */
   sourceLabel?: string | null;
+  /** Scout's own signature, after the outlet. Never in place of it. */
+  brandFooter?: string | null;
   /** Publication time, so Discord can render its own relative timestamp. */
   publishedAt?: string | null;
 }
@@ -133,6 +135,10 @@ export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unkn
 
   const url = norm.url?.trim();
   const source = norm.sourceLabel?.trim();
+  const brand = norm.brandFooter?.trim();
+  // Outlet first, always. Attribution is information and branding is not, so
+  // the signature follows the reporter rather than displacing it.
+  const footer = [source, brand].filter(Boolean).join('  ·  ');
   const publishedAt = norm.publishedAt ? Date.parse(norm.publishedAt) : NaN;
 
   return {
@@ -142,7 +148,7 @@ export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unkn
     ...(alert.body ? { description: alert.body } : {}),
     color: BANNER_COLOR[alert.banner] ?? 0x4a5568,
     author: { name: alert.banner },
-    ...(source ? { footer: { text: source } } : {}),
+    ...(footer ? { footer: { text: footer } } : {}),
     // Discord shows this in the reader's OWN timezone and as "20 minutes ago"
     // on hover, which is strictly better than a string in one fixed zone —
     // and it is the publication time, never the time Scout posted.

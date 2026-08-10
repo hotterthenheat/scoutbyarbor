@@ -573,7 +573,9 @@ sources:
     sourceType: rss
     category: EQUITY
     priority: 76
-    enabled: true
+    # DISABLED: returned HTTP 404 in production. Business Wire and
+    # GlobeNewswire cover the same ground; a verified URL can re-enable it.
+    enabled: false
     official: false
     qualityScore: 74
     noiseScore: 62
@@ -871,6 +873,144 @@ sources:
       Open-market operations and the desk. org is `fed`, deliberately: the New
       York Fed and the Board are ONE body, so the pair counts as one
       confirmation rather than inflating credibility on every Fed story.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # GEOPOLITICS AND POLICY — CONTINUOUS
+  #
+  # The fast statement-and-conflict headlines: sanctions, tariffs, strikes,
+  # negotiations, the things a squawk relays from Truth Social and the wires.
+  #
+  # Scored as the general news they are: a high noiseScore and a strict
+  # factuality gate, so a story has to be reported fact before it reaches the
+  # wire and has to pass the market-impact test before it reaches a trading
+  # channel. A football result from the same feed scores no category evidence
+  # at all and never leaves the classifier.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: rss:bbc-world
+    name: BBC News — World
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    org: bbc
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 74
+    enabled: true
+    official: false
+    qualityScore: 80
+    noiseScore: 60
+    macroScore: 55
+    microScore: 15
+    geopoliticalScore: 92
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Conflict, sanctions, elections. One of the most stable feeds there is.
+
+  - id: rss:bbc-business
+    name: BBC News — Business
+    url: https://feeds.bbci.co.uk/news/business/rss.xml
+    org: bbc
+    sourceType: rss
+    category: MARKET
+    priority: 72
+    enabled: true
+    official: false
+    qualityScore: 78
+    noiseScore: 58
+    macroScore: 72
+    microScore: 60
+    geopoliticalScore: 45
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Same org as bbc-world — the pair counts as ONE confirmation.
+
+  - id: rss:aljazeera
+    name: Al Jazeera — All News
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    org: aljazeera
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 70
+    enabled: true
+    official: false
+    qualityScore: 74
+    noiseScore: 62
+    macroScore: 45
+    microScore: 10
+    geopoliticalScore: 90
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Fast on Middle East developments, which move crude directly.
+
+  - id: rss:guardian-business
+    name: The Guardian — Business
+    url: https://www.theguardian.com/uk/business/rss
+    org: guardian
+    sourceType: rss
+    category: MARKET
+    priority: 66
+    enabled: true
+    official: false
+    qualityScore: 72
+    noiseScore: 64
+    macroScore: 68
+    microScore: 55
+    geopoliticalScore: 40
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: European market and policy coverage.
+
+  - id: rss:state-dept
+    name: U.S. State Department — Press Releases
+    url: https://www.state.gov/rss-feed/press-releases/feed/
+    org: statedept
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 76
+    enabled: true
+    official: true
+    qualityScore: 92
+    noiseScore: 50
+    macroScore: 50
+    microScore: 10
+    geopoliticalScore: 94
+    filterProfile: strict
+    expectedIntervalMs: 43200000
+    notes: Sanctions and designations — the primary source, not a report of one.
+
+  - id: rss:defense-news
+    name: U.S. Department of Defense — News
+    url: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=20
+    org: dod
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 68
+    enabled: true
+    official: true
+    qualityScore: 90
+    noiseScore: 58
+    macroScore: 35
+    microScore: 20
+    geopoliticalScore: 90
+    filterProfile: strict
+    expectedIntervalMs: 43200000
+    notes: Deployments and strikes. Much of it is routine; strict gate handles that.
+
+  - id: rss:un-news
+    name: UN News — All
+    url: https://news.un.org/feed/subscribe/en/news/all/rss.xml
+    org: un
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 58
+    enabled: true
+    official: true
+    qualityScore: 82
+    noiseScore: 70
+    macroScore: 40
+    microScore: 5
+    geopoliticalScore: 85
+    filterProfile: strict
+    expectedIntervalMs: 43200000
+    notes: Ceasefires, resolutions, humanitarian declarations. Noisiest of this set.
 
   # ══════════════════════════════════════════════════════════════════════════
   # FINNHUB — POLLED MARKET NEWS

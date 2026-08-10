@@ -27,6 +27,8 @@ export interface Publisher {
 }
 
 export interface PublisherDeps {
+  /** Signed at the bottom of every alert, after the outlet. */
+  brandFooter?: string;
   discord: ScoutDiscord;
   db: ScoutDb;
   logger: Logger;
@@ -156,6 +158,7 @@ export function createPublisher(deps: PublisherDeps): Publisher {
       alert: outcome.alert!,
       url: outcome.newsEvent.originalUrl,
       sourceLabel: sourceLabelFor(outcome),
+      brandFooter: deps.brandFooter,
       // provenance.firstReportedAt, not newsEvent.timestamp: the latter falls
       // back to receipt time, and showing a receipt time as a publication time
       // is the substitution this project refuses to make everywhere else. It is

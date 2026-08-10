@@ -338,6 +338,18 @@ describe('a real headline the taxonomy barely recognises', () => {
     expect(thin.newsEvent.importance).toBeLessThan(strong.newsEvent.importance);
   });
 
+  it('needs a market entity, so a football result is not an earnings beat', async () => {
+    // "Manchester United BEAT Arsenal 3-1" classified as EARNINGS when a single
+    // generic keyword was enough: `beat` is an earnings word. A generic word is
+    // not evidence that a story is about markets — a generic word attached to
+    // OPEC, or the Fed, or a ticker, is.
+    const outcome = await pipeline.process(
+      raw('Manchester United beat Arsenal 3-1 in Premier League opener'),
+    );
+    expect(outcome.accepted, 'a football result reached the wire').toBe(false);
+    expect(outcome.rejection).toBe('NO_CATEGORY');
+  });
+
   it('does not let clickbait in through the same door', async () => {
     // The looser category gate is only safe because the noise filters run
     // afterwards. If this ever publishes, the gate has outrun its guard.
