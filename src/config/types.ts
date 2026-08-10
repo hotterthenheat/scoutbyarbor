@@ -155,8 +155,14 @@ export interface ScoutEnv {
   webhook: {
     /** Empty leaves POST /webhook/news disabled. Never logged. */
     token: string;
-    /** Secret for POST /admin/replay. Falls back to the webhook token. */
+    /** Secret for POST /admin/replay. No fallback; unset disables it. */
     adminToken: string;
+    /**
+     * Secret for POST /webhook/discord. Its own credential: the X token goes to
+     * the X relay operator and this one to whoever runs the Discord bridge, so
+     * neither party can push into the other's source. Unset disables it.
+     */
+    discordIntelToken: string;
   };
   /** Automatic recovery of failed Sprout deliveries. */
   replay: {

@@ -11,6 +11,8 @@ import {
   idempotencyKey,
   type NormalizedWebhookEvent,
 } from './webhook.js';
+import { validateDiscordPayload } from './discordWebhook.js';
+import type { DiscordMessageEnvelope } from '../ingest/discordIntel/types.js';
 
 /**
  * Operational HTTP surface for a long-running deployment.
@@ -54,6 +56,24 @@ export interface AdminConfig {
   replay: () => Promise<Record<string, unknown>>;
 }
 
+/**
+ * Discord intelligence intake. Separate from WebhookConfig on purpose: the X
+ * contract is live, and a different payload shape has no business widening it.
+ */
+export interface DiscordIntelConfig {
+  token: string;
+  accept: DiscordAccepter;
+}
+
+/** Must not await processing — the bridge is acknowledged once the write lands. */
+export type DiscordAccepter = (envelope: DiscordMessageEnvelope) => {
+  accepted: boolean;
+  duplicate: boolean;
+  rejected: boolean;
+  eventId: string;
+  reason: string;
+};
+
 export interface ServerDeps {
   db: ScoutDb;
   logger: Logger;
@@ -67,6 +87,8 @@ export interface ServerDeps {
   webhook?: WebhookConfig;
   /** Omit to leave POST /admin/replay disabled. */
   admin?: AdminConfig;
+  /** Omit to leave POST /webhook/discord disabled. */
+  discordIntel?: DiscordIntelConfig;
 }
 
 /** Bodies larger than this are refused before being buffered. */
@@ -177,6 +199,75 @@ export function createServer_(deps: ServerDeps): ScoutServer {
     }
   }
 
+  /**
+   * POST /webhook/discord — the Discord intelligence intake.
+   *
+   * Same contract as the X webhook: authenticate, validate, queue, acknowledge.
+   * Nothing here awaits classification, Discord or Sprout. A message from a
+   * channel that is not on the allowlist is answered 200 with `rejected`, not
+   * an error — the bridge did nothing wrong, Scout simply is not configured to
+   * process that channel, and a 4xx would make bridges retry forever.
+   */
+  async function handleDiscordIntel(req: IncomingMessage): Promise<{ status: number; body: string }> {
+    const intel = deps.discordIntel;
+    const receivedAt = isoNow();
+    db.metrics.record('discord_requests_total', 1);
+
+    if (!intel?.token) {
+      db.metrics.record('discord_rejected_total', 1);
+      return json({ error: 'discord intelligence ingestion is not configured' }, 503);
+    }
+
+    const provided = presentedSecret(req.headers as Record<string, string | string[] | undefined>);
+    // Constant-time, and never logged.
+    if (!provided || !secretsMatch(provided, intel.token)) {
+      db.metrics.record('discord_rejected_total', 1);
+      logger.warn('discord webhook authentication failed');
+      return json({ error: 'unauthorized' }, 401);
+    }
+
+    let raw: string;
+    try {
+      raw = await readBody(req, MAX_WEBHOOK_BODY_BYTES);
+    } catch (err) {
+      db.metrics.record('discord_rejected_total', 1);
+      return json({ error: (err as Error).message }, 413);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      db.metrics.record('discord_rejected_total', 1);
+      return json({ error: 'body is not valid JSON' }, 400);
+    }
+
+    const validated = validateDiscordPayload(parsed, receivedAt);
+    if (!validated.ok) {
+      db.metrics.record('discord_rejected_total', 1);
+      return json({ error: validated.error }, validated.status);
+    }
+
+    try {
+      const result = intel.accept(validated.envelope);
+
+      if (result.rejected) {
+        db.metrics.record('discord_filtered_total', 1);
+        return json({ status: 'ignored', reason: result.reason, accepted: false }, 200);
+      }
+      if (result.duplicate) {
+        db.metrics.record('discord_duplicates_total', 1);
+        return json({ status: 'duplicate', id: result.eventId, accepted: false }, 200);
+      }
+
+      db.metrics.record('discord_events_accepted_total', 1);
+      return json({ status: 'accepted', id: result.eventId, accepted: true }, 202);
+    } catch (err) {
+      logger.error('discord accept failed', { err: err as Error });
+      return json({ error: 'could not queue the message' }, 500);
+    }
+  }
+
   /** POST /admin/replay — drives one Sprout replay pass and reports the counts. */
   async function handleAdminReplay(req: IncomingMessage): Promise<{ status: number; body: string }> {
     const admin = deps.admin;
@@ -282,6 +373,14 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           latencyMsAvg: Math.round(summary['sprout_delivery_ms.avg'] ?? 0),
           samples: summary['sprout_delivery_ms.count'] ?? 0,
         },
+        discord: {
+          configured: Boolean(deps.discordIntel?.token),
+          requestsTotal: summary.discord_requests_total ?? 0,
+          rejectedTotal: summary.discord_rejected_total ?? 0,
+          filteredTotal: summary.discord_filtered_total ?? 0,
+          duplicatesTotal: summary.discord_duplicates_total ?? 0,
+          eventsAcceptedTotal: summary.discord_events_accepted_total ?? 0,
+        },
         replay: {
           runsTotal: summary.replay_runs_total ?? 0,
           // What the automatic recovery actually bought.
@@ -331,6 +430,20 @@ export function createServer_(deps: ServerDeps): ScoutServer {
             .then(respond)
             .catch((err: Error) => {
               logger.error('admin handler threw', { err });
+              respond(json({ error: 'internal error' }, 500));
+            });
+          return;
+        }
+
+        if (path === '/webhook/discord') {
+          if (req.method !== 'POST') {
+            respond(json({ error: 'method not allowed' }, 405));
+            return;
+          }
+          void handleDiscordIntel(req)
+            .then(respond)
+            .catch((err: Error) => {
+              logger.error('discord webhook handler threw', { err });
               respond(json({ error: 'internal error' }, 500));
             });
           return;

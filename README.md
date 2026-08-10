@@ -134,6 +134,90 @@ so a false positive is diagnosable from `#scout-raw` rather than a mystery.
 
 ---
 
+## Discord as an intelligence source
+
+A second ingestion source alongside the X webhook, feeding the **same** pipeline
+— same dedupe, same classifier, same symbol extraction, same six-component
+scorer, same market-impact test, same routing. Being on Discord earns an event
+nothing and costs it nothing.
+
+```
+X webhook ─┐
+           ├─→ NORMALIZE → DEDUPE → CLASSIFY → RANK → ROUTE → #scout-news
+Discord ───┘                                                  #trading-floor
+                                                              #spx-trading → Sprout
+```
+
+### What Scout does not do
+
+Scout does not read Discord servers it has not been invited to. It cannot: that
+requires either a bot the server owner installed, or automating a personal
+account. The second is a self-bot — it violates Discord's terms and gets the
+account terminated — and Scout implements none of it: no user tokens, no session
+replay, no browser automation, no undocumented gateway use.
+
+What Scout provides is the **receiving half**:
+
+```
+authorized bridge ──POST /webhook/discord──→ Scout
+  (a bot the owner installed, an official/partner
+   feed, or any relay you are permitted to run)
+```
+
+`DiscordIntelProvider` in `src/ingest/discordIntel/types.ts` is the seam. An
+authorized gateway feed implements that interface and starts delivering
+envelopes; nothing downstream changes.
+
+### Configuration
+
+`config/discord-sources.yaml` is an **allowlist** and ships empty. A message
+from an unconfigured channel is rejected — not deprioritised.
+
+```yaml
+channels:
+  - id: "1234567890123456789"
+    sourceId: discord:flow-alerts     # must start `discord:` — provenance depends on it
+    qualityScore: 85
+    authors:                          # optional; empty accepts every author
+      - name: unusual_whales_crier
+        qualityScore: 90
+      - name: OwlsKeyLevelsBot
+```
+
+Each channel becomes a row in `sources`, so `qualityScore` feeds the same
+`sourceQuality` component an X account uses. It changes how a message competes.
+It cannot bypass classification, the noise filters or the market-impact test,
+and **nothing here can force a message into `#trading-floor`.**
+
+`DISCORD_INTEL_TOKEN` authenticates the endpoint and must differ from
+`SCOUT_WEBHOOK_TOKEN` — one goes to the X relay operator, the other to whoever
+runs the Discord bridge, so neither can push into the other's source.
+
+### Publication time
+
+A Discord message carries a real timestamp, and Scout uses it — preferring an
+embed's own timestamp when present, since a relay bot usually stamps the embed
+with the upstream event time rather than when it got round to posting. If the
+bridge supplies no timestamp at all, `publishedAt` is **null** and the event
+reaches `#scout-news` while being withheld from Sprout. The receipt time is
+never promoted, exactly as on the X path.
+
+### Provenance
+
+Dedupe collapses the same story across sources, so an event can have more than
+one origin. `#scout-raw` reports which:
+
+```
+provenance  X + DISCORD
+```
+
+Backend-only, like everything else in that channel — the alert is a four-field
+`RenderableAlert` and structurally cannot carry it. `X` alone, `DISCORD` alone,
+or both when a story arrived on each. `/metrics` carries the intake counters
+under `.discord`.
+
+---
+
 ## Sources
 
 The entire watchlist is `config/sources.yaml`. Add or remove an account there and

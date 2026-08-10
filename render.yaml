@@ -66,6 +66,13 @@ services:
       - key: SCOUT_WEBHOOK_TOKEN
         sync: false
 
+      # ── Discord intelligence source. A second ingestion path feeding the
+      # same pipeline. Give the bridge https://<scout-domain>/webhook/discord
+      # plus this token, and list its channels in config/discord-sources.yaml.
+      # Must NOT be the same value as SCOUT_WEBHOOK_TOKEN. ──
+      - key: DISCORD_INTEL_TOKEN
+        sync: false
+
       # ── OPTIONAL. Scout runs fully without this ──
       # The primary ingestion path reads the content the permitted relay already
       # posted alongside the link, which needs no credential. An X API resolver

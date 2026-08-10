@@ -21,6 +21,7 @@ export function renderRawEntry(payload: RawChannelPayload): string {
 
   lines.push(`${verdict}`);
   lines.push(`source      ${payload.sourceName}${payload.handle ? ` (${payload.handle})` : ''}`);
+  lines.push(`provenance  ${payload.provenance}`);
   lines.push(`category    ${payload.category ?? '—'}${payload.subcategory ? ` / ${payload.subcategory}` : ''}`);
   lines.push(`event       ${payload.eventTime}`);
   lines.push(`ingested    ${payload.ingestionTime}${payload.latencyMs === null ? '' : `  (+${payload.latencyMs}ms)`}`);

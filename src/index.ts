@@ -1,5 +1,12 @@
 import { env } from './config/env.js';
-import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from './config/loader.js';
+import {
+  loadSourcesFile,
+  loadTaxonomy,
+  loadSecurityMaster,
+  toSource,
+  loadDiscordSources,
+  toDiscordSource,
+} from './config/loader.js';
 import { openDatabase } from './db/index.js';
 import { databaseExistsAt, recordBoot, formatStorageLine } from './db/storage.js';
 import { createPipeline } from './pipeline/index.js';
@@ -10,6 +17,7 @@ import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
+import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
 import {
   createUrlWorker,
   isFreshForTrading,
@@ -51,6 +59,9 @@ const log = createLogger('scout');
 
 /** Source id that relayed X posts are attributed to. */
 const RELAY_SOURCE_ID = 'relay:discord-urls';
+
+/** Fallback health key for a Discord job whose channel is no longer configured. */
+const DISCORD_INTEL_SOURCE_ID = 'discord:intel';
 
 /**
  * How long shutdown waits for in-flight work before closing the database.
@@ -108,6 +119,14 @@ export async function main(): Promise<void> {
   const now = isoNow();
   db.sources.upsertMany(sourcesFile.sources.map((s) => toSource(s, now)));
 
+  // Discord intelligence channels are sources too, so the six-component scorer
+  // treats them exactly like an X account or an RSS feed. Nothing about being a
+  // Discord message grants or denies an event anything.
+  const discordSources = loadDiscordSources();
+  if (discordSources.channels.length > 0) {
+    db.sources.upsertMany(discordSources.channels.map((c) => toDiscordSource(c, now)));
+  }
+
   const taxonomy = loadTaxonomy();
   const securities = loadSecurityMaster();
   db.securities.upsertMany(securities);
@@ -116,6 +135,7 @@ export async function main(): Promise<void> {
     sources: sourcesFile.sources.length,
     enabled: db.sources.enabled().length,
     securities: securities.length,
+    discordIntelChannels: discordSources.channels.filter((c) => c.enabled).length,
   });
 
   // ── Discord (publishing) ───────────────────────────────────────────────────
@@ -424,13 +444,35 @@ export async function main(): Promise<void> {
   );
 
   let urlWorkerRef: ReturnType<typeof createUrlWorker> | null = null;
+  let discordIntelRef: ReturnType<typeof createDiscordIntelWorker> | null = null;
 
   const queue = createJobQueue({
     db,
     logger: log.child('queue'),
     concurrency: cfg.ingestion.concurrency,
     maxAttempts: cfg.ingestion.maxAttempts,
+    // One queue, two sources. Both get the same retry schedule, the same
+    // restart recovery and the same durable payload; only the shape of what
+    // arrives differs. The X path below is untouched by the Discord branch.
     handler: async (job) => {
+      if (job.sourceKind === 'discord') {
+        const worker = discordIntelRef;
+        if (!worker) throw new Error('discord intel worker not initialised');
+        try {
+          await worker.handle(job);
+        } catch (err) {
+          health.recordPoll({
+            sourceId: job.sourceChannel ?? DISCORD_INTEL_SOURCE_ID,
+            ok: false,
+            itemCount: 0,
+            error: (err as Error).message,
+            latencyMs: 0,
+          });
+          throw err;
+        }
+        return;
+      }
+
       if (!urlWorkerRef) throw new Error('url worker not initialised');
       try {
         await urlWorkerRef.handle(job);
@@ -449,6 +491,24 @@ export async function main(): Promise<void> {
       }
     },
   });
+
+  /**
+   * The Discord intelligence source.
+   *
+   * Feeds `trackPost` — the same entry point the URL relay, RSS, EDGAR and X
+   * timelines use — so a Discord message is deduped, classified, scored and
+   * routed by exactly the code that handles an X post. Nothing here can put a
+   * message into #trading-floor; only the market-impact test can do that.
+   */
+  const discordIntel = createDiscordIntelWorker({
+    config: discordSources,
+    logger: log.child('discord-intel'),
+    onPost: async (post) => {
+      health.recordPoll({ sourceId: post.sourceId, ok: true, itemCount: 1, latencyMs: 0 });
+      await trackPost(post);
+    },
+  });
+  discordIntelRef = discordIntel;
 
   const urlWorker = createUrlWorker({
     db,
@@ -664,6 +724,44 @@ export async function main(): Promise<void> {
     admin: cfg.webhook.adminToken
       ? { token: cfg.webhook.adminToken, replay: () => runReplayOnce('admin') }
       : undefined,
+    // The Discord intelligence source. Durably queues and returns; nothing here
+    // awaits classification, Discord or Sprout.
+    discordIntel: cfg.webhook.discordIntelToken
+      ? {
+          token: cfg.webhook.discordIntelToken,
+          accept: (envelope) => {
+            const admission = discordIntel.admit(envelope);
+            if (!admission.admitted) {
+              return {
+                accepted: false,
+                duplicate: false,
+                rejected: true,
+                eventId: '',
+                reason: admission.reason,
+              };
+            }
+
+            // The envelope rides down with the job in one statement, so a
+            // message accepted here is processable after a restart — the
+            // bridge will not deliver it a second time.
+            const job = queue.enqueue({
+              postId: admission.postId,
+              url: admission.url,
+              sourceChannel: envelope.channelId,
+              sourceKind: 'discord',
+              relayPayload: admission.payload,
+            });
+
+            return {
+              accepted: job !== null,
+              duplicate: job === null,
+              rejected: false,
+              eventId: admission.postId,
+              reason: job === null ? 'already queued or processed' : 'queued',
+            };
+          },
+        }
+      : undefined,
     webhook: cfg.webhook.token
       ? {
           token: cfg.webhook.token,
@@ -744,6 +842,9 @@ export async function main(): Promise<void> {
     watching: listener.watching().length,
     admin: cfg.webhook.adminToken ? 'enabled at POST /admin/replay' : 'not configured',
     webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
+    discordIntel: cfg.webhook.discordIntelToken
+      ? `enabled at POST /webhook/discord, ${discordIntel.filter.channelIds().length} channel(s)`
+      : 'not configured',
     sprout: sprout.enabled ? 'configured' : 'not configured',
     replay: replayTimer ? `every ${cfg.replay.intervalMinutes}m` : 'off',
     tradingChannelsConfigured: Boolean(cfg.discord.channels.tradingFloor && cfg.discord.channels.spx),

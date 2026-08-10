@@ -1,0 +1,69 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SCOUT — Discord intelligence sources
+#
+# A second ingestion source alongside the X webhook path. Both feed the SAME
+# normalization, dedupe, classification, scoring and routing pipeline; nothing
+# here is a parallel implementation.
+#
+# ── HOW MESSAGES GET HERE ────────────────────────────────────────────────────
+#
+# Scout does not read these channels itself. It cannot: reading a server you do
+# not administer requires either a bot the server owner installed, or automating
+# a personal account — and the second is a self-bot, which violates Discord's
+# terms and gets the account terminated. Scout implements neither.
+#
+# What Scout provides is the RECEIVING half. An authorized bridge — a bot the
+# server owner installs, an official API/partner feed, or any relay you are
+# permitted to run — POSTs messages to:
+#
+#     POST /webhook/discord     Authorization: Bearer $DISCORD_INTEL_TOKEN
+#
+# The provider interface behind that endpoint is deliberately transport-
+# agnostic, so an authorized gateway feed can be plugged in later without
+# touching the pipeline.
+#
+# ── FILTERING ────────────────────────────────────────────────────────────────
+#
+# `channels` is an ALLOWLIST. A message from a channel not listed here is
+# rejected, not merely deprioritised — an intelligence source you did not
+# configure must never reach a trading channel.
+#
+# `authors` is optional. Empty accepts every author in an allowed channel;
+# populated restricts to those authors. Names are matched case-insensitively
+# against the author's display name, with or without a discriminator.
+#
+# Scores are seeds for the SAME six-component scorer every other source uses.
+# A higher qualityScore raises the sourceQuality component; it does not bypass
+# classification, the noise filters, or the market-impact test. Nothing here can
+# force a message into #trading-floor.
+# ─────────────────────────────────────────────────────────────────────────────
+version: 1
+
+channels: []
+# ─────────────────────────────────────────────────────────────────────────────
+# DELIBERATELY EMPTY — an allowlist that ships populated is not an allowlist.
+#
+# Add the channels you actually have access to. Format:
+#
+#   channels:
+#     - id: "1234567890123456789"        # Discord channel id (snowflake)
+#       sourceId: discord:flow-alerts    # Scout source id; must start `discord:`
+#       name: Flow Alerts
+#       enabled: true
+#       qualityScore: 85                 # 0-100, seeds the sourceQuality component
+#       noiseScore: 25                   # 0-100, higher means noisier
+#       filterProfile: standard          # standard | strict
+#       # Optional author allowlist. Empty/absent = every author in the channel.
+#       authors:
+#         - name: unusual_whales_crier
+#           qualityScore: 90             # optional per-author override
+#         - name: OwlsKeyLevelsBot
+#           qualityScore: 80
+#
+# `filterProfile: strict` requires the factuality gate to return FACTUAL_NEWS
+# before anything from the channel reaches the wire — use it for feeds that mix
+# reporting with commentary.
+#
+# Find a channel id: Discord → Settings → Advanced → Developer Mode, then
+# right-click the channel → Copy Channel ID.
+# ─────────────────────────────────────────────────────────────────────────────

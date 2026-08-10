@@ -31,6 +31,7 @@ import { assessMarketImpact } from './marketImpact.js';
 import { routeAlert } from '../discord/router.js';
 import { buildAlert } from '../render/alert.js';
 import { computeLatency } from '../health/latency.js';
+import { provenanceOf } from '../core/provenance.js';
 import { newId, deterministicId } from '../util/id.js';
 import { msBetween } from '../util/time.js';
 
@@ -555,8 +556,16 @@ function buildRawPayload(
   tickers: TickerMatch[],
   signals: string[],
 ): RawChannelPayload {
+  // Derived from the cluster's contributing sources, so a story seen on both X
+  // and Discord reads "X + DISCORD" rather than whichever arrived last.
+  const contributing =
+    ctx.cluster?.sourceIds && ctx.cluster.sourceIds.length > 0
+      ? ctx.cluster.sourceIds
+      : [ctx.raw.sourceId];
+
   return {
     sourceName: ctx.source?.name ?? ctx.raw.sourceId,
+    provenance: provenanceOf(contributing).label,
     handle: ctx.source?.handle ?? ctx.raw.author,
     originalUrl: ctx.raw.originalUrl,
     rawText: ctx.raw.text,

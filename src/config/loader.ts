@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { CATEGORIES } from '../core/types.js';
 import type { Security, Source } from '../core/types.js';
 import type { SourceConfigEntry, SourcesFile, TaxonomyFile } from './types.js';
+import type { DiscordChannelConfig, DiscordSourcesFile } from '../ingest/discordIntel/types.js';
 
 /**
  * Loads the three on-disk configuration files. All three are hot-reloadable:
@@ -234,4 +235,109 @@ function splitCsvLine(line: string): string[] {
 export function reloadConfig(): void {
   taxonomyCache = null;
   securitiesCache = null;
+}
+
+// ── Discord intelligence sources ─────────────────────────────────────────────
+
+const discordAuthorSchema = z.object({
+  name: z.string().min(1).max(120),
+  qualityScore: z.number().min(0).max(100).nullable().optional(),
+});
+
+const discordChannelSchema = z.object({
+  id: z.string().min(1).max(40),
+  sourceId: z.string().min(1).max(120),
+  name: z.string().min(1).max(120).optional(),
+  enabled: z.boolean().optional(),
+  qualityScore: z.number().min(0).max(100).optional(),
+  noiseScore: z.number().min(0).max(100).optional(),
+  filterProfile: z.enum(['standard', 'strict']).optional(),
+  authors: z.array(discordAuthorSchema).optional(),
+});
+
+const discordSourcesFileSchema = z.object({
+  version: z.number(),
+  channels: z.array(discordChannelSchema),
+});
+
+/**
+ * The Discord intelligence allowlist. Absent or empty is a valid configuration
+ * — it simply means the Discord source is not in use — so this never throws for
+ * a missing file. A malformed one DOES throw: silently ingesting from an
+ * unintended channel is worse than failing to boot.
+ */
+export function loadDiscordSources(
+  path = resolve(CONFIG_DIR, 'discord-sources.yaml'),
+): DiscordSourcesFile {
+  if (!existsSync(path)) return { version: 1, channels: [] };
+
+  const parsed = discordSourcesFileSchema.parse(parseYaml(readFileSync(path, 'utf8')));
+
+  const seenChannel = new Set<string>();
+  const seenSourceId = new Set<string>();
+
+  const channels: DiscordChannelConfig[] = parsed.channels.map((c) => {
+    const id = c.id.trim();
+    if (seenChannel.has(id)) {
+      throw new Error(`duplicate Discord channel id in discord-sources.yaml: ${id}`);
+    }
+    seenChannel.add(id);
+
+    if (seenSourceId.has(c.sourceId)) {
+      throw new Error(`duplicate Discord sourceId in discord-sources.yaml: ${c.sourceId}`);
+    }
+    seenSourceId.add(c.sourceId);
+
+    // The prefix is what tells provenance, dedupe reporting and the source
+    // report that this event came from Discord rather than X.
+    if (!c.sourceId.startsWith('discord:')) {
+      throw new Error(
+        `Discord sourceId must start with "discord:" so provenance is unambiguous — got "${c.sourceId}"`,
+      );
+    }
+
+    return {
+      id,
+      sourceId: c.sourceId,
+      name: c.name ?? c.sourceId,
+      enabled: c.enabled ?? true,
+      qualityScore: c.qualityScore ?? 70,
+      noiseScore: c.noiseScore ?? 30,
+      filterProfile: c.filterProfile ?? 'standard',
+      authors: (c.authors ?? []).map((a) => ({
+        name: a.name,
+        qualityScore: a.qualityScore ?? null,
+      })),
+    };
+  });
+
+  return { version: parsed.version, channels };
+}
+
+/** Config entry → the Source row shape, so Discord channels score like anything else. */
+export function toDiscordSource(channel: DiscordChannelConfig, now: string): Source {
+  return {
+    id: channel.sourceId,
+    name: channel.name,
+    handle: null,
+    url: null,
+    // Pushed, not polled — the same category the Discord URL relay uses. Scout
+    // never fetches these; an authorized bridge delivers them.
+    sourceType: 'manual',
+    category: 'MARKET',
+    priority: Math.round(channel.qualityScore),
+    enabled: channel.enabled,
+    verified: true,
+    qualityScore: channel.qualityScore,
+    noiseScore: channel.noiseScore,
+    macroScore: 50,
+    microScore: 60,
+    geopoliticalScore: 40,
+    filterProfile: channel.filterProfile,
+    official: false,
+    expectedIntervalMs: 900_000,
+    notes: `Discord intelligence source, channel ${channel.id}`,
+    createdAt: now,
+    updatedAt: now,
+  };
 }

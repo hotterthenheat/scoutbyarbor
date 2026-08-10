@@ -16,7 +16,13 @@ import { isoNow } from '../util/time.js';
  */
 
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'FAILED_RETRIEVAL' | 'SKIPPED';
-export type SourceKind = 'news' | 'truth_social' | 'admin' | 'webhook';
+export type SourceKind =
+  | 'news'
+  | 'truth_social'
+  | 'admin'
+  | 'webhook'
+  /** Discord intelligence: a full message from a configured channel, not a URL. */
+  | 'discord';
 
 export interface Job {
   jobId: string;

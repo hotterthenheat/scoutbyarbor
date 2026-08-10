@@ -327,7 +327,7 @@ CREATE TABLE IF NOT EXISTS processing_jobs (
   post_id         TEXT NOT NULL,
   url             TEXT NOT NULL,
   source_channel  TEXT,
-  source_kind     TEXT NOT NULL DEFAULT 'news',  -- news | truth_social | admin
+  source_kind     TEXT NOT NULL DEFAULT 'news',  -- news | truth_social | admin | webhook | discord
   status          TEXT NOT NULL DEFAULT 'QUEUED',
                     -- QUEUED | RUNNING | DONE | FAILED | FAILED_RETRIEVAL | SKIPPED
   attempts        INTEGER NOT NULL DEFAULT 0,

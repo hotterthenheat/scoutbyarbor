@@ -538,6 +538,12 @@ export interface RenderableAlert {
 /** Everything the admin/debug channel may show (§27). */
 export interface RawChannelPayload {
   sourceName: string;
+  /**
+   * Which origins contributed to this event: "X", "DISCORD", "X + DISCORD".
+   * Backend-only, like everything else in this payload — the alert itself is a
+   * four-field RenderableAlert and structurally cannot carry it.
+   */
+  provenance: string;
   handle: string | null;
   originalUrl: string | null;
   rawText: string;

@@ -94,6 +94,7 @@ const schema = z.object({
   REPLAY_WINDOW_MINUTES: numeric(60),
   REPLAY_LIMIT: numeric(100),
   SCOUT_ADMIN_TOKEN: z.string().default(''),
+  DISCORD_INTEL_TOKEN: z.string().default(''),
   PORT: numeric(10000),
 
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
@@ -201,6 +202,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       // /admin/replay is disabled, which is the right default now that the
       // replay runs in-process and nothing external needs to trigger it.
       adminToken: parsed.SCOUT_ADMIN_TOKEN,
+      // Its own credential. The X webhook token goes to the X relay operator
+      // and the Discord token to whoever runs the Discord bridge; one secret
+      // for both would mean either party could push into the other's source.
+      discordIntelToken: parsed.DISCORD_INTEL_TOKEN,
     },
     replay: {
       enabled: parsed.REPLAY_ENABLED,

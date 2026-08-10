@@ -287,6 +287,7 @@ describe('/metrics carries operational data and nothing else', () => {
     expect(Object.keys(body).sort()).toEqual([
       'deliveries',
       'deliveriesByDestination',
+      'discord',
       'events',
       'latencyMs',
       'queue',
