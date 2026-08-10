@@ -500,6 +500,355 @@ sources:
     expectedIntervalMs: 604800000
 
   # ══════════════════════════════════════════════════════════════════════════
+  # CONTINUOUS FREE FEEDS
+  #
+  # The agency feeds above are authoritative and SLOW — a handful of releases a
+  # day, on a published schedule. On their own they leave the wire silent for
+  # hours, which reads like a broken bot rather than a quiet morning.
+  #
+  # Everything below publishes CONTINUOUSLY, needs no API key, and needs no
+  # permission from anyone. This is what makes Scout an automatic wire instead
+  # of something you have to feed.
+  #
+  # They are also noisier, and are scored honestly for it: a high noiseScore
+  # makes an item compete poorly, `filterProfile: strict` requires the
+  # factuality gate to return FACTUAL_NEWS before anything reaches the wire, and
+  # the market-impact test still decides the trading channels. A newswire
+  # publishing constantly does not get to flood #spx-trading.
+  #
+  # If one of these 404s it shows up as DISCONNECTED on the dashboard with the
+  # actual error, costs nothing, and can be deleted. A dead feed is a health
+  # warning; it is never a wrong alert.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  # ── Corporate newswires — where earnings and M&A actually break ───────────
+  - id: rss:businesswire
+    name: Business Wire — All News
+    url: https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFpRXQ==
+    org: businesswire
+    sourceType: rss
+    category: EQUITY
+    priority: 82
+    enabled: true
+    official: false
+    qualityScore: 80
+    noiseScore: 55
+    macroScore: 20
+    microScore: 92
+    geopoliticalScore: 10
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Earnings releases, M&A, guidance. High volume; strict factuality gate.
+
+  - id: rss:globenewswire
+    name: GlobeNewswire — Public Companies
+    url: https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies
+    org: globenewswire
+    sourceType: rss
+    category: EQUITY
+    priority: 80
+    enabled: true
+    official: false
+    qualityScore: 78
+    noiseScore: 58
+    macroScore: 18
+    microScore: 90
+    geopoliticalScore: 10
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Company releases. Same role as Business Wire, different issuers.
+
+  - id: rss:prnewswire
+    name: PR Newswire — News Releases
+    url: https://www.prnewswire.com/rss/news-releases-list.rss
+    org: prnewswire
+    sourceType: rss
+    category: EQUITY
+    priority: 76
+    enabled: true
+    official: false
+    qualityScore: 74
+    noiseScore: 62
+    macroScore: 15
+    microScore: 88
+    geopoliticalScore: 10
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Highest volume of the three wires, and the most promotional.
+
+  # ── Market press — continuous coverage ────────────────────────────────────
+  - id: rss:cnbc-top
+    name: CNBC — Top News
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
+    org: cnbc
+    sourceType: rss
+    category: MARKET
+    priority: 78
+    enabled: true
+    official: false
+    qualityScore: 76
+    noiseScore: 55
+    macroScore: 65
+    microScore: 70
+    geopoliticalScore: 45
+    filterProfile: strict
+    expectedIntervalMs: 600000
+    notes: Breaking market coverage. Mixes reporting with commentary, hence strict.
+
+  - id: rss:cnbc-economy
+    name: CNBC — Economy
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
+    org: cnbc
+    sourceType: rss
+    category: ECONOMIC
+    priority: 79
+    enabled: true
+    official: false
+    qualityScore: 78
+    noiseScore: 48
+    macroScore: 88
+    microScore: 30
+    geopoliticalScore: 40
+    filterProfile: strict
+    expectedIntervalMs: 900000
+    notes: Same org as cnbc-top, so the two count as ONE confirmation.
+
+  - id: rss:marketwatch-top
+    name: MarketWatch — Top Stories
+    url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+    org: marketwatch
+    sourceType: rss
+    category: MARKET
+    priority: 77
+    enabled: true
+    official: false
+    qualityScore: 75
+    noiseScore: 55
+    macroScore: 65
+    microScore: 70
+    geopoliticalScore: 40
+    filterProfile: strict
+    expectedIntervalMs: 600000
+    notes: Dow Jones newsroom. Fast on market-moving headlines.
+
+  - id: rss:marketwatch-pulse
+    name: MarketWatch — Market Pulse
+    url: https://feeds.content.dowjones.io/public/rss/mw_marketpulse
+    org: marketwatch
+    sourceType: rss
+    category: MARKET
+    priority: 80
+    enabled: true
+    official: false
+    qualityScore: 78
+    noiseScore: 40
+    macroScore: 72
+    microScore: 72
+    geopoliticalScore: 35
+    filterProfile: strict
+    expectedIntervalMs: 600000
+    notes: Short factual market headlines — the closest free equivalent to a squawk.
+
+  - id: rss:yahoo-finance
+    name: Yahoo Finance — News
+    url: https://finance.yahoo.com/news/rssindex
+    org: yahoofinance
+    sourceType: rss
+    category: MARKET
+    priority: 70
+    enabled: true
+    official: false
+    qualityScore: 66
+    noiseScore: 66
+    macroScore: 55
+    microScore: 70
+    geopoliticalScore: 30
+    filterProfile: strict
+    expectedIntervalMs: 600000
+    notes: Aggregator, so it repeats others. Dedupe collapses it against them.
+
+  - id: rss:investing-news
+    name: Investing.com — News
+    url: https://www.investing.com/rss/news.rss
+    org: investing
+    sourceType: rss
+    category: MARKET
+    priority: 68
+    enabled: true
+    official: false
+    qualityScore: 64
+    noiseScore: 68
+    macroScore: 60
+    microScore: 60
+    geopoliticalScore: 35
+    filterProfile: strict
+    expectedIntervalMs: 600000
+    notes: Broad coverage including FX and commodities.
+
+  # ── Energy — inventories move crude within seconds ────────────────────────
+  - id: rss:eia-today
+    name: U.S. EIA — Today in Energy
+    url: https://www.eia.gov/rss/todayinenergy.xml
+    org: eia
+    sourceType: rss
+    category: COMMODITY
+    priority: 84
+    enabled: true
+    official: true
+    qualityScore: 96
+    noiseScore: 12
+    macroScore: 70
+    microScore: 35
+    geopoliticalScore: 45
+    expectedIntervalMs: 86400000
+    notes: Official energy data. Petroleum status reports move crude directly.
+
+  - id: rss:eia-press
+    name: U.S. EIA — Press Releases
+    url: https://www.eia.gov/rss/press_rss.xml
+    org: eia
+    sourceType: rss
+    category: COMMODITY
+    priority: 82
+    enabled: true
+    official: true
+    qualityScore: 96
+    noiseScore: 12
+    macroScore: 68
+    microScore: 30
+    geopoliticalScore: 45
+    expectedIntervalMs: 604800000
+    notes: Same body as eia-today — one organisation, one confirmation.
+
+  # ── Regulators and policy ─────────────────────────────────────────────────
+  - id: rss:sec-litigation
+    name: SEC — Litigation Releases
+    url: https://www.sec.gov/rss/litigation/litreleases.xml
+    org: sec
+    sourceType: rss
+    category: EQUITY
+    priority: 74
+    enabled: true
+    official: true
+    qualityScore: 96
+    noiseScore: 25
+    macroScore: 20
+    microScore: 82
+    geopoliticalScore: 10
+    expectedIntervalMs: 86400000
+    notes: Enforcement against named issuers. Single-name impact.
+
+  - id: rss:cftc-press
+    name: CFTC — Press Releases
+    url: https://www.cftc.gov/RSS/RSSGP/rssgp.xml
+    org: cftc
+    sourceType: rss
+    category: COMMODITY
+    priority: 72
+    enabled: true
+    official: true
+    qualityScore: 96
+    noiseScore: 22
+    macroScore: 35
+    microScore: 60
+    geopoliticalScore: 15
+    expectedIntervalMs: 86400000
+    notes: Derivatives and commodities regulation.
+
+  - id: rss:federalregister-treasury
+    name: Federal Register — Treasury Documents
+    url: https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=treasury-department
+    org: federalregister
+    sourceType: rss
+    category: MACRO
+    priority: 62
+    enabled: true
+    official: true
+    qualityScore: 90
+    noiseScore: 60
+    macroScore: 55
+    microScore: 30
+    geopoliticalScore: 20
+    filterProfile: strict
+    expectedIntervalMs: 86400000
+    notes: Rules and notices. Mostly procedural — strict gate keeps routine filings out.
+
+  # ── International institutions ────────────────────────────────────────────
+  - id: rss:imf-news
+    name: IMF — News
+    url: https://www.imf.org/en/News/RSS?language=eng
+    org: imf
+    sourceType: rss
+    category: MACRO
+    priority: 70
+    enabled: true
+    official: true
+    qualityScore: 94
+    noiseScore: 30
+    macroScore: 85
+    microScore: 10
+    geopoliticalScore: 60
+    expectedIntervalMs: 86400000
+    notes: Global growth forecasts, country programmes, financial stability.
+
+  - id: rss:worldbank-news
+    name: World Bank — News
+    url: https://www.worldbank.org/en/news/all?format=rss
+    org: worldbank
+    sourceType: rss
+    category: MACRO
+    priority: 60
+    enabled: true
+    official: true
+    qualityScore: 90
+    noiseScore: 45
+    macroScore: 72
+    microScore: 8
+    geopoliticalScore: 60
+    filterProfile: strict
+    expectedIntervalMs: 86400000
+    notes: Development and emerging-market policy.
+
+  # ── U.S. policy ───────────────────────────────────────────────────────────
+  - id: rss:whitehouse
+    name: The White House — Briefing Room
+    url: https://www.whitehouse.gov/feed/
+    org: whitehouse
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 76
+    enabled: true
+    official: true
+    qualityScore: 92
+    noiseScore: 45
+    macroScore: 70
+    microScore: 25
+    geopoliticalScore: 88
+    filterProfile: strict
+    expectedIntervalMs: 43200000
+    notes: Executive orders, tariffs, sanctions. Strict gate — much of it is ceremonial.
+
+  - id: rss:nyfed-news
+    name: Federal Reserve Bank of New York — News
+    url: https://www.newyorkfed.org/rss/news.xml
+    org: fed
+    sourceType: rss
+    category: FED
+    priority: 84
+    enabled: true
+    official: true
+    qualityScore: 98
+    noiseScore: 18
+    macroScore: 88
+    microScore: 15
+    geopoliticalScore: 15
+    expectedIntervalMs: 86400000
+    notes: >-
+      Open-market operations and the desk. org is `fed`, deliberately: the New
+      York Fed and the Board are ONE body, so the pair counts as one
+      confirmation rather than inflating credibility on every Fed story.
+
+  # ══════════════════════════════════════════════════════════════════════════
   # SEC FILINGS ENGINE (§16)
   # EDGAR "current events" atom feeds. Materiality is classified before
   # anything reaches a channel — most filings never alert.
