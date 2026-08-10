@@ -238,6 +238,39 @@ export async function main(): Promise<void> {
   });
   await discord.start();
 
+  // Can Scout actually POST to the three destinations?
+  //
+  // Connecting to Discord and being able to write to a given channel are
+  // different things, and the gap between them is silent — the bot logs
+  // "connected", every alert routes correctly, and the channels stay empty
+  // because it was never invited to that server. Checked at boot so the answer
+  // arrives before the first story rather than after a day of wondering.
+  const channelChecks = await discord.checkChannels(['news', 'spx', 'tradingFloor']);
+  for (const check of channelChecks) {
+    if (check.ok) {
+      log.info('destination reachable', {
+        channel: check.key,
+        id: check.channelId,
+        detail: check.detail,
+      });
+    } else {
+      log.error('DESTINATION UNREACHABLE — alerts routed here will NOT be delivered', {
+        channel: check.key,
+        id: check.channelId || '(unset)',
+        reason: check.detail,
+      });
+    }
+  }
+  const unreachable = channelChecks.filter((c) => !c.ok);
+  if (unreachable.length === channelChecks.length && !cfg.dryRun) {
+    log.error(
+      'NO DESTINATION IS REACHABLE. Scout will classify and route news correctly and ' +
+        'deliver none of it. Invite the bot to the server holding these channels and give it ' +
+        'View Channel + Send Messages there.',
+      { channels: unreachable.map((c) => `${c.key}=${c.channelId || '(unset)'}`) },
+    );
+  }
+
   const publisher = createPublisher({
     discord,
     db,

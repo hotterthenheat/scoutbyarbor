@@ -2,6 +2,7 @@ import {
   Client,
   GatewayIntentBits,
   ChannelType,
+  PermissionFlagsBits,
   type Guild,
   type TextChannel,
 } from 'discord.js';
@@ -74,7 +75,22 @@ export interface ScoutDiscord {
   send(channelKey: ChannelKey, content: string): Promise<SentMessage | null>;
   edit(channelId: string, messageId: string, content: string): Promise<boolean>;
   ensureChannels(): Promise<Record<string, string>>;
+  /**
+   * Can Scout actually POST to each of these? Connecting to Discord and being
+   * able to write to a particular channel are different things, and the gap
+   * between them is silent: the bot reports connected, every alert routes
+   * correctly, and the channels stay empty.
+   */
+  checkChannels(keys: ChannelKey[]): Promise<ChannelCheck[]>;
   isReady(): boolean;
+}
+
+export interface ChannelCheck {
+  key: ChannelKey;
+  channelId: string;
+  ok: boolean;
+  /** Why not, in words an operator can act on. */
+  detail: string;
 }
 
 export interface DiscordDeps {
@@ -220,7 +236,80 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
     return out;
   }
 
-  return { start, stop, send, edit, ensureChannels, isReady: () => ready };
+  /**
+   * Probes each configured channel WITHOUT posting to it.
+   *
+   * Fetching the channel proves the bot can see it; reading its permissions
+   * proves it can write. Both fail for the same two ordinary reasons — the bot
+   * was never invited to that server, or it has no Send Messages there — and
+   * neither is visible from a boot log that says "connected".
+   */
+  async function checkChannels(keys: ChannelKey[]): Promise<ChannelCheck[]> {
+    const out: ChannelCheck[] = [];
+
+    for (const key of keys) {
+      const channelId = channelIdFor(key);
+      if (!channelId) {
+        out.push({ key, channelId: '', ok: false, detail: 'no channel id configured' });
+        continue;
+      }
+      if (dryRun) {
+        out.push({ key, channelId, ok: true, detail: 'dry run — not checked' });
+        continue;
+      }
+
+      try {
+        const channel = await client?.channels.fetch(channelId);
+        if (!channel) {
+          out.push({
+            key,
+            channelId,
+            ok: false,
+            detail: 'channel not found — is the bot in that server, and is the id correct?',
+          });
+          continue;
+        }
+        if (!channel.isTextBased() || channel.isDMBased()) {
+          out.push({ key, channelId, ok: false, detail: 'not a text channel in a server' });
+          continue;
+        }
+
+        const me = (channel as TextChannel).guild?.members?.me;
+        const perms = me ? (channel as TextChannel).permissionsFor(me) : null;
+        if (perms && !perms.has(PermissionFlagsBits.ViewChannel)) {
+          out.push({ key, channelId, ok: false, detail: 'missing View Channel permission' });
+          continue;
+        }
+        if (perms && !perms.has(PermissionFlagsBits.SendMessages)) {
+          out.push({ key, channelId, ok: false, detail: 'missing Send Messages permission' });
+          continue;
+        }
+
+        out.push({
+          key,
+          channelId,
+          ok: true,
+          detail: `#${(channel as TextChannel).name}`,
+        });
+      } catch (err) {
+        // The common one is DiscordAPIError 10003 Unknown Channel, which means
+        // the bot cannot see it — usually because it is not in that server.
+        const message = (err as Error).message;
+        out.push({
+          key,
+          channelId,
+          ok: false,
+          detail: /unknown channel/i.test(message)
+            ? 'Unknown Channel — the bot is not in that server, or the id is wrong'
+            : message,
+        });
+      }
+    }
+
+    return out;
+  }
+
+  return { start, stop, send, edit, ensureChannels, checkChannels, isReady: () => ready };
 }
 
 /**
