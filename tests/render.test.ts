@@ -326,7 +326,9 @@ describe('the alert as a Discord embed', () => {
     body: 'The reading came in above the 3.0% consensus.',
   };
 
-  it('makes the headline a clickable title', () => {
+  it('puts the banner in the title and the headline in the body', () => {
+    // The compact layout: the banner does the work an author row used to, so an
+    // alert is one visual block rather than three before the story starts.
     const embed = renderAlertEmbed({
       alert,
       url: 'https://www.marketwatch.com/story/abc',
@@ -334,10 +336,21 @@ describe('the alert as a Discord embed', () => {
       publishedAt: '2026-08-10T17:58:00.000Z',
     }) as Record<string, unknown>;
 
-    expect(embed.title).toBe(alert.headline);
-    expect(embed.url).toBe('https://www.marketwatch.com/story/abc');
+    expect(embed.title).toBe('ECONOMIC ALERT');
+    expect(embed.description).toContain(alert.headline);
     expect((embed.footer as { text: string }).text).toBe('MarketWatch');
-    expect((embed.author as { name: string }).name).toBe('ECONOMIC ALERT');
+    // No author row, and no url on the title — the title stays white so the
+    // block reads as a notice rather than a hyperlink.
+    expect(embed.author).toBeUndefined();
+    expect(embed.url).toBeUndefined();
+  });
+
+  it('keeps the story one click away, on the headline', () => {
+    const embed = renderAlertEmbed({
+      alert,
+      url: 'https://www.marketwatch.com/story/abc',
+    }) as Record<string, unknown>;
+    expect(embed.description).toContain('](https://www.marketwatch.com/story/abc)');
   });
 
   it('uses the PUBLICATION time, so Discord renders "20 minutes ago" correctly', () => {
@@ -365,8 +378,10 @@ describe('the alert as a Discord embed', () => {
 
   it('still accepts a bare alert, so older callers keep working', () => {
     const embed = renderAlertEmbed(alert) as Record<string, unknown>;
-    expect(embed.title).toBe(alert.headline);
-    expect(embed.url).toBeUndefined();
+    expect(embed.title).toBe('ECONOMIC ALERT');
+    expect(embed.description).toContain(alert.headline);
+    // No url given, so the headline is bold text rather than a link.
+    expect(embed.description).not.toContain('](');
   });
 });
 

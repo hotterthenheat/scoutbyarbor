@@ -175,30 +175,42 @@ export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unkn
   const { alert } = norm;
 
   const url = norm.url?.trim();
-  const source = norm.sourceLabel?.trim();
+  const linkable = url && /^https?:\/\//i.test(url) ? url : null;
   const brand = norm.brandFooter?.trim();
-  // Outlet first, always. Attribution is information and branding is not, so
-  // the signature follows the reporter rather than displacing it.
-  //
-  // The outlet is shortened to the masthead: config names a source
-  // "CNBC — Top News" so an operator can tell two CNBC feeds apart, but a
-  // reader does not care which of them carried it. Discord already appends its
-  // own separator and timestamp after this string, so anything longer than the
-  // masthead crowds a line that is not ours alone.
-  const footer = [mastheadOf(source), brand].filter(Boolean).join(' · ');
   const publishedAt = norm.publishedAt ? Date.parse(norm.publishedAt) : NaN;
 
+  // Compact layout: the banner IS the title, and the headline sits in the body.
+  //
+  // The previous shape spent a whole row on a small-caps author line above a
+  // large blue link, which made every alert three visual blocks tall before the
+  // story started. A wire alert wants to be scannable in a column of forty, so
+  // the banner does the work the author row was doing and the headline reads as
+  // the sentence it is.
+  //
+  // The link survives as a markdown link on the headline rather than on the
+  // title: the title stays white, which is what makes the block read as a
+  // notice instead of a hyperlink, and the headline is still one click away.
+  const headline = escapeMarkdown(alert.headline);
+  const headlineLine = linkable ? `**[${headline}](${linkable})**` : `**${headline}**`;
+
+  const description = [headlineLine, alert.body ? escapeMarkdown(alert.body) : '']
+    .filter(Boolean)
+    .join('\n\n');
+
+  // Outlet first, always. Attribution is information and branding is not, so
+  // the signature follows the reporter rather than displacing it. The outlet is
+  // shortened to its masthead — config names a feed "CNBC — Top News" so an
+  // operator can tell two CNBC feeds apart, and a reader does not care which.
+  const footer = [mastheadOf(norm.sourceLabel ?? undefined), brand].filter(Boolean).join(' · ');
+
   return {
-    // Discord renders the title bold and, with `url`, as a link.
-    title: truncate(alert.headline, 250),
-    ...(url && /^https?:\/\//i.test(url) ? { url } : {}),
-    ...(alert.body ? { description: alert.body } : {}),
+    title: truncate(alert.banner, 100),
+    description: truncate(description, 3800),
     color: BANNER_COLOR[alert.banner] ?? 0x4a5568,
-    author: { name: alert.banner },
     ...(footer ? { footer: { text: footer } } : {}),
     // Discord shows this in the reader's OWN timezone and as "20 minutes ago"
-    // on hover, which is strictly better than a string in one fixed zone —
-    // and it is the publication time, never the time Scout posted.
+    // on hover, which beats a string in one fixed zone — and it is the
+    // publication time, never the moment Scout posted.
     ...(Number.isFinite(publishedAt) ? { timestamp: new Date(publishedAt).toISOString() } : {}),
   };
 }
