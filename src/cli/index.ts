@@ -19,6 +19,7 @@ import {
 import { createLogger, setLogLevel } from '../util/logger.js';
 import { isoNow } from '../util/time.js';
 import { deterministicId } from '../util/id.js';
+import { probeFeeds, formatProbeReport } from './probeFeeds.js';
 import type { RawPost, SourceVerification } from '../core/types.js';
 
 /**
@@ -35,6 +36,8 @@ scout — Arbor Capital
   db:migrate              apply the schema
   sources:sync            load config/sources.yaml into the database (§36)
   sources:verify          confirm every handle and feed URL resolves (§29)
+  sources:probe           test candidate and disabled feed URLs, change nothing
+      --all                 re-check enabled sources too
   sources:report [days]   per-source accept/reject/duplicate stats (§28)
   pipeline:report [days]  alerts, duplicate rate, latency percentiles (§22/§34)
   discord:setup           create any missing channels and print their ids (§26)
@@ -63,6 +66,8 @@ async function run(): Promise<void> {
       return sourcesSync(cfg.databasePath);
     case 'sources:verify':
       return sourcesVerify(cfg.databasePath);
+    case 'sources:probe':
+      return sourcesProbe(args.includes('--all'));
     case 'sources:report':
       return sourcesReport(cfg.databasePath, Number(args[0] ?? 7));
     case 'pipeline:report':
@@ -119,6 +124,25 @@ function sourcesSync(path: string): void {
  * X handles against the API and RSS/EDGAR URLs with a real request, then marks
  * the row verified or leaves it unverified with the reason printed.
  */
+
+/**
+ * Tests candidate feed URLs and reports which are live. Touches no state.
+ *
+ * Seven high-value primary feeds sit disabled in config because their URLs
+ * returned 404 or 403 in production, and the note on each says a replacement
+ * must be verified rather than guessed. This is how it gets verified — it has
+ * to run somewhere with real network access.
+ */
+async function sourcesProbe(includeEnabled: boolean): Promise<void> {
+  const cfg = env();
+  const results = await probeFeeds({
+    userAgent: cfg.sec.userAgent,
+    timeoutMs: 20_000,
+    includeEnabled,
+  });
+  process.stdout.write(formatProbeReport(results) + '\n');
+}
+
 async function sourcesVerify(path: string): Promise<void> {
   const cfg = env();
   const db = openDatabase(path);

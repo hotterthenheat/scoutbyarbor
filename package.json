@@ -17,6 +17,7 @@
     "scout": "tsx src/cli/index.ts",
     "sources:verify": "tsx src/cli/index.ts sources:verify",
     "sources:sync": "tsx src/cli/index.ts sources:sync",
+    "sources:probe": "tsx src/cli/index.ts sources:probe",
     "db:migrate": "tsx src/cli/index.ts db:migrate",
     "discord:setup": "tsx src/cli/index.ts discord:setup",
     "replay": "tsx src/cli/index.ts replay",

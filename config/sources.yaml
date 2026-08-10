@@ -666,7 +666,12 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 70
-    enabled: true
+    # DISABLED: a re-publisher, not a wire. It carried the 38-unit franchisee
+    # bankruptcy that started this, and it reaches RSS minutes after the
+    # underlying story — so under a two-minute freshness window it mostly
+    # cannot clear the gate anyway. Its content arrives here first-hand from
+    # the primary sources and PR wires above.
+    enabled: false
     official: false
     qualityScore: 66
     noiseScore: 66
@@ -684,7 +689,10 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 68
-    enabled: true
+    # DISABLED: aggregator with heavy SEO and forecast content, which is what
+    # the clickbait and prediction filters spend their time on. Low unique
+    # signal per item.
+    enabled: false
     official: false
     qualityScore: 64
     noiseScore: 68
@@ -816,7 +824,10 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 60
-    enabled: true
+    # DISABLED: produced no item at all across the deployment, and development
+    # lending announcements rarely move a book. The IMF feed covers the
+    # market-relevant share of this beat.
+    enabled: false
     official: true
     qualityScore: 90
     noiseScore: 45
@@ -947,7 +958,10 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 66
-    enabled: true
+    # DISABLED: general business journalism on a several-minute delay — it was
+    # sitting in the DELAYED list. Commentary and analysis rather than the
+    # first report of an event.
+    enabled: false
     official: false
     qualityScore: 72
     noiseScore: 64
@@ -1001,7 +1015,10 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 58
-    enabled: true
+    # DISABLED: mostly humanitarian and procedural, published well after the
+    # events it covers. Geopolitics that moves markets arrives faster through
+    # the State Department, Defense and wire feeds.
+    enabled: false
     official: true
     qualityScore: 82
     noiseScore: 70
