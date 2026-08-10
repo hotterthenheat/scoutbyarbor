@@ -11,3 +11,5 @@ data/*.db-shm
 coverage/
 .DS_Store
 .vitest/
+__pycache__/
+*.pyc
