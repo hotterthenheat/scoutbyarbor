@@ -208,16 +208,32 @@ function render(m) {
 
   const dest = m.deliveriesByDestination || {};
   const destNames = Object.keys(dest);
+  // A skip count with no reason next to it reads as a failure. Sprout is the
+  // one that bites: it is an optional downstream, so on a deployment that never
+  // set SPROUT_URL every single event is skipped, which looks alarming and is
+  // in fact nothing at all.
+  const whySkipped = (name, count) => {
+    if (count === 0) return '';
+    if (name === 'sprout') {
+      return (m.sprout || {}).configured
+        ? 'older than the freshness window'
+        : 'SPROUT_URL not set — no downstream configured';
+    }
+    return 'held by the freshness window';
+  };
+
   $('deliveries').innerHTML = destNames.length === 0
     ? '<div class="empty">Nothing delivered yet.</div>'
-    : '<table><tr><th>Destination</th><th>Sent</th><th>Failed</th><th>Skipped</th></tr>' +
+    : '<table><tr><th>Destination</th><th>Sent</th><th>Failed</th><th>Skipped</th><th>Why skipped</th></tr>' +
       destNames.map((name) => {
         const row = dest[name] || {};
         const failed = row.FAILED || 0;
+        const skipped = row.SKIPPED || 0;
         return '<tr><td>' + esc(name) + '</td>' +
           '<td class="' + ((row.SENT || 0) > 0 ? 'ok' : 'dim') + '">' + esc(row.SENT || 0) + '</td>' +
           '<td class="' + (failed > 0 ? 'bad' : 'dim') + '">' + esc(failed) + '</td>' +
-          '<td class="dim">' + esc(row.SKIPPED || 0) + '</td></tr>';
+          '<td class="dim">' + esc(skipped) + '</td>' +
+          '<td class="dim">' + esc(whySkipped(name, skipped)) + '</td></tr>';
       }).join('') + '</table>';
 
   const d = m.discord || {}, w = m.webhook || {};

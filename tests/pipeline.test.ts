@@ -6,6 +6,7 @@ import { openDatabase } from '../src/db/index.js';
 import { createPipeline } from '../src/pipeline/index.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../src/config/loader.js';
 import { createLogger, setLogLevel } from '../src/util/logger.js';
+import { loadEnv } from '../src/config/env.js';
 import { renderAlert } from '../src/render/alert.js';
 import type { RawPost } from '../src/core/types.js';
 import type { ScoutDb } from '../src/db/index.js';
@@ -311,6 +312,29 @@ describe('publishing old news', () => {
 
   it('disables the gate at 0', async () => {
     expect((await agedPipeline(0).process(aged(600))).accepted).toBe(true);
+  });
+
+  /**
+   * The shipped window is two minutes, and that number is a product decision
+   * rather than a tuning knob: a Trump post relayed twenty minutes late is not
+   * a newswire. It is pinned here because the failure mode is invisible — a
+   * larger default does not break anything, it just quietly starts sending
+   * stale alerts again.
+   */
+  it('ships a two minute window', () => {
+    expect(loadEnv({}).pipeline.maxPublishAgeMinutes).toBe(2);
+  });
+
+  it('declines a three minute old story under the shipped window', async () => {
+    const outcome = await agedPipeline(loadEnv({}).pipeline.maxPublishAgeMinutes).process(aged(3));
+
+    expect(outcome.accepted, 'a three minute old story reached the wire').toBe(false);
+    expect(outcome.rejection).toBe('NOISE_OLD_NEWS');
+  });
+
+  it('still publishes one that is seconds old', async () => {
+    const outcome = await agedPipeline(loadEnv({}).pipeline.maxPublishAgeMinutes).process(aged(0));
+    expect(outcome.accepted).toBe(true);
   });
 });
 

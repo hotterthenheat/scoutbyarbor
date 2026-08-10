@@ -26,6 +26,7 @@ import { createNoiseClassifier } from './classify/noise.js';
 import { createFactualityClassifier } from './classify/factuality.js';
 import { extractEarnings, isEarningsPost, buildEarningsHeadline } from './classify/earnings.js';
 import { classifyFiling } from './classify/filings.js';
+import { identifySubject } from './classify/subject.js';
 import { findCluster, createCluster, applyUpdate, computeNovelty } from './cluster.js';
 import { scoreEvent } from './score.js';
 import { assessMarketImpact } from './marketImpact.js';
@@ -258,6 +259,19 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
         ctx.category = category;
         return reject(ctx, 'FILING_IMMATERIAL', db, config);
       }
+    }
+
+    // A single-name category has to name the single name (§20).
+    //
+    // Checked BEFORE clustering on purpose. An unusable event that opens a
+    // cluster goes on to absorb the real coverage that follows it, and the
+    // first headline is the one a cluster keeps — so a story Scout could not
+    // identify would end up captioning the story it could.
+    const subject = identifySubject({ category, entities });
+    signals.push(subject.reason);
+    if (!subject.identified) {
+      ctx.category = category;
+      return reject(ctx, 'NO_IDENTIFIED_SUBJECT', db, config);
     }
 
     // ── CLUSTER (§18) ───────────────────────────────────────────────────────

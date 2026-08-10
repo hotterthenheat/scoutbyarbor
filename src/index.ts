@@ -1005,6 +1005,9 @@ export async function main(): Promise<void> {
     // Reported in /metrics so the Discord source's liveness does not look like
     // it depends on the webhook, which it does not.
     intakeChannelIds,
+    // So the dashboard can say WHY Sprout skipped everything, rather than
+    // showing a skip count that looks like a delivery failure.
+    sproutConfigured: sprout.enabled,
 
     /**
      * Hand-submitted events from the dashboard.

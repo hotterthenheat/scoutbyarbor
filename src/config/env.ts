@@ -65,22 +65,47 @@ const schema = z.object({
 
   X_BEARER_TOKEN: z.string().default(''),
   FINNHUB_API_KEY: z.string().default(''),
-  TRUTH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
-  FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  // Poll cadence is spent directly out of MAX_PUBLISH_AGE_MINUTES: an item is
+  // already up to one interval old by the time Scout first sees it. With a two
+  // minute budget, a 60s poll gives an upstream feed only 60s of slack, so the
+  // sources that carry breaking statements are polled at 30s.
+  //
+  // X stays slower because its cadence is governed by a request budget rather
+  // than by freshness, and polling it harder just exhausts the window earlier.
+  TRUTH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
+  FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   X_POLL_INTERVAL_MS: numeric(90_000),
   X_REQUEST_BUDGET_PER_WINDOW: numeric(180),
 
   SEC_USER_AGENT: z.string().default('ArborCapital Scout (ops@example.com)'),
-  SEC_POLL_INTERVAL_MS: numeric(60_000),
+  SEC_POLL_INTERVAL_MS: numeric(30_000),
 
-  RSS_POLL_INTERVAL_MS: numeric(45_000),
+  RSS_POLL_INTERVAL_MS: numeric(30_000),
 
   DATABASE_PATH: z.string().default('./data/scout.db'),
 
   SCOUT_BRAND_FOOTER: z
     .string()
     .default('Scout by Arbor Capital · signal, not noise'),
-  MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(20),
+  /**
+   * How stale a story may be, measured from ITS OWN publication time, and still
+   * go out as an alert.
+   *
+   * TWO MINUTES, down from twenty. A Trump post relayed twenty minutes late is
+   * not a newswire, it is a history feed — the move has already happened and
+   * the alert is worse than silence, because it looks actionable.
+   *
+   * This is a hard budget, and Scout's own detection latency is spent from it:
+   * a source polled every 30s can burn a quarter of the window before the item
+   * is even seen. That is why the fast sources below poll at 30s.
+   *
+   * The trade is deliberate and it is not free. Aggregators that habitually
+   * publish to RSS several minutes after the underlying story — Yahoo Finance
+   * is the clearest case — will now rarely clear the gate, and will drift into
+   * the "quiet" list on the dashboard. Losing them is the point: a wire that is
+   * quiet is more useful than one that is behind.
+   */
+  MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(2),
   MIN_PUBLISH_SCORE: numeric(60),
   MIN_BREAKING_SCORE: numeric(90),
   DEDUPE_WINDOW_MINUTES: numeric(90),

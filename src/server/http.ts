@@ -105,6 +105,14 @@ export interface ServerDeps {
    * source live" has an answer that does not depend on the webhook.
    */
   intakeChannelIds?: string[];
+  /**
+   * Whether the Sprout hand-off has a URL configured.
+   *
+   * Reported because without it the dashboard shows Sprout with every event
+   * SKIPPED and no reason, which reads as a broken delivery rather than an
+   * optional downstream nobody wired up.
+   */
+  sproutConfigured?: boolean;
 }
 
 /** Bodies larger than this are refused before being buffered. */
@@ -436,6 +444,7 @@ export function createServer_(deps: ServerDeps): ScoutServer {
         // you know whether it is Sprout or Discord.
         deliveriesByDestination: db.deliveries.countsByDestination(since),
         sprout: {
+          configured: Boolean(deps.sproutConfigured),
           deliveredTotal: summary.sprout_delivered_total ?? 0,
           failedTotal: summary.sprout_failed_total ?? 0,
           skippedTotal: summary.sprout_skipped_total ?? 0,
