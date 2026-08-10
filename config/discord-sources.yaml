@@ -60,8 +60,7 @@ version: 1
 
 # ── DESTINATIONS ─────────────────────────────────────────────────────────────
 # Where refined intelligence goes. Declared here so the routing map is readable
-# in one place rather than spread across dashboard variables. Each overrides the
-# corresponding DISCORD_CHANNEL_* env var; leave one out to keep the env value.
+# in one place rather than spread across dashboard variables.
 #
 #   general    every accepted event, in Scout's alert format
 #   spx_macro  index-level and macro: SPX/SPY/QQQ, Fed, CPI/PPI/NFP/GDP, rates,
