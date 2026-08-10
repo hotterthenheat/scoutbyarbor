@@ -39,11 +39,46 @@
 # ─────────────────────────────────────────────────────────────────────────────
 version: 1
 
-channels: []
-# ─────────────────────────────────────────────────────────────────────────────
-# DELIBERATELY EMPTY — an allowlist that ships populated is not an allowlist.
+# ── DESTINATIONS ─────────────────────────────────────────────────────────────
+# Where refined intelligence goes. Declared here so the routing map is readable
+# in one place rather than spread across dashboard variables. Each overrides the
+# corresponding DISCORD_CHANNEL_* env var; leave one out to keep the env value.
 #
-# Add the channels you actually have access to. Format:
+#   general    every accepted event, in Scout's alert format
+#   spx_macro  index-level and macro: SPX/SPY/QQQ, Fed, CPI/PPI/NFP/GDP, rates,
+#              major geopolitical, commodities, market-wide risk
+#   tickers    single-name: company news, earnings, guidance, M&A, analyst
+#              actions, product/regulatory developments, options catalysts
+#
+# An event that is BOTH macro and single-name reaches both. An event that is
+# neither reaches general only. The decision is the market-impact classifier's,
+# never the source's.
+destinations:
+  general: "1513342006342979635"
+  spx_macro: "1510553508351311922"
+  tickers: "1510553837897781259"
+
+# ── SOURCE CHANNELS ──────────────────────────────────────────────────────────
+# An ALLOWLIST. A message from a channel not listed here is rejected outright,
+# not merely deprioritised.
+channels:
+  - id: "1081082844807434292"
+    sourceId: discord:arbor-intel
+    name: Arbor Intelligence Source
+    enabled: true
+    # Seeds the SAME sourceQuality component an X account uses. It changes how a
+    # message competes; it cannot bypass classification, the noise filters or
+    # the market-impact test, and it cannot force anything into a trading
+    # channel. Tune it after a week of real traffic, not before.
+    qualityScore: 80
+    noiseScore: 30
+    filterProfile: standard
+    # No author list: every author in this channel is accepted. Add names here
+    # to narrow it — see the format below.
+    authors: []
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Adding more channels. Format:
 #
 #   channels:
 #     - id: "1234567890123456789"        # Discord channel id (snowflake)

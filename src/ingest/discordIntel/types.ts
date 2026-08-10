@@ -113,7 +113,26 @@ export interface DiscordAuthorConfig {
   qualityScore: number | null;
 }
 
+/**
+ * Where refined intelligence goes. Declared here rather than left implicit in
+ * env vars so the routing map is readable in one place: which channel is the
+ * general feed, which is index/macro, which is single-name.
+ *
+ * These are DESTINATIONS, not sources. Setting one overrides the corresponding
+ * DISCORD_CHANNEL_* variable; leaving it unset keeps the env value, so an
+ * existing deployment is unaffected.
+ */
+export interface DiscordDestinations {
+  /** The complete qualified feed. Overrides DISCORD_CHANNEL_NEWS. */
+  general?: string;
+  /** Index-level and macro. Overrides DISCORD_CHANNEL_SPX. */
+  spxMacro?: string;
+  /** Single-name: tickers, earnings, M&A. Overrides DISCORD_CHANNEL_TRADING_FLOOR. */
+  tickers?: string;
+}
+
 export interface DiscordSourcesFile {
   version: number;
   channels: DiscordChannelConfig[];
+  destinations: DiscordDestinations;
 }

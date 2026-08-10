@@ -7,17 +7,28 @@ import type { MarketImpactVerdict } from '../pipeline/marketImpact.js';
  * The channel hierarchy:
  *
  *   #scout-news      the complete qualified Scout feed — every accepted event
- *   #trading-floor   every major market-moving event
- *   #spx-trading     the same major events, for anything that can move SPX
+ *   #spx-trading     index-level and macro: SPX/SPY/QQQ, Fed, CPI/PPI/NFP/GDP,
+ *                    rates, major geopolitical, commodities, market-wide risk
+ *   #trading-floor   single-name: tickers, earnings, guidance, M&A, analyst
+ *                    actions, product/regulatory developments, options catalysts
  *
- * The core rule is that the trading channels move together: there must be no
- * situation where a critical macro/geopolitical/Fed/government event lands in
- * #scout-news while the trading channels miss it. `marketMoving` is decided by
- * the market-impact classifier, and if it is true both trading channels get the
- * event — never one without the other.
+ * THE INVARIANT, which has not changed: a market-moving event never stops at
+ * #scout-news. If `marketMoving` is true it reaches at least one trading
+ * channel, and an event that qualifies as both macro and single-name reaches
+ * both. Should the two tests somehow both fail on a market-moving event, it
+ * goes to both rather than neither — losing a real event is the failure that
+ * matters, and a duplicate is merely noise.
  *
- * Routing is decided by the event, never by the source. The same account can
- * produce a #scout-news-only post and an all-channels post minutes apart.
+ * WHAT DID CHANGE: the trading channels no longer move in lockstep. They used
+ * to receive every market-moving event together. They are now addressed by what
+ * the event is about, because a desk watching single-name flow does not need
+ * every CPI print and a desk trading the index does not need every earnings
+ * beat. The split is by CONTENT, decided by the market-impact classifier —
+ * never by which source the event arrived from.
+ *
+ * Routing is decided by the event, never by the source. The same account, and
+ * the same ingestion path, can produce a #scout-news-only post and an
+ * all-channels post minutes apart.
  *
  * The per-category channels from the original spec are still supported and are
  * emitted as an additional fan-out when enabled.
@@ -35,6 +46,9 @@ const CATEGORY_HOME: Record<Category, ChannelKey[]> = {
   COMMODITY: ['commodities'],
   CRYPTO: ['crypto'],
 };
+
+/** Categories that are about a company rather than the market as a whole. */
+const SINGLE_NAME_CATEGORIES = new Set<Category>(['EQUITY', 'EARNINGS', 'OPTIONS']);
 
 const RATE_MOVING = new Set([
   'CPI_RELEASE',
@@ -66,11 +80,41 @@ export function routeAlert(input: RouteInput): RouteDecision {
   channels.add('news');
   reasons.push('news: the complete qualified Scout feed');
 
-  // 2. The trading channels move together, or not at all.
+  // 2. Trading channels, addressed by what the event is about.
   if (input.impact.marketMoving) {
-    channels.add('tradingFloor');
-    channels.add('spx');
-    reasons.push(`trading-floor + spx-trading: ${input.impact.reasons[0] ?? 'major market event'}`);
+    const macroSide = input.impact.macro || input.impact.relevance === 'broad';
+    const singleNameSide =
+      input.tickers.length > 0 ||
+      SINGLE_NAME_CATEGORIES.has(input.category) ||
+      input.impact.relevance === 'single_name' ||
+      input.impact.relevance === 'sector';
+
+    if (macroSide) {
+      channels.add('spx');
+      reasons.push(`spx-trading: ${input.impact.reasons[0] ?? 'index-level or macro event'}`);
+    }
+    if (singleNameSide) {
+      channels.add('tradingFloor');
+      reasons.push(
+        `trading-floor: ${
+          input.tickers.length > 0
+            ? `affects ${input.tickers.slice(0, 4).join(', ')}`
+            : `${input.category} single-name event`
+        }`,
+      );
+    }
+
+    // A market-moving event must never end up in #scout-news alone. If neither
+    // test fired, the classifier disagrees with itself — send both rather than
+    // silently dropping a real event out of the trading channels.
+    if (!macroSide && !singleNameSide) {
+      channels.add('spx');
+      channels.add('tradingFloor');
+      reasons.push(
+        'trading-floor + spx-trading: market-moving but neither macro nor single-name — routed to both rather than held back',
+      );
+    }
+
     for (const reason of input.impact.reasons.slice(1, 3)) reasons.push(`  · ${reason}`);
   } else {
     reasons.push(
@@ -110,8 +154,11 @@ export function routeAlert(input: RouteInput): RouteDecision {
  * point of "CPI IN 15 MINUTES" is that a desk sees it where it is trading.
  */
 export function routeCalendarReminder(): RouteDecision {
+  // A scheduled release is macro by definition — CPI, NFP, FOMC — so it belongs
+  // in the index channel. It goes to the single-name channel too: "CPI IN 15
+  // MINUTES" is a reason to stop trading anything, not only the index.
   return {
     channels: ['news', 'tradingFloor', 'spx'],
-    reasons: ['scheduled calendar event: news + both trading channels'],
+    reasons: ['scheduled macro release: news + both trading channels'],
   };
 }

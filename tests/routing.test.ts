@@ -62,6 +62,10 @@ function route(opts: {
 const bothTradingChannels = (channels: string[]): boolean =>
   channels.includes('tradingFloor') && channels.includes('spx');
 
+/** The invariant: a market-moving event never stops at #scout-news. */
+const anyTradingChannel = (channels: string[]): boolean =>
+  channels.includes('tradingFloor') || channels.includes('spx');
+
 describe('the core rule', () => {
   it('sends every accepted event to #scout-news', () => {
     for (const band of ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'] as ImportanceBand[]) {
@@ -69,20 +73,27 @@ describe('the core rule', () => {
     }
   });
 
-  it('never sends one trading channel without the other', () => {
+  /**
+   * The trading channels are addressed by content, so they no longer move in
+   * lockstep. What has NOT changed is that a market-moving event must reach at
+   * least one of them — being market-moving and landing only in #scout-news is
+   * the failure this rule exists to prevent.
+   */
+  it('never leaves a market-moving event in #scout-news alone', () => {
     const cases: Array<Parameters<typeof route>[0]> = [
       { category: 'FED', subcategory: 'FOMC_DECISION', band: 'CRITICAL' },
       { category: 'ECONOMIC', subcategory: 'CPI_RELEASE', band: 'HIGH' },
-      { category: 'EQUITY', band: 'MODERATE' },
-      { category: 'CRYPTO', band: 'LOW' },
-      { category: 'OPTIONS', band: 'HIGH' },
-      { category: 'COMMODITY', band: 'MODERATE' },
+      { category: 'GEOPOLITICAL', subcategory: 'CONFLICT', band: 'CRITICAL' },
+      { category: 'EQUITY', band: 'CRITICAL' },
+      { category: 'OPTIONS', band: 'CRITICAL' },
+      { category: 'COMMODITY', band: 'CRITICAL' },
     ];
     for (const c of cases) {
-      const { channels } = route(c);
-      const floor = channels.includes('tradingFloor');
-      const spx = channels.includes('spx');
-      expect(floor, `${c.category} split the trading channels`).toBe(spx);
+      const { channels, reasons } = route(c);
+      expect(
+        anyTradingChannel(channels),
+        `${c.category} ${c.band} was market-moving but reached no trading channel: ${reasons.join('; ')}`,
+      ).toBe(true);
     }
   });
 
@@ -92,7 +103,7 @@ describe('the core rule', () => {
 });
 
 describe('the worked examples', () => {
-  it('CPI release → news + both trading channels', () => {
+  it('CPI release → news + #spx-trading (macro, not single-name)', () => {
     const { channels } = route({
       category: 'ECONOMIC',
       subcategory: 'CPI_RELEASE',
@@ -100,30 +111,30 @@ describe('the worked examples', () => {
       text: 'US CPI RISES 0.3% M/M VS 0.2% EXPECTED',
     });
     expect(channels).toContain('news');
-    expect(bothTradingChannels(channels)).toBe(true);
+    expect(channels).toContain('spx');
   });
 
-  it('FOMC decision → news + both trading channels', () => {
+  it('FOMC decision → news + #spx-trading', () => {
     const { channels } = route({
       category: 'FED',
       subcategory: 'FOMC_DECISION',
       band: 'CRITICAL',
       text: 'FED CUTS RATES BY 25 BPS',
     });
-    expect(bothTradingChannels(channels)).toBe(true);
+    expect(channels).toContain('spx');
   });
 
-  it('a market-moving Powell remark → news + both trading channels', () => {
+  it('a market-moving Powell remark → news + #spx-trading', () => {
     const { channels } = route({
       category: 'FED',
       subcategory: 'POWELL_REMARKS',
       band: 'HIGH',
       text: 'POWELL: FURTHER RATE CUTS WILL DEPEND ON INFLATION PROGRESS',
     });
-    expect(bothTradingChannels(channels)).toBe(true);
+    expect(channels).toContain('spx');
   });
 
-  it('a major tariff announcement → news + both trading channels', () => {
+  it('a major tariff announcement → news + #spx-trading', () => {
     const { channels } = route({
       category: 'GEOPOLITICAL',
       subcategory: 'TRADE',
@@ -131,10 +142,10 @@ describe('the worked examples', () => {
       text: 'TRUMP ANNOUNCES 25% TARIFF ON ALL IMPORTED VEHICLES',
       entities: entities({ countries: ['US'], people: ['TRUMP'] }),
     });
-    expect(bothTradingChannels(channels)).toBe(true);
+    expect(channels).toContain('spx');
   });
 
-  it('a major Iran/Israel escalation → news + both trading channels', () => {
+  it('a major Iran/Israel escalation → news + #spx-trading', () => {
     const { channels } = route({
       category: 'GEOPOLITICAL',
       subcategory: 'CONFLICT',
@@ -142,7 +153,7 @@ describe('the worked examples', () => {
       text: 'ISRAEL CONFIRMS STRIKES ON IRANIAN NUCLEAR FACILITIES',
       entities: entities({ countries: ['IL', 'IR'] }),
     });
-    expect(bothTradingChannels(channels)).toBe(true);
+    expect(channels).toContain('spx');
   });
 });
 
@@ -171,22 +182,35 @@ describe('what must NOT flood the trading channels', () => {
 
   it('holds a moderate crypto item to #scout-news', () => {
     const { channels } = route({ category: 'CRYPTO', band: 'MODERATE', text: 'exchange listing' });
-    expect(bothTradingChannels(channels)).toBe(false);
+    expect(anyTradingChannel(channels)).toBe(false);
+  });
+
+  /**
+   * The example that motivated the split. Real corporate news, no market
+   * implication — general intelligence, and nothing more.
+   */
+  it('holds a consumer product launch to #scout-news', () => {
+    const { channels } = route({
+      category: 'EQUITY',
+      band: 'MODERATE',
+      text: 'Ciarra expands into home comfort with new electric heater series',
+    });
+    expect(channels).toEqual(['news']);
   });
 });
 
 describe('severity drives routing', () => {
-  it('CRITICAL always reaches the trading channels, whatever the category', () => {
+  it('CRITICAL always reaches a trading channel, whatever the category', () => {
     for (const category of ['EQUITY', 'CRYPTO', 'OPTIONS', 'COMMODITY'] as Category[]) {
       const { channels } = route({ category, band: 'CRITICAL' });
-      expect(bothTradingChannels(channels), `${category} CRITICAL was held back`).toBe(true);
+      expect(anyTradingChannel(channels), `${category} CRITICAL was held back`).toBe(true);
     }
   });
 
   it('LOW never reaches them', () => {
     for (const category of ['FED', 'ECONOMIC', 'GEOPOLITICAL'] as Category[]) {
       const { channels } = route({ category, band: 'LOW' });
-      expect(bothTradingChannels(channels), `${category} LOW leaked`).toBe(false);
+      expect(anyTradingChannel(channels), `${category} LOW leaked`).toBe(false);
     }
   });
 
@@ -199,8 +223,8 @@ describe('severity drives routing', () => {
         tickers: [{ ticker: 'ETSY', evidence: 'NAME', confidence: 0.95, matchedText: 'ETSY' }],
       }),
     });
-    expect(bothTradingChannels(macro.channels)).toBe(true);
-    expect(bothTradingChannels(singleName.channels)).toBe(false);
+    expect(macro.channels).toContain('spx');
+    expect(anyTradingChannel(singleName.channels)).toBe(false);
   });
 });
 
@@ -251,8 +275,9 @@ describe('the source never decides the route', () => {
       text: 'TRUMP ANNOUNCES 25% TARIFF ON STEEL IMPORTS',
       entities: entities({ countries: ['US'] }),
     });
-    expect(bothTradingChannels(trivial.channels)).toBe(false);
-    expect(bothTradingChannels(material.channels)).toBe(true);
+    expect(anyTradingChannel(trivial.channels)).toBe(false);
+    // A tariff announcement is macro, so it reaches the index channel.
+    expect(material.channels).toContain('spx');
   });
 });
 
@@ -277,7 +302,8 @@ describe('category fan-out is opt-in', () => {
       band: 'CRITICAL',
       categoryChannels: true,
     });
-    expect(channels).toEqual(expect.arrayContaining(['news', 'tradingFloor', 'spx', 'fed', 'macro']));
+    // An FOMC decision is macro: index channel, not the single-name one.
+    expect(channels).toEqual(expect.arrayContaining(['news', 'spx', 'fed', 'macro']));
   });
 });
 
@@ -302,12 +328,72 @@ describe('an event whose route grows must reach the new channels', () => {
       entities: entities({ countries: ['US', 'TR'] }),
     });
 
-    expect(bothTradingChannels(early.channels)).toBe(false);
-    expect(bothTradingChannels(later.channels)).toBe(true);
+    expect(anyTradingChannel(early.channels)).toBe(false);
+    expect(anyTradingChannel(later.channels)).toBe(true);
 
     // The publisher must post to what the second route added, not merely edit
-    // the first message.
+    // the first message. A geopolitical escalation is macro, so the channel it
+    // gains is the index one.
     const added = later.channels.filter((c) => !early.channels.includes(c));
-    expect(added).toEqual(expect.arrayContaining(['tradingFloor', 'spx']));
+    expect(added).toContain('spx');
+  });
+});
+
+/**
+ * The three-destination split, end to end through the market-impact classifier.
+ * These are the worked examples the destinations were specified against.
+ */
+describe('the three destinations', () => {
+  const dest = (channels: string[]) => ({
+    general: channels.includes('news'),
+    spxMacro: channels.includes('spx'),
+    tickers: channels.includes('tradingFloor'),
+  });
+
+  it('macro goes to general + SPX/macro, not the ticker channel', () => {
+    const { channels } = route({
+      category: 'FED',
+      subcategory: 'FOMC_DECISION',
+      band: 'CRITICAL',
+      text: 'FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING',
+    });
+    expect(dest(channels)).toEqual({ general: true, spxMacro: true, tickers: false });
+  });
+
+  it('a material corporate action goes to general + tickers, not SPX/macro', () => {
+    const { channels } = route({
+      category: 'EQUITY',
+      band: 'MODERATE',
+      text: 'PFIZER TO ACQUIRE SEAGEN FOR $43 BILLION IN ALL-CASH DEAL',
+      entities: entities({
+        tickers: [{ ticker: 'PFE', evidence: 'NAME', confidence: 0.95, matchedText: 'PFIZER' }],
+      }),
+    });
+    expect(dest(channels)).toEqual({ general: true, spxMacro: false, tickers: true });
+  });
+
+  it('an index heavyweight reaches BOTH trading channels', () => {
+    // AAPL moves the index and is a single name, so it is genuinely both.
+    const { channels } = route({
+      category: 'EQUITY',
+      band: 'HIGH',
+      text: 'APPLE COMPONENT COSTS EXPECTED TO RISE 38% ON SUPPLY CHAIN CONSTRAINTS',
+      entities: entities({
+        tickers: [{ ticker: 'AAPL', evidence: 'NAME', confidence: 0.95, matchedText: 'APPLE' }],
+      }),
+    });
+    expect(dest(channels)).toEqual({ general: true, spxMacro: true, tickers: true });
+  });
+
+  it('ordinary company news stays in general only', () => {
+    const { channels } = route({
+      category: 'EQUITY',
+      band: 'MODERATE',
+      text: 'ETSY ANNOUNCES $50 MILLION SHARE REPURCHASE PROGRAM',
+      entities: entities({
+        tickers: [{ ticker: 'ETSY', evidence: 'NAME', confidence: 0.95, matchedText: 'ETSY' }],
+      }),
+    });
+    expect(dest(channels)).toEqual({ general: true, spxMacro: false, tickers: false });
   });
 });

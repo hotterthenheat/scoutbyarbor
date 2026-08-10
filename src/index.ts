@@ -154,19 +154,39 @@ export async function main(): Promise<void> {
           'DRY_RUN=true to exercise the pipeline without publishing.',
       );
     }
-    if (!cfg.discord.channels.news) {
+    if (!cfg.discord.channels.news && !discordSources.destinations.general) {
       throw new Error(
-        'DISCORD_CHANNEL_NEWS is not set. Every qualified alert routes to #scout-news, so ' +
-          'without it nothing has anywhere to go. Run `npm run discord:setup` to create the ' +
-          'channels and print their ids.',
+        'No general news destination is configured. Every qualified alert routes there, so ' +
+          'without it nothing has anywhere to go. Set DISCORD_CHANNEL_NEWS, or ' +
+          '`destinations.general` in config/discord-sources.yaml. `npm run discord:setup` ' +
+          'creates the channels and prints their ids.',
       );
     }
+  }
+
+  // Destinations declared in config override the env vars, so the routing map
+  // — which channel is general, which is index/macro, which is single-name —
+  // is readable in one place instead of spread across the dashboard. Unset
+  // entries keep their env value, so an existing deployment is unaffected.
+  const destinations = discordSources.destinations;
+  const routedChannels = {
+    ...cfg.discord.channels,
+    ...(destinations.general ? { news: destinations.general } : {}),
+    ...(destinations.spxMacro ? { spx: destinations.spxMacro } : {}),
+    ...(destinations.tickers ? { tradingFloor: destinations.tickers } : {}),
+  };
+  if (destinations.general || destinations.spxMacro || destinations.tickers) {
+    log.info('destination overrides from config/discord-sources.yaml', {
+      general: Boolean(destinations.general),
+      spxMacro: Boolean(destinations.spxMacro),
+      tickers: Boolean(destinations.tickers),
+    });
   }
 
   const discord = createDiscordClient({
     token: cfg.discord.token,
     guildId: cfg.discord.guildId,
-    channels: cfg.discord.channels,
+    channels: routedChannels,
     dryRun: cfg.dryRun,
     logger: log.child('discord'),
   });

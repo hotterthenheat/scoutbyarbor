@@ -100,6 +100,50 @@ const BROAD_TERMS = [
 /** An index heavyweight moving is itself a broad-market event. */
 const INDEX_MOVER_PRIORITY = 85;
 
+/**
+ * Corporate actions that reprice a single name on their own.
+ *
+ * These exist because the single-name trading channel needs them: a $43bn
+ * acquisition is a MODERATE-band, single-name event, and the old rule — trading
+ * channels only on broad relevance — was written when both trading channels
+ * were index-oriented and there was nowhere for a company catalyst to go.
+ *
+ * Deliberately narrow. Buybacks, dividends, splits, executive hires and product
+ * launches are NOT here: they are real company news and belong in the general
+ * feed, not on a trading desk's alert path.
+ */
+const MATERIAL_CORPORATE_ACTIONS = [
+  'acquire',
+  'acquires',
+  'acquisition',
+  'to acquire',
+  'merger',
+  'merges with',
+  'takeover',
+  'buyout',
+  'all-cash deal',
+  'tender offer',
+  'guidance',
+  'cuts outlook',
+  'raises outlook',
+  'profit warning',
+  'downgrade',
+  'downgrades',
+  'upgrade',
+  'upgrades',
+  'price target',
+  'bankruptcy',
+  'chapter 11',
+  'halts production',
+  'production halt',
+  'recall',
+  'fda approval',
+  'fda rejects',
+  'antitrust',
+  'investigation',
+  'delisting',
+];
+
 export function assessMarketImpact(input: MarketImpactInput): MarketImpactVerdict {
   const reasons: string[] = [];
   const lower = input.text.toLowerCase();
@@ -191,14 +235,24 @@ export function assessMarketImpact(input: MarketImpactInput): MarketImpactVerdic
           : `HIGH band but only ${relevance} relevance`,
       );
       break;
-    case 'MODERATE':
-      marketMoving = relevance === 'broad';
+    case 'MODERATE': {
+      // A material corporate action is a trading event for the name it names,
+      // even when it moves nothing at the index level. That is what the
+      // single-name channel is for.
+      const materialAction =
+        (relevance === 'single_name' || relevance === 'sector') &&
+        MATERIAL_CORPORATE_ACTIONS.some((term) => hasTerm(lower, term));
+
+      marketMoving = relevance === 'broad' || materialAction;
       reasons.push(
-        marketMoving
+        relevance === 'broad'
           ? 'MODERATE band with broad-market relevance'
-          : `MODERATE band with only ${relevance} relevance — #scout-news only`,
+          : materialAction
+            ? `MODERATE band, ${relevance} relevance, material corporate action`
+            : `MODERATE band with only ${relevance} relevance — #scout-news only`,
       );
       break;
+    }
     default:
       reasons.push(`${input.band} band — #scout-news only`);
       break;

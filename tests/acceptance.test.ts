@@ -234,7 +234,7 @@ describe('MVP acceptance: no X bearer token', () => {
     expect(sprout?.error).toBe('publication time unknown');
   });
 
-  it('routes a market-moving relayed post to both trading channels', async () => {
+  it('routes a market-moving relayed post out of #scout-news', async () => {
     const sent: Sent[] = [];
     const scout = buildScout(sent);
 
@@ -249,7 +249,8 @@ https://x.com/DeItaone/status/2058552301120360938`);
 
     const channels = sent.map((s) => s.channel);
     expect(channels).toContain('news');
-    expect(channels).toContain('tradingFloor');
+    // Macro reaches the index channel; the single-name channel is for company
+    // news. The invariant is that it does not stop at #scout-news.
     expect(channels).toContain('spx');
   });
 
@@ -319,7 +320,8 @@ https://truthsocial.com/@realDonaldTrump/posts/113456789012345678`);
     expect(db.posts.byId('truth:113456789012345678')).toBeTruthy();
     const channels = sent.map((s) => s.channel);
     expect(channels).toContain('news');
-    expect(channels).toContain('tradingFloor');
+    // Macro reaches the index channel; the single-name channel is for company
+    // news. The invariant is that it does not stop at #scout-news.
     expect(channels).toContain('spx');
   });
 

@@ -453,6 +453,30 @@ categories:
       - buyback
       - dividend
       - split
+      # Cost, margin and supply-chain developments. A component-cost or input-cost
+      # move is a margin story, which is a company story — and one of the most
+      # common shapes a single-name catalyst actually arrives in. Without these
+      # the classifier reads "APPLE COMPONENT COSTS EXPECTED TO RISE 38%" as
+      # having no category at all and drops it.
+      - component cost
+      - component costs
+      - input cost
+      - input costs
+      - cost inflation
+      - margin
+      - margins
+      - gross margin
+      - supply chain
+      - supplier
+      - suppliers
+      - shortage
+      - production cut
+      - output cut
+      - capacity
+      - price increase
+      - price hike
+      - raises prices
+      - cuts prices
     phrases:
       - merger agreement
       - definitive agreement

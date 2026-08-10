@@ -6,7 +6,7 @@ import type {
   NormalizedPost,
 } from '../core/types.js';
 import { textSimilarity } from '../util/text.js';
-import { headlineEquivalent } from './dedupe.js';
+import { headlineEquivalent, quotesDifferentFigures } from './dedupe.js';
 import type { SourceAttribution } from '../core/provenance.js';
 
 /**
@@ -93,6 +93,13 @@ export function findCluster(input: FindClusterInput): {
 
     let shared = 0;
     for (const e of postEntities) if (clusterEntities.has(e)) shared++;
+
+    // Two releases quoting entirely different numbers are different releases,
+    // not developments of one story. CPI and jobless claims land inside the
+    // same window with the same country and category and would otherwise share
+    // a thread — which would merge their provenance and their corroboration
+    // counts, making two separate prints look like one confirmed event.
+    if (quotesDifferentFigures(input.post.headline, cluster.headline)) continue;
 
     const similarity = textSimilarity(postHeadline, headlineEquivalent(cluster.headline));
     const floor =

@@ -6,7 +6,11 @@ import { z } from 'zod';
 import { CATEGORIES } from '../core/types.js';
 import type { Security, Source } from '../core/types.js';
 import type { SourceConfigEntry, SourcesFile, TaxonomyFile } from './types.js';
-import type { DiscordChannelConfig, DiscordSourcesFile } from '../ingest/discordIntel/types.js';
+import type {
+  DiscordChannelConfig,
+  DiscordDestinations,
+  DiscordSourcesFile,
+} from '../ingest/discordIntel/types.js';
 
 /**
  * Loads the three on-disk configuration files. All three are hot-reloadable:
@@ -255,9 +259,16 @@ const discordChannelSchema = z.object({
   authors: z.array(discordAuthorSchema).optional(),
 });
 
+const discordDestinationsSchema = z.object({
+  general: z.string().min(1).max(40).optional(),
+  spx_macro: z.string().min(1).max(40).optional(),
+  tickers: z.string().min(1).max(40).optional(),
+});
+
 const discordSourcesFileSchema = z.object({
   version: z.number(),
   channels: z.array(discordChannelSchema),
+  destinations: discordDestinationsSchema.optional(),
 });
 
 /**
@@ -269,7 +280,7 @@ const discordSourcesFileSchema = z.object({
 export function loadDiscordSources(
   path = resolve(CONFIG_DIR, 'discord-sources.yaml'),
 ): DiscordSourcesFile {
-  if (!existsSync(path)) return { version: 1, channels: [] };
+  if (!existsSync(path)) return { version: 1, channels: [], destinations: {} };
 
   const parsed = discordSourcesFileSchema.parse(parseYaml(readFileSync(path, 'utf8')));
 
@@ -311,7 +322,14 @@ export function loadDiscordSources(
     };
   });
 
-  return { version: parsed.version, channels };
+  const d = parsed.destinations ?? {};
+  const destinations: DiscordDestinations = {
+    ...(d.general ? { general: d.general.trim() } : {}),
+    ...(d.spx_macro ? { spxMacro: d.spx_macro.trim() } : {}),
+    ...(d.tickers ? { tickers: d.tickers.trim() } : {}),
+  };
+
+  return { version: parsed.version, channels, destinations };
 }
 
 /** Config entry → the Source row shape, so Discord channels score like anything else. */

@@ -351,6 +351,18 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
                  category, event_id, timestamp, importance
             FROM news_events
            WHERE timestamp >= ?
+             -- An event Scout never understood must not suppress a later
+             -- source that words the same story comprehensibly. NO_CATEGORY and
+             -- EMPTY_TEXT mean "we could not read this", not "we read it and
+             -- declined it" — so a second wire describing the same development
+             -- clearly gets a fresh hearing rather than being collapsed into a
+             -- decision that produced no alert.
+             --
+             -- Everything else stays a candidate. A story rejected as NOISE was
+             -- understood and deliberately declined; re-admitting it because
+             -- another account posted the same chatter would reopen exactly the
+             -- floodgate the noise filters exist to close.
+             AND COALESCE(rejection_reason, '') NOT IN ('NO_CATEGORY', 'EMPTY_TEXT')
            ORDER BY timestamp DESC
            LIMIT ${DEDUPE_LIMIT}
         `)

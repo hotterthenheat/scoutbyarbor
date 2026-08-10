@@ -564,3 +564,87 @@ sources:
       URLs detected in NEWS_SOURCE_CHANNEL_IDS / TRUTH_SOCIAL_CHANNEL_IDS /
       ADMIN_INPUT_CHANNEL_IDS. Constrain which accounts are accepted with
       ALLOWED_X_ACCOUNTS rather than by trusting whoever pasted the link.
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # STAGED — NOT YET VERIFIED (§29)
+  #
+  # Candidates that would materially widen coverage where the shipped list is
+  # thin: US fiscal/Treasury, energy and OPEC, and central banks outside the
+  # Fed. Every one is `enabled: false`.
+  #
+  # They ship disabled because §29 is explicit — do not trust a handle because a
+  # list claims it exists — and these were selected from knowledge, not resolved
+  # against the API. Run `npm run sources:verify` with X_BEARER_TOKEN set, or
+  # confirm each handle by hand, and enable only what resolves.
+  #
+  # Deliberately NOT added: engagement-driven macro commentary accounts,
+  # aggregators that repost the wires already listed above, and anything whose
+  # primary output is opinion. Scout is scored on signal density, and a source
+  # that duplicates @DeItaone ten seconds later adds latency noise and
+  # corroboration inflation rather than information.
+  # ══════════════════════════════════════════════════════════════════════════
+
+  - id: x:treasury
+    name: US Treasury Department
+    handle: "@USTreasury"
+    sourceType: x
+    category: MACRO
+    priority: 80
+    enabled: false
+    verified: false
+    qualityScore: 95
+    noiseScore: 10
+    official: true
+    notes: Fiscal announcements, debt issuance, sanctions. UNVERIFIED — confirm before enabling.
+
+  - id: x:opec
+    name: OPEC Secretariat
+    handle: "@OPECSecretariat"
+    sourceType: x
+    category: COMMODITY
+    priority: 75
+    enabled: false
+    verified: false
+    qualityScore: 92
+    noiseScore: 12
+    official: true
+    notes: Production decisions move crude and the whole energy complex. UNVERIFIED.
+
+  - id: x:eia
+    name: US Energy Information Administration
+    handle: "@EIAgov"
+    sourceType: x
+    category: COMMODITY
+    priority: 70
+    enabled: false
+    verified: false
+    qualityScore: 90
+    noiseScore: 15
+    official: true
+    notes: Weekly inventories are a scheduled, market-moving release. UNVERIFIED.
+
+  - id: x:ecb
+    name: European Central Bank
+    handle: "@ecb"
+    sourceType: x
+    category: MACRO
+    priority: 78
+    enabled: false
+    verified: false
+    qualityScore: 95
+    noiseScore: 10
+    official: true
+    notes: Already covered by rss:ecb-press; the X feed is usually faster. UNVERIFIED.
+
+  - id: x:bankofengland
+    name: Bank of England
+    handle: "@bankofengland"
+    sourceType: x
+    category: MACRO
+    priority: 70
+    enabled: false
+    verified: false
+    qualityScore: 94
+    noiseScore: 10
+    official: true
+    notes: Gilt and cable moves that spill into US rates. UNVERIFIED.

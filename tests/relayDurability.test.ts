@@ -181,11 +181,12 @@ describe('a restart between accepting and processing', () => {
 
     // The alert reached the channels a Fed emergency cut must reach.
     const channels = sent.map((s) => s.channel).sort();
-    expect(channels).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(channels).toEqual(['news', 'spx']);
 
     // Exactly once — no duplicate from the recovery.
-    expect(sent).toHaveLength(3);
-    expect(new Set(channels).size).toBe(3);
+    expect(sent).toHaveLength(2);
+    expect(new Set(channels).size).toBe(2);
 
     // And the content survived intact, in the austere format.
     expect(sent[0]?.content).toContain('FED CUTS RATES BY 50 BPS IN EMERGENCY MEETING');
@@ -224,7 +225,8 @@ describe('a restart between accepting and processing', () => {
     await second.queue.drain();
 
     expect(db.jobs.byPostId(POST_ID)?.status).toBe('DONE');
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 });
 
@@ -255,7 +257,8 @@ describe('a restart during a retryable failure', () => {
     await second.queue.drain();
 
     expect(db.jobs.byPostId(POST_ID)?.status).toBe('DONE');
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 
   it('retains the payload on a job that failed terminally', async () => {
@@ -278,7 +281,8 @@ describe('a restart during a retryable failure', () => {
     await second.queue.drain();
 
     expect(db.jobs.byPostId(POST_ID)?.status).toBe('DONE');
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 });
 

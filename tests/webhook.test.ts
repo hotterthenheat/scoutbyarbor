@@ -371,13 +371,14 @@ describe('processing', () => {
     expect(alert.toLowerCase()).not.toContain('score');
   });
 
-  it('routes a major event to both trading channels', async () => {
+  it('routes a major macro event to the index channel', async () => {
     await post(X_EVENT);
     await queue.drain();
 
     const channels = sent.map((s) => s.channel);
     expect(channels).toContain('news');
-    expect(channels).toContain('tradingFloor');
+    // Macro reaches the index channel; the single-name channel is for company
+    // news. The invariant is that it does not stop at #scout-news.
     expect(channels).toContain('spx');
   });
 
@@ -393,7 +394,8 @@ describe('processing', () => {
 
     const channels = sent.map((s) => s.channel);
     expect(channels).toContain('news');
-    expect(channels).toContain('tradingFloor');
+    // Same pipeline, same routing: a macro event reaches the index channel.
+    expect(channels).toContain('spx');
   });
 
   it('keeps a non-market event out of the trading channels', async () => {

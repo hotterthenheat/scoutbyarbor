@@ -384,7 +384,8 @@ describe('one pipeline, not two', () => {
     scout.accept(envelope());
     await scout.queue.drain();
 
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 
   /**
@@ -481,7 +482,8 @@ describe('deduplication across sources', () => {
 
     expect(first.accepted).toBe(true);
     expect(second.accepted).toBe(false);
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 });
 
@@ -636,7 +638,8 @@ describe('durability', () => {
     const second = buildScout();
     await second.queue.drain();
 
-    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx', 'tradingFloor']);
+    // A Fed emergency cut is macro: the index channel, not the single-name one.
+    expect(sent.map((s) => s.channel).sort()).toEqual(['news', 'spx']);
   });
 
   it('fails visibly rather than inventing content when the payload is gone', async () => {
@@ -682,8 +685,24 @@ describe('durability', () => {
 });
 
 describe('the config file', () => {
-  it('ships with an empty allowlist', () => {
-    expect(loadDiscordSources().channels).toEqual([]);
+  /**
+   * Pins the deployed configuration. These ids are what the forwarding bot
+   * reads from and what Arbor reads — a silent edit to either is a silent
+   * change to where trading intelligence goes.
+   */
+  it('allowlists exactly the configured source channel', () => {
+    const { channels } = loadDiscordSources();
+    expect(channels).toHaveLength(1);
+    expect(channels[0]?.id).toBe('1081082844807434292');
+    expect(channels[0]?.sourceId).toBe('discord:arbor-intel');
+    expect(channels[0]?.enabled).toBe(true);
+  });
+
+  it('declares the three destinations', () => {
+    const { destinations } = loadDiscordSources();
+    expect(destinations.general).toBe('1513342006342979635');
+    expect(destinations.spxMacro).toBe('1510553508351311922');
+    expect(destinations.tickers).toBe('1510553837897781259');
   });
 
   it('treats a missing file as "not in use" rather than an error', () => {

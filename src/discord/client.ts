@@ -142,7 +142,13 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
   async function send(channelKey: ChannelKey, content: string): Promise<SentMessage | null> {
     if (dryRun) {
       dryRunCounter += 1;
-      logger.info('dry-run send', { channelKey, preview: content.slice(0, 120) });
+      // The resolved id, not just the key: a dry run is how an operator checks
+      // that config/env actually point at the channels they think they do.
+      logger.info('dry-run send', {
+        channelKey,
+        channelId: channelIdFor(channelKey) || '(unresolved)',
+        preview: content.slice(0, 120),
+      });
       return { channelId: `dry-${channelKey}`, messageId: `dry-${dryRunCounter}` };
     }
 

@@ -58,6 +58,43 @@ export interface DedupeResult {
  */
 const ENTITY_SIMILARITY_FLOOR = 0.4;
 
+/**
+ * Numbers quoted in a headline, normalised so 198,000 and 198000 are one value.
+ *
+ * Two economic releases inside the same window share almost everything the
+ * entity layer looks at — country US, category ECONOMIC, a "X VS Y EXPECTED"
+ * shape — and merging them hides one of them. What actually separates them is
+ * the figures: CPI quotes 0.4 and 0.2, jobless claims quote 198000 and 215000.
+ * Nothing in common.
+ */
+function figuresIn(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const match of text.matchAll(/-?\d[\d,]*\.?\d*/g)) {
+    const raw = match[0].replace(/,/g, '').replace(/\.$/, '');
+    const value = Number(raw);
+    // Years and small ordinals are shape, not substance: "Q2", "2026", "50 BPS"
+    // all appear in unrelated stories about the same subject.
+    if (!Number.isFinite(value)) continue;
+    out.add(String(value));
+  }
+  return out;
+}
+
+/**
+ * True when both headlines quote figures and share none of them.
+ *
+ * Used to WITHHOLD the relaxed entity floor, not to force a miss: a pair this
+ * separates can still merge on the strict text threshold, which is what catches
+ * the same release reported with an extra decimal place.
+ */
+export function quotesDifferentFigures(a: string, b: string): boolean {
+  const left = figuresIn(a);
+  const right = figuresIn(b);
+  if (left.size === 0 || right.size === 0) return false;
+  for (const value of left) if (right.has(value)) return false;
+  return true;
+}
+
 export function detectDuplicate(input: DedupeInput): DedupeResult {
   const { post, candidates, similarityThreshold, windowMinutes } = input;
   const signals: string[] = [];
@@ -130,7 +167,15 @@ export function detectDuplicate(input: DedupeInput): DedupeResult {
     const similarity = Math.max(headlineSim, (headlineSim + structuralSim) / 2);
 
     const shared = sharedEntities(postEntities, entitySetForCandidate(c));
-    const viaEntities = shared > 0 && similarity >= ENTITY_SIMILARITY_FLOOR;
+    // Two releases quoting entirely different numbers are different releases,
+    // however much subject vocabulary they share. They may still merge on the
+    // strict text threshold below — this only withholds the relaxed floor.
+    // From the RAW headlines: headlineEquivalent strips decimal points and
+    // thousands separators, so "0.4" and "198,000" would both degrade into a
+    // set containing "0" and every pair would look like it shared a figure.
+    const differentFigures = quotesDifferentFigures(post.headline, c.headline);
+    const viaEntities =
+      shared > 0 && similarity >= ENTITY_SIMILARITY_FLOOR && !differentFigures;
     const viaText = similarity >= similarityThreshold;
 
     if (!viaText && !viaEntities) continue;
