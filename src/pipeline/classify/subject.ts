@@ -67,6 +67,18 @@ const MATERIAL_USD = 1_000_000_000;
 export interface SubjectInput {
   category: Category;
   entities: ExtractedEntities;
+  /**
+   * The filer, when this came from an SEC filing.
+   *
+   * A filing is the one case where the subject is identified by construction:
+   * EDGAR issues a CIK per registrant, so the company is named beyond doubt
+   * even when Scout cannot map it to a ticker — most filers are not S&P names
+   * and many are not listed at all.
+   *
+   * Without this the gate rejected every 8-K, bankruptcies included, for
+   * "naming no company" — while holding the company's name and its CIK.
+   */
+  filing?: { company?: string; cik?: string } | null;
 }
 
 export interface SubjectVerdict {
@@ -99,6 +111,12 @@ export function identifySubject(input: SubjectInput): SubjectVerdict {
   const ticker = input.entities.tickers[0];
   if (ticker) {
     return { identified: true, reason: `subject:ticker ${ticker.ticker}` };
+  }
+
+  // A registrant identifier is proof of subject, not a guess at one.
+  const cik = input.filing?.cik?.trim();
+  if (cik) {
+    return { identified: true, reason: `subject:filer CIK ${cik}` };
   }
 
   const org = input.entities.organizations[0];

@@ -477,6 +477,37 @@ categories:
       - price hike
       - raises prices
       - cuts prices
+      # SEC 8-K item vocabulary. The adapter now states a filing in the words
+      # of SEC's own item taxonomy — "material impairment", "non-reliance on
+      # previously issued financials" — because an EDGAR entry is otherwise
+      # accession numbers and a code, and classified as nothing at all.
+      #
+      # These are the CRITICAL and HIGH items specifically. Nine of the twelve
+      # most material filing types had no vocabulary here, so a restatement, an
+      # auditor resignation and a change of control were each read as
+      # uncategorisable and dropped before their materiality was consulted.
+      - impairment
+      - material impairment
+      - write-down
+      - writedown
+      - non-reliance
+      - restatement
+      - restate
+      - restates
+      - certifying accountant
+      - auditor
+      - acceleration
+      - default
+      - covenant
+      - change in control
+      - definitive agreement
+      - departure
+      - appointment
+      - receivership
+      - results of operations
+      - termination
+      - terminates
+      - terminated
     phrases:
       - merger agreement
       - definitive agreement

@@ -267,7 +267,14 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     // cluster goes on to absorb the real coverage that follows it, and the
     // first headline is the one a cluster keeps — so a story Scout could not
     // identify would end up captioning the story it could.
-    const subject = identifySubject({ category, entities });
+    const subject = identifySubject({
+      category,
+      entities,
+      filing: {
+        company: typeof raw.meta.company === 'string' ? raw.meta.company : undefined,
+        cik: typeof raw.meta.cik === 'string' ? raw.meta.cik : undefined,
+      },
+    });
     signals.push(subject.reason);
     if (!subject.identified) {
       ctx.category = category;

@@ -827,6 +827,25 @@ export async function main(): Promise<void> {
   // unpollable and being unused are different things.
   const xPollingEnabled = Boolean(cfg.x.bearerToken);
 
+  // Say how many sources that silently removes.
+  //
+  // Without a bearer token the X adapter is never registered, so every X source
+  // in sources.yaml is inert — not broken, not quiet, simply never polled. It
+  // still counts toward "sources active" on the dashboard, which is how a
+  // deployment reports 60-odd live sources while half the list, including the
+  // two highest-priority squawk feeds Scout is built around, does nothing at
+  // all. An absent optional credential is a configuration rather than a fault,
+  // but its cost should not be invisible.
+  const xSources = db.sources.enabled().filter((s) => s.sourceType === 'x').length;
+  if (!xPollingEnabled && xSources > 0) {
+    log.warn(
+      `X: NOT CONFIGURED — ${xSources} enabled X source(s) will never be polled. ` +
+        'Set X_BEARER_TOKEN to poll them, or disable them in config/sources.yaml so ' +
+        'the source count reflects what actually runs.',
+      { inertSources: xSources },
+    );
+  }
+
   // Same rule as the X adapter: registered ONLY when a credential exists.
   // Without one it would report every Finnhub source as a failed poll forever,
   // and an absent optional key is a configuration, not a fault.

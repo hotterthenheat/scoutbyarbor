@@ -12,6 +12,32 @@ import type { FilingData, Materiality } from '../../core/types.js';
  * you what kind of event it is.
  */
 
+/**
+ * Plain-language wording for an item code.
+ *
+ * The classifier reads TEXT, and an EDGAR entry is bureaucratic metadata:
+ * "8-K - ACME CORP (0001234567) (Filer) — Filed: 2026-08-10 AccNo: ...
+ * Items: 1.03". There is not one word in that a taxonomy can categorise, so
+ * every filing was rejected NO_CATEGORY before its materiality was ever
+ * consulted — the item codes were sitting right there, already parsed, saying
+ * "bankruptcy", and nothing turned them into language.
+ *
+ * Returns SEC's own description of the item, so the vocabulary is the filer's
+ * rather than Scout's invention.
+ */
+export function describe8kItems(items: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of items) {
+    const label = ITEM_MATERIALITY[item.trim()]?.label;
+    if (label && !seen.has(label)) {
+      seen.add(label);
+      out.push(label);
+    }
+  }
+  return out;
+}
+
 /** 8-K item → what it means and how much it matters. */
 const ITEM_MATERIALITY: Record<string, { level: Materiality; label: string }> = {
   '1.01': { level: 'HIGH', label: 'material definitive agreement' },
@@ -145,8 +171,21 @@ export function parseEdgarTitle(title: string): { form: string; company: string;
 /** Finds "Item 5.02" / "Items 2.02, 9.01" style references. */
 export function extract8kItems(text: string): string[] {
   const found = new Set<string>();
-  for (const m of (text ?? '').matchAll(/items?\s+((?:\d\.\d{2})(?:\s*(?:,|and|;)\s*\d\.\d{2})*)/gi)) {
-    for (const item of (m[1] ?? '').split(/[,;]|\band\b/i)) {
+  // Two things EDGAR actually does that the earlier pattern refused.
+  //
+  //   - It writes "Items:" with a colon. Requiring whitespace straight after
+  //     the word meant the label never matched at all, so a real 8-K summary
+  //     yielded no items.
+  //   - It SPACE-separates the codes: "Items: 1.03 2.02". Accepting only
+  //     comma/semicolon/"and" stopped at the first code.
+  //
+  // Both matter more than they look: items decide materiality, and §16 drops
+  // any filing below CRITICAL/HIGH — so an unparsed item list silently
+  // discarded every 8-K, bankruptcies included.
+  for (const m of (text ?? '').matchAll(
+    /items?\s*:?\s*(\d\.\d{2}(?:[\s,;]*(?:and\s+)?\d\.\d{2})*)/gi,
+  )) {
+    for (const item of (m[1] ?? '').split(/[,;\s]+|\band\b/i)) {
       const trimmed = item.trim();
       if (/^\d\.\d{2}$/.test(trimmed)) found.add(trimmed);
     }
