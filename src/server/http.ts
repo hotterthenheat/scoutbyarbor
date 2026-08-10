@@ -11,6 +11,7 @@ import {
   idempotencyKey,
   type NormalizedWebhookEvent,
 } from './webhook.js';
+import { dashboardHtml } from './dashboard.js';
 import { validateDiscordPayload } from './discordWebhook.js';
 import type { DiscordMessageEnvelope } from '../ingest/discordIntel/types.js';
 
@@ -89,6 +90,15 @@ export interface ServerDeps {
   admin?: AdminConfig;
   /** Omit to leave POST /webhook/discord disabled. */
   discordIntel?: DiscordIntelConfig;
+  /**
+   * Hand-submitted events from the dashboard. Authenticated with the admin
+   * token, because unlike everything else the page shows, this one PUBLISHES.
+   * Omit to leave POST /ingest disabled.
+   */
+  ingest?: {
+    token: string;
+    submit(input: { url: string | null; text: string }): { ok: boolean; id: string; error?: string };
+  };
   /**
    * Channels Scout's own bot reads over the gateway. Reported in /metrics only
    * — the gateway path does not touch the HTTP server — so that "is my Discord
@@ -294,6 +304,53 @@ export function createServer_(deps: ServerDeps): ScoutServer {
     }
   }
 
+  /**
+   * A hand-submitted event from the dashboard.
+   *
+   * The one authenticated action on that page: everything else it shows comes
+   * from /metrics and is already public, but this one publishes to the trading
+   * channels. Nothing about arriving here grants an event anything — it runs
+   * the same dedupe, classification, scoring and routing as a webhook, and the
+   * filters may well decline it.
+   */
+  async function handleIngest(req: IncomingMessage): Promise<{ status: number; body: string }> {
+    const ingest = deps.ingest;
+    if (!ingest?.token) {
+      return json(
+        { error: 'manual ingestion is not configured — set SCOUT_ADMIN_TOKEN to enable it' },
+        503,
+      );
+    }
+
+    const provided = presentedSecret(req.headers as Record<string, string | string[] | undefined>);
+    if (!provided || !secretsMatch(provided, ingest.token)) {
+      logger.warn('ingest authentication failed');
+      return json({ error: 'unauthorized' }, 401);
+    }
+
+    let body: unknown;
+    try {
+      body = JSON.parse(await readBody(req, MAX_WEBHOOK_BODY_BYTES));
+    } catch (err) {
+      return json({ error: (err as Error).message }, 400);
+    }
+
+    const input = body as { url?: unknown; text?: unknown };
+    const url = typeof input.url === 'string' && input.url.trim() ? input.url.trim() : null;
+    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    if (!url && !text) return json({ error: 'give a url, some text, or both' }, 400);
+
+    try {
+      const result = ingest.submit({ url, text });
+      return result.ok
+        ? json({ status: 'accepted', id: result.id }, 202)
+        : json({ error: result.error ?? 'not accepted' }, 400);
+    } catch (err) {
+      logger.error('manual ingest failed', { err: err as Error });
+      return json({ error: 'ingest failed' }, 500);
+    }
+  }
+
   /** Webhook liveness. Silence is normal for a push endpoint, never an outage. */
   function webhookHealth(): Record<string, unknown> {
     const lastReceivedAt = db.posts.lastReceivedAt('webhook');
@@ -444,8 +501,14 @@ export function createServer_(deps: ServerDeps): ScoutServer {
       server = createServer((req, res) => {
         const path = (req.url ?? '/').split('?')[0];
 
-        const respond = (result: { status: number; body: string }): void => {
-          res.writeHead(result.status, { 'content-type': 'application/json; charset=utf-8' });
+        const respond = (result: {
+          status: number;
+          body: string;
+          contentType?: string;
+        }): void => {
+          res.writeHead(result.status, {
+            'content-type': result.contentType ?? 'application/json; charset=utf-8',
+          });
           res.end(result.body);
         };
 
@@ -458,6 +521,30 @@ export function createServer_(deps: ServerDeps): ScoutServer {
             .then(respond)
             .catch((err: Error) => {
               logger.error('admin handler threw', { err });
+              respond(json({ error: 'internal error' }, 500));
+            });
+          return;
+        }
+
+        // The dashboard. Read-only, and shows nothing /metrics does not.
+        if (path === '/' || path === '/dashboard') {
+          respond({
+            status: 200,
+            body: dashboardHtml(),
+            contentType: 'text/html; charset=utf-8',
+          });
+          return;
+        }
+
+        if (path === '/ingest') {
+          if (req.method !== 'POST') {
+            respond(json({ error: 'method not allowed' }, 405));
+            return;
+          }
+          void handleIngest(req)
+            .then(respond)
+            .catch((err: Error) => {
+              logger.error('ingest handler threw', { err });
               respond(json({ error: 'internal error' }, 500));
             });
           return;

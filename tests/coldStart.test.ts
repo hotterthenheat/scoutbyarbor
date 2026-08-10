@@ -105,9 +105,9 @@ describe('priming a source', () => {
 });
 
 describe('the ingest manager on a cold database', () => {
-  function adapterYielding(posts: RawPost[]): IngestAdapter {
+  function adapterYielding(posts: RawPost[], type = 'rss'): IngestAdapter {
     return {
-      type: 'rss',
+      type,
       async poll() {
         return { posts, outcomes: [] };
       },
@@ -177,6 +177,59 @@ describe('the ingest manager on a cold database', () => {
     });
     await manager2.pollOnce();
     expect(published.map((p) => p.sourcePostId)).toEqual([fresh.sourcePostId]);
+  });
+
+  /**
+   * The manual adapter holds only what someone explicitly submitted — from the
+   * dashboard or the CLI — so it has no backlog to withhold. Priming it would
+   * swallow the first event an operator ever sends, which is exactly the one
+   * they are watching for to confirm the thing works.
+   */
+  it('never withholds a hand-submitted event, even on a cold database', async () => {
+    db.sources.upsertMany([
+      {
+        id: 'relay:discord-urls',
+        name: 'Relayed X Posts',
+        handle: null,
+        url: null,
+        sourceType: 'manual',
+        category: 'MIXED',
+        priority: 90,
+        enabled: true,
+        verified: true,
+        qualityScore: 90,
+        noiseScore: 10,
+        macroScore: 85,
+        microScore: 85,
+        geopoliticalScore: 90,
+        filterProfile: 'standard',
+        official: false,
+        org: null,
+        expectedIntervalMs: 3_600_000,
+        notes: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    const published: RawPost[] = [];
+    const submitted = post('relay:discord-urls');
+
+    const manager = createIngestManager({
+      db,
+      adapters: [adapterYielding([submitted], 'manual')],
+      logger: log,
+      intervals: { manual: 3_600_000 },
+      onPosts: async (posts) => {
+        published.push(...posts);
+      },
+    });
+
+    await manager.pollOnce();
+    expect(
+      published.map((p) => p.sourcePostId),
+      'the first hand-submitted event was swallowed by priming',
+    ).toEqual([submitted.sourcePostId]);
   });
 });
 

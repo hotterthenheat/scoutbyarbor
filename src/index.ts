@@ -909,6 +909,57 @@ export async function main(): Promise<void> {
     // Reported in /metrics so the Discord source's liveness does not look like
     // it depends on the webhook, which it does not.
     intakeChannelIds,
+
+    /**
+     * Hand-submitted events from the dashboard.
+     *
+     * The point of this is that it needs NO credential from anyone else. With
+     * no X API key and no bot in a source server, pasting a post here is a
+     * complete ingestion route on its own — and it feeds the same pipeline, so
+     * a hand-submitted event is deduped, classified, scored and routed exactly
+     * like one that arrived by webhook. Nothing about being typed in by a human
+     * lets it skip a filter.
+     */
+    ingest: cfg.webhook.adminToken
+      ? {
+          token: cfg.webhook.adminToken,
+          submit: ({ url, text }) => {
+            // A post URL takes the relay path, so the event carries the
+            // account's identity — `x:<postId>` — rather than being anonymous
+            // free text. The pasted text rides along as the post's content,
+            // which is what makes this work with no X credential.
+            const detected = url ? detectPostUrls(url) : [];
+            const post = detected[0];
+            if (post) {
+              urlWorker.submit({
+                url: post,
+                sourceChannelId: 'dashboard',
+                sourceKind: 'admin',
+                receivedAt: isoNow(),
+                rawMessage: text || url || '',
+              });
+              return { ok: true, id: post.canonicalId };
+            }
+
+            if (url && !post) {
+              return {
+                ok: false,
+                id: '',
+                error: `not a recognisable X or Truth Social post URL: ${url}`,
+              };
+            }
+
+            // Free text with no URL. Publication time is NOW because the
+            // operator is stating it now — the one case where receipt time
+            // genuinely is the publication time.
+            const submitted = manual.submit(RELAY_SOURCE_ID, text, {
+              author: 'operator',
+              eventTime: isoNow(),
+            });
+            return { ok: true, id: submitted.sourcePostId };
+          },
+        }
+      : undefined,
     webhook: cfg.webhook.token
       ? {
           token: cfg.webhook.token,

@@ -95,7 +95,16 @@ export function createIngestManager(deps: IngestManagerDeps): IngestManager {
       // not published. Without this, the first boot against an empty database
       // publishes every item of every feed at once, and the ones that read as
       // market-moving go straight to the trading channels.
-      const { publish, withheld } = primer.partition(fresh);
+      //
+      // The manual adapter is exempt, and must be. It holds nothing but items
+      // someone explicitly submitted — from the dashboard or the CLI — so it
+      // has no backlog to withhold. Priming it would silently swallow the first
+      // event an operator ever sent, which is precisely the one they are
+      // watching for to confirm the thing works.
+      const { publish, withheld } =
+        adapter.type === 'manual'
+          ? { publish: fresh, withheld: [] as RawPost[] }
+          : primer.partition(fresh);
 
       if (withheld.length > 0) {
         const sources = [...new Set(withheld.map((p) => p.sourceId))];
