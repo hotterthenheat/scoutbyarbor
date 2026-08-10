@@ -206,3 +206,37 @@ describe('the shipped configuration', () => {
     expect(entry?.enabled).toBe(true);
   });
 });
+
+/**
+ * Two cable-news accounts on the same platform.
+ *
+ * They are high volume and mostly politics, so the question is not whether
+ * they carry market news — sometimes they do — but whether the rest floods the
+ * wire. The category gate needs market evidence AND a market entity, the noise
+ * filters run after it, and the strict profile requires reported fact.
+ */
+describe('the cable-news accounts', () => {
+  it('gives each its own org, so the two corroborate as two outlets', () => {
+    const byId = new Map(loadSourcesFile().sources.map((s) => [s.id, s]));
+
+    expect(byId.get('truth:foxnews')?.org).toBe('foxnews');
+    expect(byId.get('truth:newsmax')?.org).toBe('newsmax');
+    // And neither shares an org with the account whose statements they report,
+    // or a Trump post plus its coverage would look like one body twice.
+    expect(byId.get('truth:realdonaldtrump')?.org).toBe('trump');
+  });
+
+  it('scores them as secondary reporting, not first-hand statement', () => {
+    const byId = new Map(loadSourcesFile().sources.map((s) => [s.id, s]));
+    const trump = byId.get('truth:realdonaldtrump')!;
+
+    for (const id of ['truth:foxnews', 'truth:newsmax']) {
+      const outlet = byId.get(id)!;
+      expect(outlet.qualityScore, `${id} outranks the primary source`).toBeLessThan(
+        trump.qualityScore,
+      );
+      expect(outlet.noiseScore, `${id} is not scored as noisy`).toBeGreaterThan(trump.noiseScore);
+      expect(outlet.filterProfile, `${id} is not on the strict gate`).toBe('strict');
+    }
+  });
+});

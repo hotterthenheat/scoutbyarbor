@@ -1050,6 +1050,52 @@ sources:
       quality seed is high — and the noise seed is not low, because plenty of
       it is not market news and the filters have to earn their keep.
 
+  # Two news outlets on the same platform. Secondary reporting rather than
+  # first-hand statement, so both carry a lower quality seed than the account
+  # above and a much higher noise seed: most of what a cable-news account posts
+  # is politics, not market news, and the filters have to carry that weight.
+  # Separate orgs, so the two corroborating each other counts as two outlets —
+  # and neither corroborates @realDonaldTrump, whose statements they report.
+  - id: truth:foxnews
+    name: Fox News — Truth Social
+    handle: "@FoxNews"
+    url: https://truthsocial.com
+    org: foxnews
+    sourceType: truthsocial
+    category: GEOPOLITICAL
+    priority: 70
+    enabled: true
+    official: false
+    qualityScore: 72
+    noiseScore: 66
+    macroScore: 60
+    microScore: 35
+    geopoliticalScore: 82
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: >-
+      High volume and mostly political. Strict gate; the market-relevant share is
+      tariffs, sanctions and personnel.
+
+  - id: truth:newsmax
+    name: Newsmax — Truth Social
+    handle: "@newsmax"
+    url: https://truthsocial.com
+    org: newsmax
+    sourceType: truthsocial
+    category: GEOPOLITICAL
+    priority: 64
+    enabled: true
+    official: false
+    qualityScore: 66
+    noiseScore: 70
+    macroScore: 55
+    microScore: 30
+    geopoliticalScore: 80
+    filterProfile: strict
+    expectedIntervalMs: 3600000
+    notes: Same role as the Fox entry, noisier still.
+
   # ══════════════════════════════════════════════════════════════════════════
   # FINNHUB — POLLED MARKET NEWS
   #
