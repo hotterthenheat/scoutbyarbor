@@ -1050,6 +1050,30 @@ sources:
       quality seed is high — and the noise seed is not low, because plenty of
       it is not market news and the filters have to earn their keep.
 
+  - id: truth:whitehouse
+    name: The White House — Truth Social
+    handle: "@WhiteHouse"
+    url: https://truthsocial.com
+    org: whitehouse
+    sourceType: truthsocial
+    category: GEOPOLITICAL
+    priority: 84
+    enabled: true
+    official: true
+    qualityScore: 90
+    noiseScore: 52
+    macroScore: 74
+    microScore: 25
+    geopoliticalScore: 92
+    filterProfile: strict
+    expectedIntervalMs: 43200000
+    notes: >-
+      Executive orders, tariff proclamations and sanctions, announced first-hand.
+      Strict profile because a good deal of the account is ceremonial and the
+      factuality gate should have to pass before any of it reaches the wire.
+      If this handle does not exist the dashboard shows "account not found
+      (HTTP 404)" — deleting the entry is the whole fix.
+
   # ══════════════════════════════════════════════════════════════════════════
   # FINNHUB — POLLED MARKET NEWS
   #
