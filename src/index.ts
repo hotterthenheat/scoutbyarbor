@@ -184,24 +184,50 @@ export async function main(): Promise<void> {
     }
   }
 
-  // Destinations declared in config override the env vars, so the routing map
-  // — which channel is general, which is index/macro, which is single-name —
-  // is readable in one place instead of spread across the dashboard. Unset
-  // entries keep their env value, so an existing deployment is unaffected.
+  // ENVIRONMENT WINS.
+  //
+  // It used to be the other way round, and that was a trap: setting
+  // DISCORD_CHANNEL_NEWS on a deployment whose config file also declared a
+  // general destination changed nothing at all, with no hint as to why. A
+  // config file is code — the same on every deployment — while an env var is
+  // what a particular deployment says about itself, so the env var is the more
+  // specific statement and has to win.
+  //
+  // config/discord-sources.yaml therefore provides the DEFAULT, and anything
+  // set in the environment overrides it. Both empty is fatal for `news`, which
+  // is checked above.
   const destinations = discordSources.destinations;
+  const pick = (
+    fromEnv: string,
+    fromConfig: string | undefined,
+  ): { id: string; via: 'env' | 'config' | 'unset' } =>
+    fromEnv
+      ? { id: fromEnv, via: 'env' }
+      : fromConfig
+        ? { id: fromConfig, via: 'config' }
+        : { id: '', via: 'unset' };
+
+  const resolved = {
+    news: pick(cfg.discord.channels.news, destinations.general),
+    spx: pick(cfg.discord.channels.spx, destinations.spxMacro),
+    tradingFloor: pick(cfg.discord.channels.tradingFloor, destinations.tickers),
+  };
+
   const routedChannels = {
     ...cfg.discord.channels,
-    ...(destinations.general ? { news: destinations.general } : {}),
-    ...(destinations.spxMacro ? { spx: destinations.spxMacro } : {}),
-    ...(destinations.tickers ? { tradingFloor: destinations.tickers } : {}),
+    news: resolved.news.id,
+    spx: resolved.spx.id,
+    tradingFloor: resolved.tradingFloor.id,
   };
-  if (destinations.general || destinations.spxMacro || destinations.tickers) {
-    log.info('destination overrides from config/discord-sources.yaml', {
-      general: Boolean(destinations.general),
-      spxMacro: Boolean(destinations.spxMacro),
-      tickers: Boolean(destinations.tickers),
-    });
-  }
+
+  // The ACTUAL ids, and where each came from. When the channels are empty the
+  // first question is always "is it even pointed at the right place", and that
+  // should not require reading two files and a dashboard to answer.
+  log.info('channel routing resolved', {
+    general: `${resolved.news.id || '(unset)'} via ${resolved.news.via}`,
+    spxMacro: `${resolved.spx.id || '(unset)'} via ${resolved.spx.via}`,
+    tickers: `${resolved.tradingFloor.id || '(unset)'} via ${resolved.tradingFloor.via}`,
+  });
 
   const discord = createDiscordClient({
     token: cfg.discord.token,

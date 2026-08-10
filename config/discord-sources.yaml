@@ -78,8 +78,20 @@ version: 1
 # that looks like a very busy news day from the outside. The loader rejects the
 # overlap at boot rather than letting it be discovered in production.
 #
-# These three are the operator's declared layout. Setting `general` here means
-# DISCORD_CHANNEL_NEWS is not needed — this file is the routing map.
+# These are DEFAULTS. Anything set in the environment WINS:
+#
+#   DISCORD_CHANNEL_NEWS          overrides  general
+#   DISCORD_CHANNEL_SPX           overrides  spx_macro
+#   DISCORD_CHANNEL_TRADING_FLOOR overrides  tickers
+#
+# That direction is deliberate. A config file is code and is identical on every
+# deployment; an env var is what a PARTICULAR deployment says about itself, so
+# it is the more specific statement. The other way round meant setting an env
+# var changed nothing, silently.
+#
+# Whichever wins, the boot log prints the resolved id and where it came from:
+#   channel routing resolved  general="1513... via env"
+# so "is it even pointed at the right channel" never needs two files to answer.
 destinations:
   general: "1513342006342979635"
   spx_macro: "1510553508351311922"
