@@ -24,6 +24,8 @@ export interface SourceConfigEntry {
   geopoliticalScore?: number;
   filterProfile?: 'standard' | 'strict';
   official?: boolean;
+  /** Shared by every feed of one organisation, so corroboration is honest. */
+  org?: string | null;
   /** How long a silence is normal for this feed before health flags it (§23). */
   expectedIntervalMs?: number;
   notes?: string | null;

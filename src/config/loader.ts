@@ -39,6 +39,7 @@ const sourceEntrySchema = z.object({
   geopoliticalScore: z.number().min(0).max(100).optional(),
   filterProfile: z.enum(['standard', 'strict']).optional(),
   official: z.boolean().optional(),
+  org: z.string().min(1).max(60).nullable().optional(),
   expectedIntervalMs: z.number().int().positive().optional(),
   notes: z.string().nullable().optional(),
 });
@@ -85,6 +86,7 @@ export function toSource(entry: SourceConfigEntry, now: string): Source {
     geopoliticalScore: entry.geopoliticalScore ?? 50,
     filterProfile: entry.filterProfile ?? 'standard',
     official: entry.official ?? false,
+    org: entry.org ?? null,
     expectedIntervalMs: entry.expectedIntervalMs ?? defaultIntervalFor(entry.sourceType),
     notes: entry.notes ?? null,
     createdAt: now,
@@ -353,6 +355,9 @@ export function toDiscordSource(channel: DiscordChannelConfig, now: string): Sou
     geopoliticalScore: 40,
     filterProfile: channel.filterProfile,
     official: false,
+    // Each Discord channel is its own organisation for corroboration purposes:
+    // two bots in one channel repeating each other are not two confirmations.
+    org: channel.sourceId,
     expectedIntervalMs: 900_000,
     notes: `Discord intelligence source, channel ${channel.id}`,
     createdAt: now,

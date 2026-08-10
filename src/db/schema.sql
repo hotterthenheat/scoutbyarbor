@@ -35,6 +35,10 @@ CREATE TABLE IF NOT EXISTS sources (
   filter_profile      TEXT NOT NULL DEFAULT 'standard'
                         CHECK (filter_profile IN ('standard','strict')),
   official            INTEGER NOT NULL DEFAULT 0,
+  -- The ORGANISATION behind the feed. rss:bls-latest and x:bls are two channels
+  -- of one body, and counting them as two confirmations would make every CPI
+  -- print look independently corroborated when one agency reported it once.
+  org                 TEXT,
   expected_interval_ms INTEGER NOT NULL DEFAULT 900000,
   notes               TEXT,
   created_at          TEXT NOT NULL,

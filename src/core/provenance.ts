@@ -22,6 +22,14 @@ export interface SourceAttribution {
   kind: Origin;
   /** Scout's source id, e.g. `discord:flow-alerts` or `x:deltaone`. */
   sourceId: string;
+  /**
+   * The ORGANISATION behind the feed. `rss:bls-latest` and `x:bls` are two
+   * channels of one agency: when BLS publishes CPI on both, that is one body
+   * reporting once, not two independent confirmations. Corroboration counts
+   * distinct organisations, so a story on the BLS feed and the BLS X account
+   * reads "confirmed by 1", while the same story on BLS and @DeItaone reads 2.
+   */
+  org?: string;
   /** Short display name: `OwlsKeyLevelsBot`, `@DeItaone`, `Federal Reserve`. */
   label: string;
   /** X/Truth handle, when the origin has one. */
@@ -75,6 +83,7 @@ export function attributionFrom(input: {
   sourceName?: string | null;
   author?: string | null;
   publishedAt?: string | null;
+  org?: string | null;
   meta?: Record<string, unknown>;
 }): SourceAttribution {
   const kind = originOf(input.sourceId);
@@ -89,6 +98,7 @@ export function attributionFrom(input: {
     return {
       kind,
       sourceId: input.sourceId,
+      ...(input.org ? { org: input.org } : {}),
       // The feed that actually said it. That is the thing worth naming.
       label: author ?? channel ?? input.sourceName ?? input.sourceId,
       ...(str(meta.guildId) ? { server: str(meta.guildId)! } : {}),
@@ -102,6 +112,7 @@ export function attributionFrom(input: {
   return {
     kind,
     sourceId: input.sourceId,
+    ...(input.org ? { org: input.org } : {}),
     label: account ?? input.sourceName ?? originLabel(kind),
     ...(account ? { account } : {}),
     ...(input.publishedAt ? { firstSeenAt: input.publishedAt } : {}),
@@ -118,7 +129,9 @@ export function mergeAttribution(
   incoming: SourceAttribution,
 ): SourceAttribution[] {
   const out = existing.map((a) => ({ ...a }));
-  const match = out.find((a) => a.sourceId === incoming.sourceId);
+  // Matched on organisation, so the same body arriving through a second feed
+  // enriches the existing record rather than appearing as a new confirmation.
+  const match = out.find((a) => identityOf(a) === identityOf(incoming));
 
   if (!match) {
     out.push(incoming);
@@ -141,10 +154,19 @@ export function mergeAttribution(
   return out;
 }
 
+/** One body may publish through several feeds; identity is org when it has one. */
+function identityOf(source: SourceAttribution): string {
+  return source.org ?? source.sourceId;
+}
+
 export function provenanceOf(sources: readonly SourceAttribution[]): Provenance {
   const origins = new Set<Origin>();
   for (const s of sources) origins.add(s.kind);
   const ordered = ORDER.filter((o) => origins.has(o));
+
+  // Distinct ORGANISATIONS. The Fed publishing to its RSS feed and its X
+  // account is one confirmation; the Fed and Walter Bloomberg is two.
+  const bodies = new Set(sources.map(identityOf));
 
   const times = sources
     .map((s) => s.firstSeenAt)
@@ -156,8 +178,8 @@ export function provenanceOf(sources: readonly SourceAttribution[]): Provenance 
     label:
       sources.length === 0 ? 'UNKNOWN' : sources.map((s) => s.label).join(' + '),
     sources: sources.map((s) => ({ ...s })),
-    corroborated: sources.length > 1,
-    confirmedBy: sources.length,
+    corroborated: bodies.size > 1,
+    confirmedBy: bodies.size,
     firstReportedAt: times[0] ?? null,
   };
 }

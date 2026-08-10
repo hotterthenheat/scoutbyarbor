@@ -287,6 +287,7 @@ sources:
   - id: rss:fed-press-all
     name: Federal Reserve — All Press Releases
     url: https://www.federalreserve.gov/feeds/press_all.xml
+    org: federal-reserve
     sourceType: rss
     category: FED
     priority: 100
@@ -302,6 +303,7 @@ sources:
   - id: rss:fed-monetary
     name: Federal Reserve — Monetary Policy
     url: https://www.federalreserve.gov/feeds/press_monetary.xml
+    org: federal-reserve
     sourceType: rss
     category: FED
     priority: 100
@@ -318,6 +320,7 @@ sources:
   - id: rss:fed-speeches
     name: Federal Reserve — Speeches
     url: https://www.federalreserve.gov/feeds/speeches.xml
+    org: federal-reserve
     sourceType: rss
     category: FED
     priority: 92
@@ -333,6 +336,7 @@ sources:
   - id: rss:fed-testimony
     name: Federal Reserve — Testimony
     url: https://www.federalreserve.gov/feeds/testimony.xml
+    org: federal-reserve
     sourceType: rss
     category: FED
     priority: 90
@@ -348,6 +352,7 @@ sources:
   - id: rss:bls-latest
     name: Bureau of Labor Statistics — Latest Releases
     url: https://www.bls.gov/feed/bls_latest.rss
+    org: bls
     sourceType: rss
     category: ECONOMIC
     priority: 100
@@ -364,6 +369,7 @@ sources:
   - id: rss:bea-news
     name: Bureau of Economic Analysis — News Releases
     url: https://www.bea.gov/rss.xml
+    org: bea
     sourceType: rss
     category: ECONOMIC
     priority: 100
@@ -380,6 +386,7 @@ sources:
   - id: rss:treasury-press
     name: U.S. Treasury — Press Releases
     url: https://home.treasury.gov/rss/press.xml
+    org: treasury
     sourceType: rss
     category: MACRO
     priority: 92
@@ -396,6 +403,7 @@ sources:
   - id: rss:sec-press
     name: SEC — Press Releases
     url: https://www.sec.gov/news/pressreleases.rss
+    org: sec
     sourceType: rss
     category: EQUITY
     priority: 85
@@ -414,6 +422,7 @@ sources:
   - id: rss:ecb-press
     name: European Central Bank — Press
     url: https://www.ecb.europa.eu/rss/press.html
+    org: ecb
     sourceType: rss
     category: FED
     priority: 88
@@ -429,6 +438,7 @@ sources:
   - id: rss:boe-news
     name: Bank of England — News
     url: https://www.bankofengland.co.uk/rss/news
+    org: boe
     sourceType: rss
     category: FED
     priority: 82
@@ -444,6 +454,7 @@ sources:
   - id: rss:boj-news
     name: Bank of Japan — What's New
     url: https://www.boj.or.jp/en/rss/whatsnew.xml
+    org: boj
     sourceType: rss
     category: FED
     priority: 82
@@ -459,6 +470,7 @@ sources:
   - id: rss:boc-press
     name: Bank of Canada — Press Releases
     url: https://www.bankofcanada.ca/content_type/press-releases/feed/
+    org: boc
     sourceType: rss
     category: FED
     priority: 72
@@ -474,6 +486,7 @@ sources:
   - id: rss:rba-media
     name: Reserve Bank of Australia — Media Releases
     url: https://www.rba.gov.au/rss/rss-cb-media-releases.xml
+    org: rba
     sourceType: rss
     category: FED
     priority: 68
@@ -566,85 +579,279 @@ sources:
       ALLOWED_X_ACCOUNTS rather than by trusting whoever pasted the link.
 
   # ══════════════════════════════════════════════════════════════════════════
-  # STAGED — NOT YET VERIFIED (§29)
+  # OFFICIAL SOURCES ON X — handles supplied and confirmed by the operator
   #
-  # Candidates that would materially widen coverage where the shipped list is
-  # thin: US fiscal/Treasury, energy and OPEC, and central banks outside the
-  # Fed. Every one is `enabled: false`.
+  # TIERED, because "official" means CREDIBLE, not IMPORTANT. @BLS_gov posting
+  # CPI is a trading event; @BLS_gov posting a hiring notice is not. Tier sets
+  # the sourceQuality seed and the priority; the category classifier, the noise
+  # filters and the market-impact test still decide every alert. No source in
+  # this file can put anything into a trading channel on its own.
   #
-  # They ship disabled because §29 is explicit — do not trust a handle because a
-  # list claims it exists — and these were selected from knowledge, not resolved
-  # against the API. Run `npm run sources:verify` with X_BEARER_TOKEN set, or
-  # confirm each handle by hand, and enable only what resolves.
+  #   TIER 1  direct market data — the release itself
+  #   TIER 2  macro / policy — matters, rarely instantaneous
+  #   TIER 3  context — credibility weight, seldom the alert
   #
-  # Deliberately NOT added: engagement-driven macro commentary accounts,
-  # aggregators that repost the wires already listed above, and anything whose
-  # primary output is opinion. Scout is scored on signal density, and a source
-  # that duplicates @DeItaone ten seconds later adds latency noise and
-  # corroboration inflation rather than information.
+  # `org` matters as much as the handle. Every feed of one body shares it, so
+  # the Fed's RSS feed and the Fed's X account are ONE confirmation rather than
+  # two. Without it every release would look independently corroborated by an
+  # agency agreeing with itself.
+  #
+  # NOTE ON POLLING: with X_BEARER_TOKEN unset these are not polled. They still
+  # score and attribute correctly when the same account reaches Scout through
+  # the Discord relay or the webhook. Direct polling needs a bearer token.
   # ══════════════════════════════════════════════════════════════════════════
+
+  # ── TIER 1 — DIRECT MARKET DATA ───────────────────────────────────────────
+  - id: x:fed
+    name: Federal Reserve
+    handle: "@federalreserve"
+    org: federal-reserve
+    sourceType: x
+    category: FED
+    priority: 98
+    enabled: true
+    qualityScore: 99
+    noiseScore: 8
+    official: true
+    notes: FOMC decisions and statements. Same body as the rss:fed-* feeds.
+
+  - id: x:bls
+    name: Bureau of Labor Statistics
+    handle: "@BLS_gov"
+    org: bls
+    sourceType: x
+    category: ECONOMIC
+    priority: 97
+    enabled: true
+    qualityScore: 99
+    noiseScore: 12
+    official: true
+    notes: CPI, NFP, PPI, JOLTS. Often faster than the RSS feed it duplicates.
+
+  - id: x:bea
+    name: Bureau of Economic Analysis
+    handle: "@BEA_News"
+    org: bea
+    sourceType: x
+    category: ECONOMIC
+    priority: 95
+    enabled: true
+    qualityScore: 98
+    noiseScore: 12
+    official: true
+    notes: GDP, PCE, personal income and spending.
 
   - id: x:treasury
     name: US Treasury Department
     handle: "@USTreasury"
+    org: treasury
     sourceType: x
     category: MACRO
-    priority: 80
-    enabled: false
-    verified: false
-    qualityScore: 95
-    noiseScore: 10
+    priority: 90
+    enabled: true
+    qualityScore: 96
+    noiseScore: 15
     official: true
-    notes: Fiscal announcements, debt issuance, sanctions. UNVERIFIED — confirm before enabling.
+    notes: Fiscal policy, sanctions, debt issuance.
 
   - id: x:opec
     name: OPEC Secretariat
     handle: "@OPECSecretariat"
+    org: opec
     sourceType: x
     category: COMMODITY
-    priority: 75
-    enabled: false
-    verified: false
-    qualityScore: 92
-    noiseScore: 12
+    priority: 88
+    enabled: true
+    qualityScore: 95
+    noiseScore: 15
     official: true
-    notes: Production decisions move crude and the whole energy complex. UNVERIFIED.
+    notes: Production decisions move crude and the whole energy complex.
 
   - id: x:eia
     name: US Energy Information Administration
     handle: "@EIAgov"
+    org: eia
     sourceType: x
     category: COMMODITY
-    priority: 70
-    enabled: false
-    verified: false
-    qualityScore: 90
-    noiseScore: 15
+    priority: 85
+    enabled: true
+    qualityScore: 95
+    noiseScore: 18
     official: true
-    notes: Weekly inventories are a scheduled, market-moving release. UNVERIFIED.
+    notes: Weekly inventories are a scheduled, market-moving release.
 
   - id: x:ecb
     name: European Central Bank
     handle: "@ecb"
+    org: ecb
     sourceType: x
     category: MACRO
-    priority: 78
-    enabled: false
-    verified: false
-    qualityScore: 95
-    noiseScore: 10
+    priority: 88
+    enabled: true
+    qualityScore: 97
+    noiseScore: 12
     official: true
-    notes: Already covered by rss:ecb-press; the X feed is usually faster. UNVERIFIED.
 
-  - id: x:bankofengland
+  - id: x:boe
     name: Bank of England
     handle: "@bankofengland"
+    org: boe
     sourceType: x
     category: MACRO
-    priority: 70
-    enabled: false
-    verified: false
-    qualityScore: 94
-    noiseScore: 10
+    priority: 80
+    enabled: true
+    qualityScore: 96
+    noiseScore: 14
     official: true
-    notes: Gilt and cable moves that spill into US rates. UNVERIFIED.
+
+  # ── TIER 2 — MACRO / POLICY ───────────────────────────────────────────────
+  - id: x:census
+    name: US Census Bureau
+    handle: "@uscensusbureau"
+    org: census
+    sourceType: x
+    category: ECONOMIC
+    priority: 70
+    enabled: true
+    qualityScore: 92
+    noiseScore: 30
+    official: true
+    notes: Retail sales, housing starts, durable goods. Heavy non-market output.
+
+  - id: x:cbo
+    name: Congressional Budget Office
+    handle: "@USCBO"
+    org: cbo
+    sourceType: x
+    category: MACRO
+    priority: 60
+    enabled: true
+    qualityScore: 90
+    noiseScore: 32
+    official: true
+
+  - id: x:sec
+    name: US Securities and Exchange Commission
+    handle: "@SECgov"
+    org: sec
+    sourceType: x
+    category: EQUITY
+    priority: 68
+    enabled: true
+    qualityScore: 93
+    noiseScore: 30
+    official: true
+    notes: Enforcement and rulemaking. Same body as rss:sec-press and EDGAR.
+
+  - id: x:fdic
+    name: Federal Deposit Insurance Corporation
+    handle: "@FDICgov"
+    org: fdic
+    sourceType: x
+    category: MACRO
+    priority: 65
+    enabled: true
+    qualityScore: 92
+    noiseScore: 30
+    official: true
+    notes: Bank failures and banking-system stress.
+
+  - id: x:statedept
+    name: US Department of State
+    handle: "@StateDept"
+    org: state-dept
+    sourceType: x
+    category: GEOPOLITICAL
+    priority: 66
+    enabled: true
+    qualityScore: 88
+    noiseScore: 38
+    official: true
+    notes: High volume of routine diplomacy; the noise filters carry real weight here.
+
+  - id: x:iea
+    name: International Energy Agency
+    handle: "@IEA"
+    org: iea
+    sourceType: x
+    category: COMMODITY
+    priority: 62
+    enabled: true
+    qualityScore: 90
+    noiseScore: 32
+    official: true
+
+  - id: x:boc
+    name: Bank of Canada
+    handle: "@bankofcanada"
+    org: boc
+    sourceType: x
+    category: MACRO
+    priority: 58
+    enabled: true
+    qualityScore: 94
+    noiseScore: 18
+    official: true
+
+  - id: x:boj
+    name: Bank of Japan
+    handle: "@bank_of_japan_e"
+    org: boj
+    sourceType: x
+    category: MACRO
+    priority: 62
+    enabled: true
+    qualityScore: 94
+    noiseScore: 18
+    official: true
+
+  - id: x:snb
+    name: Swiss National Bank
+    handle: "@snbnews"
+    org: snb
+    sourceType: x
+    category: MACRO
+    priority: 52
+    enabled: true
+    qualityScore: 93
+    noiseScore: 20
+    official: true
+
+  - id: x:rbnz
+    name: Reserve Bank of New Zealand
+    handle: "@RBNZ"
+    org: rbnz
+    sourceType: x
+    category: MACRO
+    priority: 45
+    enabled: true
+    qualityScore: 92
+    noiseScore: 22
+    official: true
+
+  # ── TIER 3 — CONTEXT ──────────────────────────────────────────────────────
+  - id: x:fincen
+    name: Financial Crimes Enforcement Network
+    handle: "@FinCENnews"
+    org: fincen
+    sourceType: x
+    category: MACRO
+    priority: 42
+    enabled: true
+    qualityScore: 88
+    noiseScore: 40
+    official: true
+    notes: Sanctions and AML actions. Rarely instantaneous, occasionally decisive.
+
+  - id: x:cme
+    name: CME Group
+    handle: "@CMEGroup"
+    org: cme
+    sourceType: x
+    category: MARKET
+    priority: 40
+    enabled: true
+    qualityScore: 82
+    noiseScore: 48
+    official: false
+    notes: Market infrastructure. Mostly promotional; kept for halts and notices.

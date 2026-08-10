@@ -101,6 +101,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       sourceName: source?.name ?? null,
       author: raw.author,
       publishedAt: typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : null,
+      org: source?.org ?? null,
       meta: raw.meta,
     });
 

@@ -75,6 +75,19 @@ export interface StatementCache {
   get<R = unknown>(sql: string): SqliteStatement<R>;
 }
 
+/**
+ * `?,?,?…` matching a column list, derived rather than hand-counted.
+ *
+ * Three separate columns have now been added to three separate tables and each
+ * time the INSERT was left one placeholder short. It fails loudly — SQLite says
+ * "N values for M columns" — but it fails at runtime, after review, and there is
+ * no reason a human should be counting commas at all.
+ */
+export function placeholdersFor(columns: string): string {
+  const count = columns.split(',').filter((c) => c.trim().length > 0).length;
+  return Array.from({ length: count }, () => '?').join(',');
+}
+
 export function createStatementCache(db: SqliteDatabase): StatementCache {
   const cache = new Map<string, unknown>();
   return {

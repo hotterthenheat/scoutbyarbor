@@ -147,6 +147,11 @@ export interface Source {
   /** Official government / central-bank / exchange feed — high credibility (§9). */
   official: boolean;
   /**
+   * Stable organisation key shared by every feed of one body — `bls`, `ecb`.
+   * Corroboration counts distinct organisations, not distinct feeds.
+   */
+  org: string | null;
+  /**
    * How long a silence is normal for this feed before health flags it (§23).
    * A quarterly filing feed and a breaking-news account have very different
    * idea of "quiet", so this is per source rather than per type.

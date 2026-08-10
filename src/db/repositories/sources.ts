@@ -1,6 +1,7 @@
 import type { Source, SourceStats, SourceType } from '../../core/types.js';
 import type { Category } from '../../core/types.js';
 import {
+  placeholdersFor,
   createStatementCache,
   fromSqliteBool,
   nowIso,
@@ -49,6 +50,7 @@ interface SourceRow {
   geopolitical_score: number;
   filter_profile: string;
   official: number;
+  org: string | null;
   expected_interval_ms: number;
   notes: string | null;
   created_at: string;
@@ -75,7 +77,7 @@ interface SourceStatsRow {
 const SOURCE_COLUMNS = `
   id, name, handle, url, source_type, category, priority, enabled, verified,
   quality_score, noise_score, macro_score, micro_score, geopolitical_score,
-  filter_profile, official, expected_interval_ms, notes, created_at, updated_at`;
+  filter_profile, official, org, expected_interval_ms, notes, created_at, updated_at`;
 
 /**
  * Counters `bumpStat` may touch, mapped to their column. An allowlist because
@@ -117,6 +119,7 @@ function toSource(row: SourceRow): Source {
     geopoliticalScore: toNumber(row.geopolitical_score, 50),
     filterProfile: row.filter_profile === 'strict' ? 'strict' : 'standard',
     official: fromSqliteBool(row.official),
+    org: toNullableText(row.org),
     expectedIntervalMs: toNumber(row.expected_interval_ms, 900_000),
     notes: toNullableText(row.notes),
     createdAt: toText(row.created_at),
@@ -149,7 +152,7 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
   const upsertOne = (s: Source): void => {
     stmts.get(`
       INSERT INTO sources (${SOURCE_COLUMNS})
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      VALUES (${placeholdersFor(SOURCE_COLUMNS)})
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         handle = excluded.handle,
@@ -165,6 +168,7 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
         geopolitical_score = excluded.geopolitical_score,
         filter_profile = excluded.filter_profile,
         official = excluded.official,
+        org = excluded.org,
         notes = excluded.notes,
         updated_at = excluded.updated_at
     `).run(
@@ -184,7 +188,8 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
       s.geopoliticalScore,
       s.filterProfile,
       toSqliteBool(s.official),
-    s.expectedIntervalMs ?? 900_000,
+      s.org,
+      s.expectedIntervalMs ?? 900_000,
       s.notes,
       s.createdAt,
       s.updatedAt,
