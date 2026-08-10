@@ -313,3 +313,41 @@ describe('publishing old news', () => {
     expect((await agedPipeline(0).process(aged(600))).accepted).toBe(true);
   });
 });
+
+/**
+ * Thinly-worded market news.
+ *
+ * "OPEC+ AGREES TO CUT OUTPUT BY 1 MILLION BARRELS PER DAY" matched a single
+ * taxonomy keyword and was dropped as NO_CATEGORY — a genuine, market-moving
+ * commodity headline discarded for using few of the words the taxonomy happens
+ * to list. Requiring strong evidence is right for a CONFIDENT call and wrong
+ * for "does this belong on a market wire at all".
+ */
+describe('a real headline the taxonomy barely recognises', () => {
+  it('reaches the wire instead of being dropped', async () => {
+    const outcome = await pipeline.process(raw('OPEC+ AGREES TO CUT OUTPUT BY 1 MILLION BARRELS PER DAY'));
+
+    expect(outcome.accepted, 'a market-moving commodity headline was dropped').toBe(true);
+    expect(outcome.route?.channels).toContain('news');
+  });
+
+  it('competes weakly, rather than as an equal of a well-evidenced one', async () => {
+    const thin = await pipeline.process(raw('OPEC+ AGREES TO CUT OUTPUT BY 1 MILLION BARRELS PER DAY'));
+    const strong = await pipeline.process(raw('US CPI RISES 3.1% Y/Y VS 3.0% EXPECTED'));
+
+    expect(thin.newsEvent.importance).toBeLessThan(strong.newsEvent.importance);
+  });
+
+  it('does not let clickbait in through the same door', async () => {
+    // The looser category gate is only safe because the noise filters run
+    // afterwards. If this ever publishes, the gate has outrun its guard.
+    for (const text of [
+      'Top economist says bitcoin has one flaw gold will never have',
+      'Here is why analysts think Nvidia could hit $300',
+      'Best stocks to buy right now, according to strategists',
+    ]) {
+      const outcome = await pipeline.process(raw(text));
+      expect(outcome.accepted, `clickbait published: ${text}`).toBe(false);
+    }
+  });
+});

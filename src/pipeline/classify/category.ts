@@ -35,6 +35,24 @@ const KEYWORD_WEIGHT = 1;
 /** Below this, the evidence is too thin to call it anything (§20 NO_CATEGORY). */
 const MIN_EVIDENCE = 2.5;
 
+/**
+ * A weaker tier, for market news that is real but thinly worded.
+ *
+ * "OPEC+ AGREES TO CUT OUTPUT BY 1 MILLION BARRELS PER DAY" scores a single
+ * keyword and was therefore dropped outright — a genuine, market-moving
+ * commodity headline discarded for using few of the words the taxonomy happens
+ * to list. Requiring 2.5 points of evidence is right for a CONFIDENT call; it
+ * is too strict for "does this belong on a market wire at all".
+ *
+ * So one point of evidence is enough to publish, with the confidence scored
+ * accordingly. That confidence feeds the same scorer as everything else, so a
+ * thin classification competes weakly — it reaches the general feed and has to
+ * earn a trading channel on the market-impact test like anything else. Nothing
+ * here bypasses the noise filters, which run afterwards and catch the clickbait
+ * that a loose gate would otherwise let through.
+ */
+const FALLBACK_EVIDENCE = 1;
+
 /** Applied when two categories are close; the more specific one should win. */
 const PRECEDENCE: Category[] = [
   'EARNINGS',
@@ -131,7 +149,8 @@ export function createCategoryClassifier(taxonomy: TaxonomyFile): CategoryClassi
       .sort((a, b) => b.score - a.score || precedenceOf(a.category) - precedenceOf(b.category));
 
     const winner = ranked[0];
-    if (!winner || winner.score < MIN_EVIDENCE) return null;
+    if (!winner || winner.score < FALLBACK_EVIDENCE) return null;
+    const weak = winner.score < MIN_EVIDENCE;
 
     // Resolve a near-tie toward the more specific category.
     let chosen = winner;
@@ -152,8 +171,10 @@ export function createCategoryClassifier(taxonomy: TaxonomyFile): CategoryClassi
     return {
       category: chosen.category,
       subcategory,
-      confidence: Math.min(1, chosen.score / 12),
-      signals: chosen.signals,
+      // Halved on the fallback tier, so a thin classification competes weakly
+      // rather than arriving as an equal of a well-evidenced one.
+      confidence: Math.min(1, chosen.score / 12) * (weak ? 0.5 : 1),
+      signals: weak ? [...chosen.signals, 'category:weak-evidence'] : chosen.signals,
       secondary,
     };
   }
