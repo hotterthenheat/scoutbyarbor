@@ -207,6 +207,10 @@ export interface OpenOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+function isTruthy(value: string | undefined): boolean {
+  return value === 'true' || value === '1' || value === 'yes';
+}
+
 export function openDatabase(path: string, options: OpenOptions = {}): ScoutDb {
   const env = options.env ?? process.env;
 
@@ -222,14 +226,25 @@ export function openDatabase(path: string, options: OpenOptions = {}): ScoutDb {
       //
       // Refusing to start is the correct failure. A deploy that fails loudly
       // gets fixed; one that boots with amnesia does not.
-      if (env.RENDER) {
+      // ALLOW_EPHEMERAL_DATABASE is the deliberate override.
+      //
+      // Render will not let a disk be attached until a service has deployed at
+      // least once, which makes the guard below a genuine chicken-and-egg for a
+      // first deploy. So there is a way through — an explicit one, that has to
+      // be typed, and that Scout then complains about on every single boot
+      // until it is removed. What must never exist is a SILENT path to
+      // ephemeral storage.
+      if (env.RENDER && !isTruthy(env.ALLOW_EPHEMERAL_DATABASE)) {
         throw new Error(
           `DATABASE_PATH="${path}" resolves to ${dir}, which does not exist. On Render that ` +
             'directory is the persistent disk mount, so this means the disk is not attached — ' +
             'creating it would put the database on ephemeral storage and every deploy would ' +
             'wipe the dedupe history, the delivery log and the calendar state. Attach a disk ' +
-            'in render.yaml and point DATABASE_PATH at a file directly under its mountPath ' +
-            '(e.g. mountPath /var/data, DATABASE_PATH /var/data/scout.db).',
+            'and point DATABASE_PATH at a file directly under its mountPath (e.g. mountPath ' +
+            '/var/data, DATABASE_PATH /var/data/scout.db).\n\n' +
+            'Render only allows a disk once a service has deployed successfully. To get that ' +
+            'first deploy, set ALLOW_EPHEMERAL_DATABASE=true, attach the disk, then REMOVE the ' +
+            'variable. Scout will run — and warn on every boot — until you do.',
         );
       }
       mkdirSync(dir, { recursive: true });

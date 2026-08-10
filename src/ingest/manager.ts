@@ -7,6 +7,7 @@ import type {
 } from '../core/types.js';
 import type { ScoutDb } from '../db/index.js';
 import type { Logger } from '../util/logger.js';
+import { createPrimer, type Primer } from './priming.js';
 
 /**
  * Ingestion scheduling.
@@ -32,12 +33,15 @@ export interface IngestManagerDeps {
   intervals: Record<string, number>;
   onPosts: (posts: RawPost[]) => Promise<void>;
   onOutcome?: (outcome: IngestResult['outcomes'][number]) => void;
+  /** Test seam. Defaults to one backed by `runtime_state`. */
+  primer?: Primer;
 }
 
 const DEFAULT_INTERVAL_MS = 60_000;
 
 export function createIngestManager(deps: IngestManagerDeps): IngestManager {
   const { db, adapters, logger } = deps;
+  const primer = deps.primer ?? createPrimer(db, () => new Date().toISOString());
   // One live timer per adapter, replaced on each tick rather than appended to a
   // list that grows for the life of the process.
   const timers = new Map<SourceType, NodeJS.Timeout>();
@@ -86,12 +90,28 @@ export function createIngestManager(deps: IngestManagerDeps): IngestManager {
         }
       }
 
-      if (fresh.length > 0) {
-        logger.debug('ingested', { adapter: adapter.type, fresh: fresh.length });
-        await deps.onPosts(fresh);
+      // A source's FIRST poll is its whole backlog, not its news. Those items
+      // are recorded above — so they dedupe correctly forever after — and are
+      // not published. Without this, the first boot against an empty database
+      // publishes every item of every feed at once, and the ones that read as
+      // market-moving go straight to the trading channels.
+      const { publish, withheld } = primer.partition(fresh);
+
+      if (withheld.length > 0) {
+        const sources = [...new Set(withheld.map((p) => p.sourceId))];
+        logger.info('primed source(s) on first poll; backlog recorded, not published', {
+          adapter: adapter.type,
+          sources,
+          withheld: withheld.length,
+        });
       }
 
-      return { posts: fresh, outcomes: result.outcomes };
+      if (publish.length > 0) {
+        logger.debug('ingested', { adapter: adapter.type, fresh: publish.length });
+        await deps.onPosts(publish);
+      }
+
+      return { posts: publish, outcomes: result.outcomes };
     } catch (err) {
       logger.error('adapter poll threw', { adapter: adapter.type, err: err as Error });
       return { posts: [], outcomes: [] };

@@ -150,6 +150,19 @@ function pathWarnings(
   // an ordinary local development setup and not worth a warning.
   if (!env.RENDER) return warnings;
 
+  // The deliberate override, still running. It exists so a first deploy can
+  // succeed before Render will attach a disk — a real chicken-and-egg — and it
+  // is meant to be removed minutes later. Saying so on every boot is the whole
+  // reason it is safe to offer: the escape hatch that goes quiet is the one
+  // still in place a year later.
+  if (env.ALLOW_EPHEMERAL_DATABASE === 'true' || env.ALLOW_EPHEMERAL_DATABASE === '1') {
+    warnings.push(
+      'ALLOW_EPHEMERAL_DATABASE is set. The database is on storage that every deploy wipes, so ' +
+        'Scout starts each deploy having forgotten what it already published. Attach a disk, ' +
+        'point DATABASE_PATH under its mount, and REMOVE this variable.',
+    );
+  }
+
   if (!isAbsolute(path)) {
     warnings.push(
       `DATABASE_PATH="${path}" is relative, so it resolves inside the deploy directory ` +
