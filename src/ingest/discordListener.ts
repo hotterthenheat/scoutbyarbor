@@ -202,7 +202,12 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
       });
 
       await new Promise<void>((resolve, reject) => {
+        // See the note in discord/client.ts: 14.27 emits `ready` AND
+        // `clientReady`, so both are registered and the handler runs once.
+        let settled = false;
         const onReady = (): void => {
+          if (settled) return;
+          settled = true;
           ready = true;
           logger.info('listening', {
             urlChannels: [...kindByChannel.keys()],

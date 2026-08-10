@@ -104,13 +104,21 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
 
     client = new Client({ intents: [GatewayIntentBits.Guilds] });
     await new Promise<void>((resolve, reject) => {
+      // Both names are registered because discord.js is mid-rename: v14 emits
+      // `ready`, v15 will emit only `clientReady`, and 14.27 emits BOTH. Listening
+      // for one alone risks hanging forever on a version bump; listening for both
+      // without this guard ran the handler twice and logged every connection
+      // twice, which is exactly the kind of noise that makes a real duplicate
+      // impossible to spot later.
+      let settled = false;
       const onReady = (): void => {
+        if (settled) return;
+        settled = true;
         ready = true;
         logger.info('connected', { user: client?.user?.tag });
         resolve();
       };
       client?.once('clientReady', onReady);
-      // discord.js v14 emits 'ready'; keep both so a minor bump does not hang.
       client?.once('ready', onReady);
       client?.once('error', reject);
       client?.login(deps.token).catch(reject);
