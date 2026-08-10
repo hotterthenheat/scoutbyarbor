@@ -13,6 +13,7 @@ import type {
   TickerMatch,
 } from '../core/types.js';
 import type { TaxonomyFile } from '../config/types.js';
+import type { SourceAttribution } from '../core/provenance.js';
 import type { ScoutDb } from '../db/index.js';
 import type { Logger } from '../util/logger.js';
 
@@ -31,7 +32,12 @@ import { assessMarketImpact } from './marketImpact.js';
 import { routeAlert } from '../discord/router.js';
 import { buildAlert } from '../render/alert.js';
 import { computeLatency } from '../health/latency.js';
-import { provenanceOf } from '../core/provenance.js';
+import {
+  provenanceOf,
+  provenanceFromSourceIds,
+  attributionFrom,
+  mergeAttribution,
+} from '../core/provenance.js';
 import { newId, deterministicId } from '../util/id.js';
 import { msBetween } from '../util/time.js';
 
@@ -88,12 +94,23 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     const source = db.sources.byId(raw.sourceId);
     const signals: string[] = [];
 
+    // Who reported this, in enough detail to name the actual feed rather than
+    // the platform. Built once and reused wherever the cluster records origins.
+    const attribution = attributionFrom({
+      sourceId: raw.sourceId,
+      sourceName: source?.name ?? null,
+      author: raw.author,
+      publishedAt: typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : null,
+      meta: raw.meta,
+    });
+
     // ── NORMALIZE ───────────────────────────────────────────────────────────
     const post = normalizePost(raw, { now });
 
     const ctx: BuildContext = {
       raw,
       post,
+      attribution,
       source,
       entities: emptyEntities(),
       category: null,
@@ -142,6 +159,9 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
             cluster.sourceIds = [...sourceIds];
             cluster.sourceCount = sourceIds.size;
           }
+          // The same merge either way: a source repeating itself refines its own
+          // record (an earlier report time) rather than counting twice.
+          cluster.contributors = mergeAttribution(cluster.contributors ?? [], attribution);
           cluster.postCount += 1;
           cluster.lastUpdatedAt = startedAt.toISOString();
           db.events.update(cluster);
@@ -316,6 +336,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
         importance: score.total,
         band: score.band,
         sourceId: source.id,
+        attribution,
         occurredAt: raw.eventTime,
         now: startedAt.toISOString(),
       });
@@ -416,6 +437,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
 
 interface BuildContext {
   raw: RawPost;
+  attribution: SourceAttribution;
   post: NormalizedPost;
   source: Source | null;
   entities: ExtractedEntities;
@@ -556,16 +578,19 @@ function buildRawPayload(
   tickers: TickerMatch[],
   signals: string[],
 ): RawChannelPayload {
-  // Derived from the cluster's contributing sources, so a story seen on both X
-  // and Discord reads "X + DISCORD" rather than whichever arrived last.
-  const contributing =
-    ctx.cluster?.sourceIds && ctx.cluster.sourceIds.length > 0
-      ? ctx.cluster.sourceIds
-      : [ctx.raw.sourceId];
+  // From the cluster's contributors, so a story seen on both X and Discord names
+  // both feeds rather than whichever arrived last. Clusters written before
+  // contributors were stored fall back to what bare source ids support.
+  const provenance =
+    ctx.cluster?.contributors && ctx.cluster.contributors.length > 0
+      ? provenanceOf(ctx.cluster.contributors)
+      : ctx.cluster?.sourceIds && ctx.cluster.sourceIds.length > 0
+        ? provenanceFromSourceIds(ctx.cluster.sourceIds)
+        : provenanceOf([ctx.attribution]);
 
   return {
     sourceName: ctx.source?.name ?? ctx.raw.sourceId,
-    provenance: provenanceOf(contributing).label,
+    provenance,
     handle: ctx.source?.handle ?? ctx.raw.author,
     originalUrl: ctx.raw.originalUrl,
     rawText: ctx.raw.text,

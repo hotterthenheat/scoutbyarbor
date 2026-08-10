@@ -1,3 +1,5 @@
+import type { Provenance, SourceAttribution } from './provenance.js';
+
 /**
  * Scout core contracts.
  *
@@ -447,6 +449,8 @@ export interface EventCluster {
   sourceCount: number;
   /** The source ids behind that count, so a repost cannot inflate it. */
   sourceIds: string[];
+  /** Per-source detail behind `sourceIds`. See core/provenance.ts. */
+  contributors: SourceAttribution[];
   postCount: number;
   firstSeenAt: string;
   lastUpdatedAt: string;
@@ -539,11 +543,12 @@ export interface RenderableAlert {
 export interface RawChannelPayload {
   sourceName: string;
   /**
-   * Which origins contributed to this event: "X", "DISCORD", "X + DISCORD".
-   * Backend-only, like everything else in this payload — the alert itself is a
-   * four-field RenderableAlert and structurally cannot carry it.
+   * Who reported this, named individually: which bot, which channel, which
+   * account, and when each first said it. Backend-only, like everything else in
+   * this payload — the alert itself is a four-field RenderableAlert and
+   * structurally cannot carry any of it.
    */
-  provenance: string;
+  provenance: Provenance;
   handle: string | null;
   originalUrl: string | null;
   rawText: string;

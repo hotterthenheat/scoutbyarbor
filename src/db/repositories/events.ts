@@ -1,4 +1,5 @@
 import type { Category, EventCluster, ImportanceBand } from '../../core/types.js';
+import type { SourceAttribution } from '../../core/provenance.js';
 import {
   createStatementCache,
   parseJsonArray,
@@ -33,6 +34,7 @@ interface EventRow {
   countries: string;
   entities: string;
   source_ids: string;
+  contributors: string;
   slug: string;
   importance: number;
   band: string;
@@ -46,7 +48,7 @@ interface EventRow {
 }
 
 const COLUMNS = `
-  id, slug, headline, category, subcategory, tickers, countries, entities, source_ids, importance,
+  id, slug, headline, category, subcategory, tickers, countries, entities, source_ids, contributors, importance,
   band, source_count, post_count, first_seen_at, last_updated_at, status,
   discord_messages, created_at`;
 
@@ -60,6 +62,7 @@ function toCluster(row: EventRow): EventCluster {
     countries: parseJsonArray<string>(row.countries),
     entities: parseJsonArray<string>(row.entities),
     sourceIds: parseJsonArray<string>(row.source_ids),
+    contributors: parseJsonArray<SourceAttribution>(row.contributors),
     slug: toText(row.slug),
     importance: toNumber(row.importance),
     band: toText(row.band, 'LOW') as ImportanceBand,
@@ -84,6 +87,7 @@ function toParams(c: EventCluster): Bind[] {
     toJson(c.countries ?? []),
     toJson(c.entities ?? []),
     toJson(c.sourceIds ?? []),
+    toJson(c.contributors ?? []),
     c.importance,
     c.band,
     c.sourceCount,
@@ -106,7 +110,7 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
       // and Discord message log with it.
       stmts.get(`
         INSERT INTO events (${COLUMNS})
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET
           slug = excluded.slug,
           headline = excluded.headline,
@@ -116,6 +120,7 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
           countries = excluded.countries,
           entities = excluded.entities,
           source_ids = excluded.source_ids,
+          contributors = excluded.contributors,
           importance = excluded.importance,
           band = excluded.band,
           source_count = excluded.source_count,
@@ -130,7 +135,7 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
       stmts.get(`
         UPDATE events SET
           slug = ?, headline = ?, category = ?, subcategory = ?, tickers = ?, countries = ?,
-          entities = ?, source_ids = ?, importance = ?, band = ?, source_count = ?, post_count = ?,
+          entities = ?, source_ids = ?, contributors = ?, importance = ?, band = ?, source_count = ?, post_count = ?,
           first_seen_at = ?, last_updated_at = ?, status = ?, discord_messages = ?
         WHERE id = ?
       `).run(
@@ -142,6 +147,7 @@ export function createEventRepo(db: SqliteDatabase): EventRepo {
         toJson(cluster.countries ?? []),
         toJson(cluster.entities ?? []),
         toJson(cluster.sourceIds ?? []),
+        toJson(cluster.contributors ?? []),
         cluster.importance,
         cluster.band,
         cluster.sourceCount,

@@ -7,6 +7,7 @@ import type {
 } from '../core/types.js';
 import { textSimilarity } from '../util/text.js';
 import { headlineEquivalent } from './dedupe.js';
+import type { SourceAttribution } from '../core/provenance.js';
 
 /**
  * EVENT CLUSTERING (§18).
@@ -129,6 +130,8 @@ export interface CreateClusterInput {
   importance: number;
   band: ImportanceBand;
   sourceId: string;
+  /** Who reported it, in detail. See core/provenance.ts. */
+  attribution?: SourceAttribution;
   occurredAt: string;
   now: string;
 }
@@ -149,6 +152,7 @@ export function createCluster(input: CreateClusterInput): EventCluster {
     // Tracked as a set so corroboration counts distinct wires, not repeat
     // posts from one of them (§19).
     sourceIds: [input.sourceId],
+    contributors: input.attribution ? [input.attribution] : [],
     postCount: 1,
     firstSeenAt: input.occurredAt,
     lastUpdatedAt: input.now,

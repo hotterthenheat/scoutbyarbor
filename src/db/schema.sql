@@ -116,6 +116,10 @@ CREATE TABLE IF NOT EXISTS events (
   -- Distinct source ids that have reported this event. Corroboration must
   -- count independent wires, not repeat posts from one of them (§19).
   source_ids       TEXT NOT NULL DEFAULT '[]',
+  -- Per-source detail behind source_ids: which bot, which channel, which
+  -- account, and when each first reported. "DISCORD" is not a useful answer to
+  -- "where did this come from"; "OwlsKeyLevelsBot" is.
+  contributors     TEXT NOT NULL DEFAULT '[]',
   post_count       INTEGER NOT NULL DEFAULT 1,
   first_seen_at    TEXT NOT NULL,
   last_updated_at  TEXT NOT NULL,

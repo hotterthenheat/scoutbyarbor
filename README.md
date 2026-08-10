@@ -205,16 +205,32 @@ never promoted, exactly as on the X path.
 ### Provenance
 
 Dedupe collapses the same story across sources, so an event can have more than
-one origin. `#scout-raw` reports which:
+one origin — and "DISCORD" is not a useful answer to which. The feed that
+actually said it is what an operator judges, so each contributor is recorded
+individually and `#scout-raw` names them:
 
 ```
-provenance  X + DISCORD
+ACCEPTED
+source      Walter Bloomberg (@DeItaone)
+sources     OwlsKeyLevelsBot + @DeItaone
+first       2026-08-10T14:47:00.000Z
+confirmed   2 sources (independent)
+  · discord author=OwlsKeyLevelsBot  channel=market-news  server=88  at=2026-08-10T14:47:00.000Z
+  · x       account=@DeItaone  at=2026-08-10T14:49:00.000Z
 ```
+
+`first` is the **earliest report across all contributors**, not when Scout heard
+about it — so a Discord bot beating the wire by two minutes is visible as
+exactly that. `confirmed` counts distinct sources; a source repeating itself
+refines its own record rather than counting twice.
+
+Stored on the cluster in `events.contributors`, so it survives dedupe and
+restart. Clusters written before this existed fall back to `X + DISCORD` from
+bare source ids.
 
 Backend-only, like everything else in that channel — the alert is a four-field
-`RenderableAlert` and structurally cannot carry it. `X` alone, `DISCORD` alone,
-or both when a story arrived on each. `/metrics` carries the intake counters
-under `.discord`.
+`RenderableAlert` and structurally cannot carry it. `/metrics` carries the
+intake counters under `.discord`.
 
 ---
 

@@ -18,7 +18,13 @@ import type {
 } from '../src/ingest/discordIntel/types.js';
 import { validateDiscordPayload } from '../src/server/discordWebhook.js';
 import { loadDiscordSources, toDiscordSource } from '../src/config/loader.js';
-import { provenanceOf, originOf } from '../src/core/provenance.js';
+import {
+  provenanceOf,
+  provenanceFromSourceIds,
+  originOf,
+  attributionFrom,
+  mergeAttribution,
+} from '../src/core/provenance.js';
 import { createPipeline } from '../src/pipeline/index.js';
 import { createPublisher } from '../src/discord/publisher.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../src/config/loader.js';
@@ -488,16 +494,133 @@ describe('provenance', () => {
     expect(originOf('rss:fed-press-all')).toBe('rss');
   });
 
-  it('reports both origins when a story was seen on each', () => {
-    const p = provenanceOf(['x:deltaone', 'discord:flow-alerts']);
-    expect(p.label).toBe('X + DISCORD');
-    expect(p.corroborated).toBe(true);
+  /**
+   * "DISCORD" is not a useful answer to "where did this come from".
+   * "OwlsKeyLevelsBot" is — it names the feed an operator actually judges.
+   */
+  it('names the bot that posted it, not the platform', () => {
+    const attribution = attributionFrom({
+      sourceId: 'discord:flow-alerts',
+      sourceName: 'Flow Alerts',
+      author: 'OwlsKeyLevelsBot',
+      publishedAt: '2026-08-10T14:47:00.000Z',
+      meta: {
+        authorName: 'OwlsKeyLevelsBot',
+        channelName: 'market-news',
+        guildId: '555',
+      },
+    });
+
+    expect(attribution.kind).toBe('discord');
+    expect(attribution.label).toBe('OwlsKeyLevelsBot');
+    expect(attribution.author).toBe('OwlsKeyLevelsBot');
+    expect(attribution.channel).toBe('market-news');
+    expect(attribution.server).toBe('555');
+    expect(attribution.firstSeenAt).toBe('2026-08-10T14:47:00.000Z');
   });
 
-  it('reports a single origin without claiming corroboration', () => {
-    const p = provenanceOf(['discord:flow-alerts']);
-    expect(p.label).toBe('DISCORD');
+  it('names the account for an X post', () => {
+    const attribution = attributionFrom({
+      sourceId: 'x:deltaone',
+      sourceName: 'Walter Bloomberg',
+      author: '@DeItaone',
+      publishedAt: '2026-08-10T14:49:00.000Z',
+    });
+
+    expect(attribution.kind).toBe('x');
+    expect(attribution.label).toBe('@DeItaone');
+    expect(attribution.account).toBe('@DeItaone');
+  });
+
+  it('reports both feeds, when each first said it, and how many confirmed', () => {
+    const p = provenanceOf([
+      attributionFrom({
+        sourceId: 'discord:flow-alerts',
+        author: 'OwlsKeyLevelsBot',
+        publishedAt: '2026-08-10T14:47:00.000Z',
+        meta: { authorName: 'OwlsKeyLevelsBot', channelName: 'market-news' },
+      }),
+      attributionFrom({
+        sourceId: 'x:deltaone',
+        author: '@DeItaone',
+        publishedAt: '2026-08-10T14:49:00.000Z',
+      }),
+    ]);
+
+    expect(p.label).toBe('OwlsKeyLevelsBot + @DeItaone');
+    expect(p.confirmedBy).toBe(2);
+    expect(p.corroborated).toBe(true);
+    // The EARLIEST report, not whichever arrived at Scout first.
+    expect(p.firstReportedAt).toBe('2026-08-10T14:47:00.000Z');
+    expect(p.origins).toEqual(['x', 'discord']);
+  });
+
+  it('does not claim corroboration from a single source', () => {
+    const p = provenanceOf([
+      attributionFrom({ sourceId: 'discord:flow-alerts', author: 'OwlsKeyLevelsBot' }),
+    ]);
+    expect(p.confirmedBy).toBe(1);
     expect(p.corroborated).toBe(false);
+  });
+
+  it('does not count a source repeating itself as a second confirmation', () => {
+    const first = attributionFrom({
+      sourceId: 'discord:flow-alerts',
+      author: 'OwlsKeyLevelsBot',
+      publishedAt: '2026-08-10T14:47:00.000Z',
+      meta: { authorName: 'OwlsKeyLevelsBot' },
+    });
+    const again = attributionFrom({
+      sourceId: 'discord:flow-alerts',
+      author: 'OwlsKeyLevelsBot',
+      publishedAt: '2026-08-10T14:52:00.000Z',
+      meta: { authorName: 'OwlsKeyLevelsBot' },
+    });
+
+    const merged = mergeAttribution([first], again);
+    expect(merged).toHaveLength(1);
+    // ...but an EARLIER report from the same source does refine the record.
+    const earlier = mergeAttribution(merged, {
+      ...first,
+      firstSeenAt: '2026-08-10T14:40:00.000Z',
+    });
+    expect(earlier[0]?.firstSeenAt).toBe('2026-08-10T14:40:00.000Z');
+  });
+
+  it('still reports something useful for clusters recorded before this existed', () => {
+    // Old rows have source ids and no contributor detail.
+    const p = provenanceFromSourceIds(['x:deltaone', 'discord:flow-alerts']);
+    expect(p.label).toBe('X + DISCORD');
+    expect(p.confirmedBy).toBe(2);
+  });
+
+  it('records both feeds on the cluster when a story arrives on each', async () => {
+    const scout = buildScout();
+    const story = 'OPEC+ AGREES TO EXTEND PRODUCTION CUTS THROUGH Q2';
+
+    const first = await scout.pipeline.process({
+      sourceId: 'x:deltaone',
+      sourcePostId: 'x:999',
+      originalUrl: null,
+      author: '@DeItaone',
+      text: story,
+      eventTime: new Date(Date.now() - 120_000).toISOString(),
+      ingestionTime: new Date().toISOString(),
+      meta: { publishedAt: new Date(Date.now() - 120_000).toISOString() },
+    });
+    const clusterId = first.cluster?.id;
+
+    scout.accept(envelope({ messageId: '9991010', content: story }));
+    await scout.queue.drain();
+
+    const cluster = db.events.byId(clusterId!);
+    const p = provenanceOf(cluster?.contributors ?? []);
+
+    expect(p.confirmedBy).toBe(2);
+    expect(p.label).toContain('@DeItaone');
+    expect(p.label).toContain('unusual_whales_crier');
+    // Survives the round trip through SQLite, not just in memory.
+    expect(cluster?.contributors.find((c) => c.kind === 'discord')?.channel).toBe('flow-alerts');
   });
 });
 

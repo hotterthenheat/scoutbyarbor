@@ -21,7 +21,27 @@ export function renderRawEntry(payload: RawChannelPayload): string {
 
   lines.push(`${verdict}`);
   lines.push(`source      ${payload.sourceName}${payload.handle ? ` (${payload.handle})` : ''}`);
-  lines.push(`provenance  ${payload.provenance}`);
+  // "Sources: OwlsKeyLevelsBot + @DeItaone" — who actually said it. A story
+  // seen on two independent feeds is a different thing from one seen once, and
+  // naming the platform ("DISCORD") does not tell you which feed.
+  const p = payload.provenance;
+  lines.push(`sources     ${p.label}`);
+  if (p.firstReportedAt) lines.push(`first       ${p.firstReportedAt}`);
+  if (p.confirmedBy > 1) {
+    lines.push(`confirmed   ${p.confirmedBy} sources${p.corroborated ? ' (independent)' : ''}`);
+  }
+  for (const source of p.sources) {
+    const detail = [
+      source.account ? `account=${source.account}` : null,
+      source.author ? `author=${source.author}` : null,
+      source.channel ? `channel=${source.channel}` : null,
+      source.server ? `server=${source.server}` : null,
+      source.firstSeenAt ? `at=${source.firstSeenAt}` : null,
+    ]
+      .filter(Boolean)
+      .join('  ');
+    lines.push(`  · ${source.kind.padEnd(8)}${detail || source.sourceId}`);
+  }
   lines.push(`category    ${payload.category ?? '—'}${payload.subcategory ? ` / ${payload.subcategory}` : ''}`);
   lines.push(`event       ${payload.eventTime}`);
   lines.push(`ingested    ${payload.ingestionTime}${payload.latencyMs === null ? '' : `  (+${payload.latencyMs}ms)`}`);
