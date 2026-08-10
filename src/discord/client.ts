@@ -72,7 +72,13 @@ export interface SentMessage {
 export interface ScoutDiscord {
   start(): Promise<void>;
   stop(): Promise<void>;
-  send(channelKey: ChannelKey, content: string): Promise<SentMessage | null>;
+  /**
+   * `embed` is what a reader sees when Discord can render one: a coloured rule,
+   * a linked title, the outlet in the footer. `content` remains the payload —
+   * it is the plain-text fallback and the thing the metadata guard checked, so
+   * an embed that fails to render never costs the alert its content.
+   */
+  send(channelKey: ChannelKey, content: string, embed?: unknown): Promise<SentMessage | null>;
   edit(channelId: string, messageId: string, content: string): Promise<boolean>;
   ensureChannels(): Promise<Record<string, string>>;
   /**
@@ -167,7 +173,11 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
     }
   }
 
-  async function send(channelKey: ChannelKey, content: string): Promise<SentMessage | null> {
+  async function send(
+    channelKey: ChannelKey,
+    content: string,
+    embed?: unknown,
+  ): Promise<SentMessage | null> {
     if (dryRun) {
       dryRunCounter += 1;
       // The resolved id, not just the key: a dry run is how an operator checks
@@ -193,6 +203,18 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
     }
     const channel = await resolveChannel(channelId);
     if (!channel) return null;
+
+    // An embed carries the whole alert, so there is nothing to chunk: Discord's
+    // 2000-character content limit does not apply to it, and the body is capped
+    // well below the embed limits upstream.
+    if (embed) {
+      const sent = await withRetry(
+        () => channel.send({ embeds: [embed as never] }),
+        logger,
+        'send',
+      );
+      return sent ? { channelId, messageId: sent.id } : null;
+    }
 
     const chunks = splitForDiscord(content);
     let first: SentMessage | null = null;

@@ -250,3 +250,66 @@ describe('a disabled source is not ingested', () => {
     expect(out.rejection).toBe('SOURCE_DISABLED');
   });
 });
+
+/**
+ * Age.
+ *
+ * The freshness rule used to gate only the Sprout hand-off, so a story
+ * published twenty minutes earlier still arrived as an alert carrying its own
+ * twenty-minute-old timestamp. That reads as a bot running behind rather than a
+ * wire running fast — and on a desk it is worse, because the move has happened.
+ */
+describe('publishing old news', () => {
+  function agedPipeline(maxPublishAgeMinutes: number) {
+    return createPipeline({
+      db,
+      taxonomy: loadTaxonomy(),
+      securities: loadSecurityMaster(),
+      config: {
+        minPublishScore: 60,
+        minBreakingScore: 90,
+        dedupeWindowMinutes: 90,
+        clusterWindowMinutes: 240,
+        dedupeSimilarity: 0.82,
+        maxPublishAgeMinutes,
+      },
+      logger: createLogger('age-test'),
+    });
+  }
+
+  function aged(minutesAgo: number) {
+    const publishedAt = new Date(Date.now() - minutesAgo * 60_000).toISOString();
+    return {
+      sourceId: 'rss:marketwatch-pulse',
+      sourcePostId: `age:${minutesAgo}:${Math.random()}`,
+      originalUrl: null,
+      author: 'MarketWatch',
+      text: 'US CPI RISES 3.1% Y/Y VS 3.0% EXPECTED',
+      eventTime: publishedAt,
+      ingestionTime: new Date().toISOString(),
+      meta: { publishedAt },
+    };
+  }
+
+  it('publishes a story inside the window', async () => {
+    expect((await agedPipeline(20).process(aged(2))).accepted).toBe(true);
+  });
+
+  it('declines one outside it, and says why', async () => {
+    const outcome = await agedPipeline(20).process(aged(45));
+    expect(outcome.accepted).toBe(false);
+    expect(outcome.rejection).toBe('NOISE_OLD_NEWS');
+  });
+
+  it('still publishes when no source stated a publication time', async () => {
+    // Unknown is not old. Refusing everything a feed failed to timestamp would
+    // silently drop whole sources.
+    const post = aged(2);
+    const outcome = await agedPipeline(20).process({ ...post, meta: { publishedAt: null } });
+    expect(outcome.accepted).toBe(true);
+  });
+
+  it('disables the gate at 0', async () => {
+    expect((await agedPipeline(0).process(aged(600))).accepted).toBe(true);
+  });
+});

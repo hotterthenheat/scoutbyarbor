@@ -100,14 +100,53 @@ const BANNER_COLOR: Record<string, number> = {
 };
 
 /**
- * Minimal embed for the cases where a coloured rule reads better than plain
- * text. Deliberately no author, footer, fields, thumbnail, url or timestamp
- * property — the timestamp is part of the description, in Scout's own format.
+ * The alert as a Discord embed — a coloured rule, a bold title, the body, and
+ * a source link when there is one.
+ *
+ * ── WHY THE LINK IS ALLOWED HERE ─────────────────────────────────────────────
+ *
+ * The four-field RenderableAlert exists so Scout cannot annotate a headline
+ * with its own metadata: no score, no confidence, no sentiment. That rule is
+ * about JUDGEMENTS Scout invented. A link to the story is not one — it is the
+ * story's own address, it is what makes an alert checkable, and "where did this
+ * come from" is the first question any reader has.
+ *
+ * So the URL goes in the embed's `url` property, which Discord renders as the
+ * title's hyperlink, and the outlet's name in the footer. Neither touches the
+ * description, so `assertNoLeakedMetadata` still runs against the body exactly
+ * as before and still refuses anything Scout labelled itself.
  */
-export function renderAlertEmbed(alert: RenderableAlert): unknown {
+export interface AlertEmbedInput {
+  alert: RenderableAlert;
+  /** The story's own address. Makes the title clickable. */
+  url?: string | null;
+  /** The outlet that reported it — "CNBC", "@DeItaone". Shown in the footer. */
+  sourceLabel?: string | null;
+  /** Publication time, so Discord can render its own relative timestamp. */
+  publishedAt?: string | null;
+}
+
+export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unknown {
+  // Accepts a bare alert too, so existing callers keep working.
+  const norm: AlertEmbedInput = 'banner' in input ? { alert: input } : input;
+  const { alert } = norm;
+
+  const url = norm.url?.trim();
+  const source = norm.sourceLabel?.trim();
+  const publishedAt = norm.publishedAt ? Date.parse(norm.publishedAt) : NaN;
+
   return {
-    description: renderAlert(alert),
+    // Discord renders the title bold and, with `url`, as a link.
+    title: truncate(alert.headline, 250),
+    ...(url && /^https?:\/\//i.test(url) ? { url } : {}),
+    ...(alert.body ? { description: alert.body } : {}),
     color: BANNER_COLOR[alert.banner] ?? 0x4a5568,
+    author: { name: alert.banner },
+    ...(source ? { footer: { text: source } } : {}),
+    // Discord shows this in the reader's OWN timezone and as "20 minutes ago"
+    // on hover, which is strictly better than a string in one fixed zone —
+    // and it is the publication time, never the time Scout posted.
+    ...(Number.isFinite(publishedAt) ? { timestamp: new Date(publishedAt).toISOString() } : {}),
   };
 }
 

@@ -195,6 +195,14 @@ export interface ScoutEnv {
   port: number;
   databasePath: string;
   pipeline: {
+    /**
+     * How old a story may be and still reach Discord, in minutes. 0 disables
+     * the gate. The freshness rule used to apply only to the Sprout hand-off,
+     * so a headline published twenty minutes earlier still arrived as an alert
+     * — and an alert whose own timestamp is twenty minutes old reads as a bot
+     * that is behind rather than a wire that is fast.
+     */
+    maxPublishAgeMinutes: number;
     minPublishScore: number;
     minBreakingScore: number;
     dedupeWindowMinutes: number;

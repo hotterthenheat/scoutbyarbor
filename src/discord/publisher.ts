@@ -2,7 +2,7 @@ import type { ChannelKey, PipelineOutcome, RawChannelPayload } from '../core/typ
 import type { ScoutDb } from '../db/index.js';
 import type { Logger } from '../util/logger.js';
 import type { ScoutDiscord } from './client.js';
-import { renderAlert, assertNoLeakedMetadata } from '../render/alert.js';
+import { renderAlert, renderAlertEmbed, assertNoLeakedMetadata } from '../render/alert.js';
 import { renderRawEntry } from '../render/raw.js';
 import { newId } from '../util/id.js';
 import { isoNow, msBetween } from '../util/time.js';
@@ -149,8 +149,23 @@ export function createPublisher(deps: PublisherDeps): Publisher {
   ): Promise<string[]> {
     const sentChannels: string[] = [];
 
+    // The story's own address, and the outlet that reported it. Both are facts
+    // about the source rather than judgements Scout invented, which is why they
+    // belong on the embed while the description stays exactly as guarded.
+    const embed = renderAlertEmbed({
+      alert: outcome.alert!,
+      url: outcome.newsEvent.originalUrl,
+      sourceLabel: sourceLabelFor(outcome),
+      // provenance.firstReportedAt, not newsEvent.timestamp: the latter falls
+      // back to receipt time, and showing a receipt time as a publication time
+      // is the substitution this project refuses to make everywhere else. It is
+      // null when no contributor stated a time, and null is then what Discord
+      // gets — no timestamp at all beats a wrong one.
+      publishedAt: outcome.raw.provenance.firstReportedAt,
+    });
+
     for (const channelKey of channels) {
-      const sent = await discord.send(channelKey, content);
+      const sent = await discord.send(channelKey, content, embed);
 
       if (!sent) {
         // A send that failed used to be skipped in silence, so an event counted
@@ -204,6 +219,21 @@ export function createPublisher(deps: PublisherDeps): Publisher {
       });
     }
     return sentChannels;
+  }
+
+  /**
+   * Who reported it, for the embed footer.
+   *
+   * The outlet's own name — CNBC, @DeItaone — never Scout's source id and never
+   * an aggregator that merely carried it. Same rule as provenance: name the
+   * reporter, not the pipe.
+   */
+  function sourceLabelFor(outcome: PipelineOutcome): string | null {
+    // The provenance label already names the reporter rather than the pipe —
+    // the outlet behind an aggregator, the account behind a relay — and reads
+    // "CNBC + Reuters" when two of them reported the same story.
+    const label = outcome.raw.provenance.label?.trim();
+    return label && label !== 'UNKNOWN' ? label : null;
   }
 
   function recordLatency(outcome: PipelineOutcome): void {

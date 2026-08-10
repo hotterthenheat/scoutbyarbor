@@ -798,6 +798,30 @@ noise:
     - ought to
     - my price target
     - my target
+    - "top economist"
+    - "one economist"
+    - "economist says"
+    - "economist warns"
+    - "analyst says"
+    - "analysts say"
+    - "analysts warn"
+    - "one analyst"
+    - "this analyst"
+    - "experts say"
+    - "expert says"
+    - "experts warn"
+    - "expert warns"
+    - "strategist says"
+    - "strategists say"
+    - "veteran trader"
+    - "market veteran"
+    - "legendary investor"
+    - "billionaire investor says"
+    - "guru says"
+    - "says you should"
+    - "says investors should"
+    - "warns investors"
+    - "tells investors"
 
   prediction:
     - could hit
@@ -847,6 +871,34 @@ noise:
     - let me know what you think
     - vote below
     - poll
+    - "here's why"
+    - "here is why"
+    - "heres why"
+    - "here's what"
+    - "here is what"
+    - "heres what"
+    - "what to know"
+    - "things to know"
+    - "what to watch"
+    - "need to know"
+    - "you need to know"
+    - "one flaw"
+    - "the one thing"
+    - "the one stock"
+    - "this one"
+    - "should you buy"
+    - "should you sell"
+    - "is it time to"
+    - "what it means for you"
+    - "how to invest"
+    - "explained"
+    - "everything you need"
+    - "will never have"
+    - "will never be"
+    - "best stocks"
+    - "top stocks"
+    - "stocks to buy"
+    - "stocks to watch"
 
   meme:
     - lol

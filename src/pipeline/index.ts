@@ -56,6 +56,8 @@ import { msBetween } from '../util/time.js';
 
 export interface PipelineConfig {
   categoryChannelsEnabled?: boolean;
+  /** How old a story may be and still publish, in minutes. 0 disables it. */
+  maxPublishAgeMinutes?: number;
   minPublishScore: number;
   minBreakingScore: number;
   dedupeWindowMinutes: number;
@@ -305,6 +307,29 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     if (score.total < config.minPublishScore) {
       ctx.category = category;
       return reject(ctx, 'BELOW_THRESHOLD', db, config, score);
+    }
+
+    // Age, checked LAST — after scoring, so the decision is recorded against a
+    // fully classified event rather than thrown away early.
+    //
+    // The freshness rule used to gate only the Sprout hand-off, so a story
+    // published twenty minutes ago still arrived as an alert carrying its own
+    // twenty-minute-old timestamp. That reads as a bot running behind rather
+    // than a wire running fast, and on a trading desk it is worse than that:
+    // the move already happened.
+    //
+    // Publication time is read with NO fallback. Unknown stays publishable —
+    // refusing everything a source failed to timestamp would silently drop
+    // whole feeds — but a KNOWN and old time is declined.
+    const maxAgeMinutes = config.maxPublishAgeMinutes ?? 0;
+    const statedAt = typeof raw.meta.publishedAt === 'string' ? raw.meta.publishedAt : null;
+    if (maxAgeMinutes > 0 && statedAt) {
+      const ageMs = startedAt.getTime() - Date.parse(statedAt);
+      if (Number.isFinite(ageMs) && ageMs > maxAgeMinutes * 60_000) {
+        signals.push(`published ${Math.round(ageMs / 60_000)}m ago, limit ${maxAgeMinutes}m`);
+        ctx.category = category;
+        return reject(ctx, 'NOISE_OLD_NEWS', db, config, score);
+      }
     }
 
     // Attach to (or open) the cluster now that we know the post is publishable.

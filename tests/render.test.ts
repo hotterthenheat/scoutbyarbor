@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAlert, renderAlert, assertNoLeakedMetadata } from '../src/render/alert.js';
+import { buildAlert, renderAlert, assertNoLeakedMetadata, renderAlertEmbed } from '../src/render/alert.js';
 import { formatAlertTimestamp } from '../src/util/time.js';
 
 /**
@@ -306,5 +306,66 @@ describe('the guard does not misfire on real headlines', () => {
     );
     expect(content).toContain('\\_');
     expect(() => assertNoLeakedMetadata(content, ['@zero_hedge'])).toThrow();
+  });
+});
+
+/**
+ * The embed.
+ *
+ * The four-field alert exists so Scout cannot annotate a headline with its own
+ * judgements — score, confidence, sentiment. A link to the story is not one of
+ * those: it is the story's own address and it is what makes an alert
+ * checkable. So it goes on the embed, where it never touches the description
+ * the metadata guard reads.
+ */
+describe('the alert as a Discord embed', () => {
+  const alert = {
+    banner: 'ECONOMIC ALERT',
+    headline: 'US CPI RISES 3.1% Y/Y VS 3.0% EXPECTED',
+    timestamp: '1:58 PM · Aug. 10, 2026',
+    body: 'The reading came in above the 3.0% consensus.',
+  };
+
+  it('makes the headline a clickable title', () => {
+    const embed = renderAlertEmbed({
+      alert,
+      url: 'https://www.marketwatch.com/story/abc',
+      sourceLabel: 'MarketWatch',
+      publishedAt: '2026-08-10T17:58:00.000Z',
+    }) as Record<string, unknown>;
+
+    expect(embed.title).toBe(alert.headline);
+    expect(embed.url).toBe('https://www.marketwatch.com/story/abc');
+    expect((embed.footer as { text: string }).text).toBe('MarketWatch');
+    expect((embed.author as { name: string }).name).toBe('ECONOMIC ALERT');
+  });
+
+  it('uses the PUBLICATION time, so Discord renders "20 minutes ago" correctly', () => {
+    const embed = renderAlertEmbed({
+      alert,
+      publishedAt: '2026-08-10T17:58:00.000Z',
+    }) as Record<string, unknown>;
+    expect(embed.timestamp).toBe('2026-08-10T17:58:00.000Z');
+  });
+
+  it('omits the timestamp entirely when no source stated one', () => {
+    // No timestamp beats a wrong one: Discord would otherwise be handed a
+    // receipt time and render it as when the story broke.
+    const embed = renderAlertEmbed({ alert, publishedAt: null }) as Record<string, unknown>;
+    expect(embed.timestamp).toBeUndefined();
+  });
+
+  it('refuses a url that is not http(s)', () => {
+    const embed = renderAlertEmbed({
+      alert,
+      url: 'javascript:alert(1)',
+    }) as Record<string, unknown>;
+    expect(embed.url).toBeUndefined();
+  });
+
+  it('still accepts a bare alert, so older callers keep working', () => {
+    const embed = renderAlertEmbed(alert) as Record<string, unknown>;
+    expect(embed.title).toBe(alert.headline);
+    expect(embed.url).toBeUndefined();
   });
 });

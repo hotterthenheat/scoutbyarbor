@@ -164,6 +164,8 @@ services:
         value: "4"
       - key: SPROUT_MAX_AGE_MINUTES
         value: "30"
+      - key: MAX_PUBLISH_AGE_MINUTES
+        value: "20"
       - key: MIN_PUBLISH_SCORE
         value: "60"
       - key: MIN_BREAKING_SCORE
