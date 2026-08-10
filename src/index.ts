@@ -17,6 +17,7 @@ import { createEdgarAdapter } from './ingest/adapters/edgar.js';
 import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createFinnhubAdapter } from './ingest/adapters/finnhub.js';
+import { createTruthSocialAdapter } from './ingest/adapters/truthSocial.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
@@ -837,6 +838,13 @@ export async function main(): Promise<void> {
             }),
           ]
         : []),
+      // No credential of any kind, so it is always registered — unlike the X
+      // and Finnhub adapters, there is nothing that could be missing.
+      createTruthSocialAdapter({
+        userAgent: cfg.sec.userAgent,
+        timeoutMs: 25_000,
+        logger: log.child('truth'),
+      }),
       ...(finnhubEnabled
         ? [
             createFinnhubAdapter({
@@ -858,6 +866,7 @@ export async function main(): Promise<void> {
       edgar: cfg.sec.pollIntervalMs,
       x: cfg.x.pollIntervalMs,
       finnhub: cfg.finnhub.pollIntervalMs,
+      truthsocial: cfg.truthSocial.pollIntervalMs,
       manual: 5_000,
     },
     onPosts: async (posts) => {

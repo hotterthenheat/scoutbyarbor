@@ -28,7 +28,7 @@ const sourceEntrySchema = z.object({
   name: z.string().min(1),
   handle: z.string().nullable().optional(),
   url: z.string().nullable().optional(),
-  sourceType: z.enum(['x', 'rss', 'edgar', 'manual', 'finnhub']),
+  sourceType: z.enum(['x', 'rss', 'edgar', 'manual', 'finnhub', 'truthsocial']),
   category: z.enum([...CATEGORIES, 'MIXED'] as [string, ...string[]]),
   priority: z.number().int().min(0).max(100),
   enabled: z.boolean(),
@@ -57,8 +57,8 @@ export function loadSourcesFile(path = resolve(CONFIG_DIR, 'sources.yaml')): Sou
   for (const s of parsed.sources) {
     if (seen.has(s.id)) throw new Error(`duplicate source id in sources.yaml: ${s.id}`);
     seen.add(s.id);
-    if (s.sourceType === 'x' && !s.handle) {
-      throw new Error(`source ${s.id} is type "x" but has no handle`);
+    if ((s.sourceType === 'x' || s.sourceType === 'truthsocial') && !s.handle) {
+      throw new Error(`source ${s.id} is type "${s.sourceType}" but has no handle`);
     }
     if ((s.sourceType === 'rss' || s.sourceType === 'edgar') && !s.url) {
       throw new Error(`source ${s.id} is type "${s.sourceType}" but has no url`);
@@ -106,6 +106,8 @@ function defaultIntervalFor(sourceType: SourceConfigEntry['sourceType']): number
       return 3_600_000; // an hour
     case 'rss':
       return 86_400_000; // a day
+    case 'truthsocial':
+      return 900_000; // 15 minutes
     default:
       return 3_600_000;
   }

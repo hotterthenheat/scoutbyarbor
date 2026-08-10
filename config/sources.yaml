@@ -1013,6 +1013,44 @@ sources:
     notes: Ceasefires, resolutions, humanitarian declarations. Noisiest of this set.
 
   # ══════════════════════════════════════════════════════════════════════════
+  # TRUTH SOCIAL — PUBLIC API, NO CREDENTIAL
+  #
+  # Truth Social runs a Mastodon-compatible server whose public account and
+  # status endpoints answer anonymous reads. Scout calls them directly: no key,
+  # no cost, and nothing that works around an access control.
+  #
+  # The published tooling for this routes every request through FlareSolverr, a
+  # Cloudflare-challenge solver. Scout does not, and will not: if these
+  # endpoints ever close, the right outcome is that this adapter stops working,
+  # not that it starts pretending to be a browser.
+  #
+  # Ids are `truth:<status id>` — the SAME scheme the webhook path derives — so
+  # a post seen here and pushed by a relay collapses into one event.
+  # ══════════════════════════════════════════════════════════════════════════
+  - id: truth:realdonaldtrump
+    name: Donald J. Trump — Truth Social
+    handle: "@realDonaldTrump"
+    url: https://truthsocial.com
+    org: trump
+    sourceType: truthsocial
+    category: GEOPOLITICAL
+    priority: 92
+    enabled: true
+    official: true
+    qualityScore: 88
+    noiseScore: 45
+    macroScore: 78
+    microScore: 40
+    geopoliticalScore: 96
+    filterProfile: standard
+    expectedIntervalMs: 21600000
+    notes: >-
+      Tariffs, sanctions, personnel and policy, stated first-hand. A sitting
+      president's own statements are primary source material, which is why the
+      quality seed is high — and the noise seed is not low, because plenty of
+      it is not market news and the filters have to earn their keep.
+
+  # ══════════════════════════════════════════════════════════════════════════
   # FINNHUB — POLLED MARKET NEWS
   #
   # Scout ASKS for the news on a timer. Nothing has to be pasted, forwarded or

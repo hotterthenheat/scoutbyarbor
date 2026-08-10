@@ -65,6 +65,7 @@ const schema = z.object({
 
   X_BEARER_TOKEN: z.string().default(''),
   FINNHUB_API_KEY: z.string().default(''),
+  TRUTH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
   X_POLL_INTERVAL_MS: numeric(90_000),
   X_REQUEST_BUDGET_PER_WINDOW: numeric(180),
@@ -235,6 +236,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       apiKey: parsed.FINNHUB_API_KEY,
       pollIntervalMs: parsed.FINNHUB_POLL_INTERVAL_MS,
     },
+    truthSocial: { pollIntervalMs: parsed.TRUTH_POLL_INTERVAL_MS },
     sec: {
       userAgent: parsed.SEC_USER_AGENT,
       pollIntervalMs: parsed.SEC_POLL_INTERVAL_MS,

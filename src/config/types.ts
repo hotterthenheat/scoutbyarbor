@@ -13,7 +13,7 @@ export interface SourceConfigEntry {
   name: string;
   handle?: string | null;
   url?: string | null;
-  sourceType: 'x' | 'rss' | 'edgar' | 'manual' | 'finnhub';
+  sourceType: 'x' | 'rss' | 'edgar' | 'manual' | 'finnhub' | 'truthsocial';
   category: Category | 'MIXED';
   priority: number;
   enabled: boolean;
@@ -147,6 +147,13 @@ export interface ScoutEnv {
    */
   finnhub: {
     apiKey: string;
+    pollIntervalMs: number;
+  };
+  /**
+   * Truth Social's public Mastodon-compatible API. No credential of any kind —
+   * the account and status endpoints answer anonymous reads.
+   */
+  truthSocial: {
     pollIntervalMs: number;
   };
   sec: {
