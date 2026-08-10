@@ -134,6 +134,38 @@ so a false positive is diagnosable from `#scout-raw` rather than a mystery.
 
 ---
 
+## No API keys required
+
+Scout's three production ingestion paths need no paid API and no credential
+beyond the two webhook tokens:
+
+```
+X webhooks ───────┐
+Discord forwarder ─┼──→ SCOUT ──→ normalize → dedupe → classify → score
+RSS (public) ─────┘                        → attribute → route → Arbor
+```
+
+`X_BEARER_TOKEN` is optional and **absent by default**. With it unset Scout does
+not register the X polling adapter at all: no failed polls, no health noise, no
+cost. Boot reports it plainly:
+
+```
+X API: NOT CONFIGURED (no polling; X arrives by webhook/relay)
+ingestion started  adapters=["rss","edgar","manual"]
+```
+
+The X accounts in `config/sources.yaml` stay **enabled** even though nothing
+polls them. They are not dead weight — they carry the `qualityScore`,
+`noiseScore` and `org` the scorer and the provenance layer read whenever one of
+those accounts reaches Scout through the webhook or the Discord relay. Being
+unpollable and being unused are different things.
+
+Verified with every API variable absent: boots with 0 errors, X webhook accepts,
+Discord webhook accepts, the same story from both collapses to one alert, and
+routing reaches the correct destination channels.
+
+---
+
 ## Discord as an intelligence source
 
 A second ingestion source alongside the X webhook, feeding the **same** pipeline

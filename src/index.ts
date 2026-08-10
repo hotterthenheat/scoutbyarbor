@@ -459,8 +459,8 @@ export async function main(): Promise<void> {
   // An absent X credential is a normal configuration, not a fault.
   log.info(
     cfg.x.bearerToken
-      ? 'X API: CONFIGURED (fallback resolver) — URL/RELAY INGESTION: ENABLED'
-      : 'X API: NOT CONFIGURED — URL/RELAY INGESTION: ENABLED',
+      ? 'X API: CONFIGURED (polling + fallback resolver) — URL/RELAY INGESTION: ENABLED'
+      : 'X API: NOT CONFIGURED (no polling; X arrives by webhook/relay) — URL/RELAY INGESTION: ENABLED',
   );
 
   let urlWorkerRef: ReturnType<typeof createUrlWorker> | null = null;
@@ -597,16 +597,36 @@ export async function main(): Promise<void> {
 
   // ── Polling ingestion (RSS / EDGAR / X timelines) ─────────────────────────
   const manual = createManualAdapter();
+
+  // The X polling adapter is registered ONLY when a credential exists.
+  //
+  // Without one it reports every X source as a failed poll on every tick —
+  // correct when a token was expected and is missing, and wrong here, where its
+  // absence is the architecture. Twenty-odd accounts on a 90s interval would
+  // otherwise emit ~20,000 warning lines a day and eventually drive every X
+  // source to BROKEN in the health monitor, burying a real feed outage in noise
+  // about feeds nobody intended to poll.
+  //
+  // The source rows stay enabled and are NOT wasted: they carry the quality,
+  // noise and org values the scorer and the provenance layer read when the same
+  // account reaches Scout through the webhook or the Discord relay. Being
+  // unpollable and being unused are different things.
+  const xPollingEnabled = Boolean(cfg.x.bearerToken);
+
   const ingest = createIngestManager({
     db,
     adapters: [
       createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 15_000, logger: log.child('rss') }),
       createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 15_000, logger: log.child('edgar') }),
-      createTwitterAdapter({
-        bearerToken: cfg.x.bearerToken,
-        requestBudgetPerWindow: cfg.x.requestBudgetPerWindow,
-        logger: log.child('x'),
-      }),
+      ...(xPollingEnabled
+        ? [
+            createTwitterAdapter({
+              bearerToken: cfg.x.bearerToken,
+              requestBudgetPerWindow: cfg.x.requestBudgetPerWindow,
+              logger: log.child('x'),
+            }),
+          ]
+        : []),
       manual,
     ],
     logger: log.child('ingest'),
