@@ -63,6 +63,14 @@ export interface NewsEventRepo {
   setStatus(id: string, status: EventStatus, reason: RejectionReason | null): void;
   setDiscordMessageId(id: string, messageId: string): void;
   countsByStatus(sinceIso: string): Record<string, number>;
+  /**
+   * Why events were dropped, by reason.
+   *
+   * A tight freshness window makes the wire quiet on purpose, and "quiet
+   * because everything arrived four minutes late" is indistinguishable from
+   * "quiet because ingestion broke" unless the reasons are counted.
+   */
+  countsByRejection(sinceIso: string): Record<string, number>;
 }
 
 const DEDUPE_LIMIT = 500;
@@ -401,6 +409,21 @@ export function createNewsEventRepo(db: SqliteDatabase): NewsEventRepo {
         .all(sinceIso);
       const out: Record<string, number> = {};
       for (const row of rows) out[row.status] = toNumber(row.n);
+      return out;
+    },
+
+    countsByRejection(sinceIso: string): Record<string, number> {
+      const rows = stmts
+        .get<{ reason: string; n: number }>(`
+          SELECT rejection_reason AS reason, COUNT(*) AS n
+            FROM news_events
+           WHERE timestamp >= ? AND rejection_reason IS NOT NULL
+           GROUP BY rejection_reason
+           ORDER BY n DESC
+        `)
+        .all(sinceIso);
+      const out: Record<string, number> = {};
+      for (const row of rows) out[row.reason] = toNumber(row.n);
       return out;
     },
   };

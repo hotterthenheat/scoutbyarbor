@@ -149,6 +149,20 @@ export async function main(): Promise<void> {
     db.sources.upsertMany(discordSources.channels.map((c) => toDiscordSource(c, now)));
   }
 
+  // Config is the source of truth in BOTH directions. The upsert above only
+  // writes rows that are in config, so a source deleted from sources.yaml used
+  // to survive in the database — still enabled, still polled, still filling the
+  // broken-feeds table with failures for an account nobody had configured for
+  // weeks. Retiring is per-boot and reversible: put the id back in config and
+  // the next boot re-enables it.
+  const retired = db.sources.retireMissing([
+    ...sourcesFile.sources.map((s) => s.id),
+    ...discordSources.channels.map((c) => toDiscordSource(c, now).id),
+  ]);
+  if (retired.length > 0) {
+    log.warn('retired sources no longer present in config', { retired });
+  }
+
   const taxonomy = loadTaxonomy();
   const securities = loadSecurityMaster();
   db.securities.upsertMany(securities);

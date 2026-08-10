@@ -112,6 +112,15 @@ export function dashboardHtml(): string {
   </section>
 
   <section>
+    <h2>Why events were dropped</h2>
+    <p class="hint">A quiet wire is not the same as a broken one. Scout publishes
+      only news whose own publication time is within the freshness window, so
+      slow aggregators are declined on purpose &mdash; this is where that shows
+      up, alongside duplicates and the noise filters.</p>
+    <div id="rejections"></div>
+  </section>
+
+  <section>
     <h2>Ingestion routes</h2>
     <div id="routes"></div>
   </section>
@@ -235,6 +244,31 @@ function render(m) {
           '<td class="dim">' + esc(skipped) + '</td>' +
           '<td class="dim">' + esc(whySkipped(name, skipped)) + '</td></tr>';
       }).join('') + '</table>';
+
+  // Plain-language gloss for the reasons an operator is most likely to ask
+  // about. Anything unmapped still shows, under its own name.
+  const REJECTION_MEANING = {
+    NOISE_OLD_NEWS: 'published too long ago to be breaking — the freshness window',
+    NO_IDENTIFIED_SUBJECT: 'a single-name story naming no company Scout could identify',
+    NO_CATEGORY: 'not market news under any category',
+    BELOW_THRESHOLD: 'classified, but scored under the publish threshold',
+    FILING_IMMATERIAL: 'an SEC filing whose form and items are not material',
+    DUPLICATE_EVENT: 'the same story, already published from another source',
+    DUPLICATE_POST_ID: 'the identical post, seen twice',
+    DUPLICATE_URL: 'the same link, already seen',
+    DUPLICATE_TEXT: 'the same text, already seen',
+  };
+
+  const rej = (m.events && m.events.byRejection) || {};
+  const rejNames = Object.keys(rej).sort((a, b) => (rej[b] || 0) - (rej[a] || 0));
+  $('rejections').innerHTML = rejNames.length === 0
+    ? '<div class="empty">Nothing dropped in this window.</div>'
+    : '<table><tr><th>Reason</th><th>Count</th><th>What it means</th></tr>' +
+      rejNames.map((name) =>
+        '<tr><td>' + esc(name) + '</td>' +
+        '<td class="dim">' + esc(rej[name] || 0) + '</td>' +
+        '<td class="dim">' + esc(REJECTION_MEANING[name] || '') + '</td></tr>').join('') +
+      '</table>';
 
   const d = m.discord || {}, w = m.webhook || {};
   const route = (name, on, detail) =>

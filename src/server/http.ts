@@ -437,6 +437,10 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           // source that stopped sending timestamps and news that aged out
           // before delivery are different faults with different fixes.
           staleTotal: summary.events_stale_total ?? 0,
+          // Why events were dropped. A two-minute freshness window makes the
+          // wire quiet by design, and without the reasons that is
+          // indistinguishable from ingestion being broken.
+          byRejection: db.newsEvents.countsByRejection(since),
           unknownPublicationTimeTotal: summary.events_unknown_time_total ?? 0,
         },
         deliveries,

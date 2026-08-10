@@ -27,6 +27,19 @@ export interface SourceRepo {
   byId(id: string): Source | null;
   setVerified(id: string, verified: boolean): void;
   setEnabled(id: string, enabled: boolean): void;
+  /**
+   * Disables every enabled source whose id is absent from `knownIds`, and
+   * returns the ids retired.
+   *
+   * `upsertMany` only writes rows that ARE in config, so deleting a source from
+   * `sources.yaml` used to leave it in the database, still enabled, polled
+   * forever. A removed Truth Social account went on failing 147 times against
+   * an endpoint nobody had asked for since the config was changed.
+   *
+   * Disabled rather than deleted: events reference their source, and the point
+   * is to stop polling, not to erase what the source once published.
+   */
+  retireMissing(knownIds: Iterable<string>): string[];
   getStats(id: string): SourceStats | null;
   upsertStats(stats: SourceStats): void;
   /** Increment one counter, creating the stats row if this is its first post. */
@@ -264,6 +277,24 @@ export function createSourceRepo(db: SqliteDatabase): SourceRepo {
       stmts
         .get('UPDATE sources SET enabled = ?, updated_at = ? WHERE id = ?')
         .run(toSqliteBool(enabled), nowIso(), id);
+    },
+
+    retireMissing(knownIds: Iterable<string>): string[] {
+      const known = new Set(knownIds);
+      const live = stmts
+        .get<{ id: string }>('SELECT id FROM sources WHERE enabled = 1')
+        .all()
+        .map((row) => row.id);
+
+      const retired = live.filter((id) => !known.has(id));
+      if (retired.length === 0) return [];
+
+      const at = nowIso();
+      const update = stmts.get('UPDATE sources SET enabled = 0, updated_at = ? WHERE id = ?');
+      db.transaction(() => {
+        for (const id of retired) update.run(at, id);
+      })();
+      return retired;
     },
 
     getStats(id: string): SourceStats | null {
