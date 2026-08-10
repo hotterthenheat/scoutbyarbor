@@ -20,6 +20,8 @@ import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
 import { createDiscordIntelWorker } from './ingest/discordIntel/worker.js';
 import { describeRelay } from './ingest/discordIntel/relay.js';
+import { flattenMessage } from './ingest/discordIntel/normalize.js';
+import { detectPostUrls } from './ingest/urls.js';
 import type { DiscordMessageEnvelope } from './ingest/discordIntel/types.js';
 import {
   createUrlWorker,
@@ -614,10 +616,15 @@ export async function main(): Promise<void> {
   // failure exactly, and it is silent — the wire looks healthy while its input
   // is open. Not fatal, because a locked-down private channel is a legitimate
   // setup, but it must never be something you discover afterwards.
+  // Intake channels count here too: a post URL pasted into one is routed to
+  // the relay path, so the account allowlist governs it exactly as it governs a
+  // dedicated relay channel. Leaving them out would make the warning silent for
+  // the very setup most likely to be open.
   const watchedChannelCount =
     cfg.discord.newsSourceChannelIds.length +
     cfg.discord.truthSocialChannelIds.length +
-    cfg.discord.adminInputChannelIds.length;
+    cfg.discord.adminInputChannelIds.length +
+    discordSources.channels.filter((c) => c.enabled && c.intake).length;
 
   if (watchedChannelCount > 0 && cfg.ingestion.allowedXAccounts.length === 0) {
     const warning =
@@ -648,8 +655,44 @@ export async function main(): Promise<void> {
     // Durably queue and return. The gateway callback must not wait for
     // classification, Discord or Sprout — exactly as the webhook does not.
     onIntake: (envelope) => {
+      const intakeLog = log.child('intake');
+
+      // An X post pasted or forwarded into the intake channel is an X POST,
+      // not a Discord message that happens to contain a link.
+      //
+      // Routing it to the relay path gives it the identity it deserves:
+      // `x:<postId>` rather than `discord:<messageId>`, so the same post
+      // arriving later by webhook collapses into one event instead of two;
+      // provenance that names the account rather than the channel; and the
+      // relay resolver, which reads the text Discord expanded alongside the
+      // link and therefore needs no X credential at all.
+      //
+      // This is the free X route. It was already built and the intake channel
+      // simply never reached it.
+      const text = flattenMessage(envelope);
+      const urls = detectPostUrls(text);
+
+      if (urls.length > 0) {
+        for (const url of urls) {
+          urlWorker.submit({
+            url,
+            sourceChannelId: envelope.channelId,
+            sourceKind: 'news',
+            receivedAt: envelope.receivedAt,
+            // The whole message, so the resolver can read the post's text out
+            // of whatever Discord expanded into an embed.
+            rawMessage: text,
+          });
+        }
+        intakeLog.info('intake message carried post url(s); routed to the relay path', {
+          messageId: envelope.messageId,
+          urls: urls.length,
+        });
+        return;
+      }
+
       const result = acceptDiscordEnvelope(envelope);
-      log.child('intake').debug('intake message', {
+      intakeLog.info('intake message', {
         messageId: envelope.messageId,
         channelId: envelope.channelId,
         relayMethod: envelope.relay?.method,
