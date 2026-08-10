@@ -863,6 +863,9 @@ export async function main(): Promise<void> {
     discordIntel: cfg.webhook.discordIntelToken
       ? { token: cfg.webhook.discordIntelToken, accept: acceptDiscordEnvelope }
       : undefined,
+    // Reported in /metrics so the Discord source's liveness does not look like
+    // it depends on the webhook, which it does not.
+    intakeChannelIds,
     webhook: cfg.webhook.token
       ? {
           token: cfg.webhook.token,

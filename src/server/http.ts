@@ -89,6 +89,12 @@ export interface ServerDeps {
   admin?: AdminConfig;
   /** Omit to leave POST /webhook/discord disabled. */
   discordIntel?: DiscordIntelConfig;
+  /**
+   * Channels Scout's own bot reads over the gateway. Reported in /metrics only
+   * — the gateway path does not touch the HTTP server — so that "is my Discord
+   * source live" has an answer that does not depend on the webhook.
+   */
+  intakeChannelIds?: string[];
 }
 
 /** Bodies larger than this are refused before being buffered. */
@@ -374,7 +380,13 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           samples: summary['sprout_delivery_ms.count'] ?? 0,
         },
         discord: {
-          configured: Boolean(deps.discordIntel?.token),
+          // Two independent ways in, and reporting only the webhook read as
+          // "Discord is not configured" on a deployment whose intake channel
+          // was running fine. Both are named, so the answer to "is my Discord
+          // source live" is actually in here.
+          webhookConfigured: Boolean(deps.discordIntel?.token),
+          intakeChannels: deps.intakeChannelIds?.length ?? 0,
+          configured: Boolean(deps.discordIntel?.token) || (deps.intakeChannelIds?.length ?? 0) > 0,
           requestsTotal: summary.discord_requests_total ?? 0,
           rejectedTotal: summary.discord_rejected_total ?? 0,
           filteredTotal: summary.discord_filtered_total ?? 0,
@@ -401,9 +413,25 @@ export function createServer_(deps: ServerDeps): ScoutServer {
           byState: feedHealth,
           // A named list of anything not ACTIVE, because "which feed is down"
           // is the question an operator actually has.
+          // Named, WITH the reason. "rss:bea-news is DISCONNECTED" tells an
+          // operator which feed is down and nothing about why, which turns a
+          // ten-second fix into a log-diving session — and the reason was
+          // already stored, just never surfaced. A 404 means the URL moved; a
+          // 403 usually means the User-Agent; a timeout means neither.
+          //
+          // These are Scout's own fetch errors against public feeds. They carry
+          // no credential and no request headers, so /metrics stays safe to
+          // leave public.
           degraded: healthRows
             .filter((r) => r.state !== 'ACTIVE')
-            .map((r) => ({ sourceId: r.sourceId, state: r.state, lastItemAt: r.lastItemAt })),
+            .map((r) => ({
+              sourceId: r.sourceId,
+              state: r.state,
+              lastItemAt: r.lastItemAt,
+              lastError: r.lastError,
+              lastErrorAt: r.lastErrorAt,
+              consecutiveFailures: r.consecutiveFailures,
+            })),
         },
       });
     } catch (err) {

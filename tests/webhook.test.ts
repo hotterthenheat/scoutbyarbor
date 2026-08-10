@@ -578,6 +578,35 @@ describe('burst', () => {
 });
 
 describe('metrics and health', () => {
+  /**
+   * "rss:bea-news is DISCONNECTED" names the feed and says nothing about why,
+   * which turns a ten-second fix into a log-diving session. The reason was
+   * already recorded on every failed poll — it simply never reached /metrics.
+   */
+  it('reports WHY a source is degraded, not only that it is', async () => {
+    db.health.upsert({
+      sourceId: 'rss:bea-news',
+      state: 'DISCONNECTED',
+      lastSuccessAt: null,
+      lastItemAt: null,
+      lastErrorAt: new Date().toISOString(),
+      lastError: 'HTTP 404 fetching https://www.bea.gov/rss.xml',
+      consecutiveFailures: 4,
+      expectedIntervalMs: 900_000,
+      updatedAt: new Date().toISOString(),
+    });
+
+    const body = (await (await fetch(`${baseUrl}/metrics`)).json()) as {
+      sources: { degraded: Array<Record<string, unknown>> };
+    };
+
+    const entry = body.sources.degraded.find((d) => d.sourceId === 'rss:bea-news');
+    expect(entry, 'the degraded feed was not listed').toBeTruthy();
+    expect(entry?.lastError).toBe('HTTP 404 fetching https://www.bea.gov/rss.xml');
+    expect(entry?.consecutiveFailures).toBe(4);
+    expect(entry?.state).toBe('DISCONNECTED');
+  });
+
   it('counts requests, rejections, accepts and duplicates', async () => {
     await post(X_EVENT);
     await post(X_EVENT);
