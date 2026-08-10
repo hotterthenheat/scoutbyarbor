@@ -46,6 +46,18 @@ services:
       sizeGB: 1
 
     envVars:
+      # Node 22 (LTS), and it is not a preference.
+      #
+      # better-sqlite3 is a native addon. It ships prebuilt binaries for the
+      # Node versions it supports and compiles from source for anything else —
+      # and that compile FAILS on newer V8, which has removed APIs the addon
+      # still uses (`PropertyCallbackInfo::This`). The build dies in node-gyp
+      # with a wall of C++ errors that says nothing about Node versions.
+      #
+      # Left unpinned, Render resolves `engines.node` to the newest release it
+      # has, which is how this breaks. `.node-version` and `.nvmrc` in the repo
+      # root pin it too, so a service created through the dashboard — which
+      # never reads this file — gets the same answer.
       - key: NODE_VERSION
         value: "22"
       - key: DATABASE_PATH

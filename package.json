@@ -5,7 +5,7 @@
   "description": "Scout by Arbor Capital - real-time financial news intelligence for Discord",
   "type": "module",
   "engines": {
-    "node": ">=20.10.0"
+    "node": ">=20.10.0 <23"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
