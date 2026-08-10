@@ -18,45 +18,20 @@
 # Sprout stays a separate service. Sprout going down must not take Scout's news
 # ingestion down with it.
 #
-# ─────────────────────────────────────────────────────────────────────────────
-# READ THIS BEFORE TRUSTING THIS DEPLOYMENT WITH TRADING ALERTS
+# Scout is a always-on worker with an HTTP health surface, not a request/response
+# service — it holds gateway connections and timers, so it must not be deployed
+# anywhere that sleeps on idle. On Render that means a paid instance type: the
+# free tier spins down after inactivity, and a wire that is asleep at 3am is
+# exactly the failure this design exists to avoid.
 #
-# This blueprint runs Scout on the FREE instance type (0.1 CPU / 512 MB), by
-# explicit choice. Two consequences follow from that, and neither is a bug to
-# be fixed later — they are what the free tier is:
-#
-#   1. IT SLEEPS. Free instances spin down after inactivity. Scout is an
-#      always-on worker holding two Discord gateway connections and several
-#      timers; a wire that is asleep at 3am is precisely the failure this whole
-#      design exists to prevent. Breaking news arriving during a spin-down is
-#      not delayed, it is missed.
-#
-#   2. IT FORGETS. Free instances cannot mount a persistent disk, so the SQLite
-#      database sits on ephemeral storage. Every restart and every deploy wipes
-#      it: the processed-post set that makes dedupe work, the delivery log the
-#      Sprout replay reads, and the calendar-fired keys that stop a reminder
-#      firing twice. Scout will repost recent history on boot, and
-#      `GET /metrics` will report `storage.boots: 1` and
-#      `durability: UNPROVEN` forever. The two-deploy persistence check cannot
-#      pass on this configuration, by construction.
-#
-# Scout says both of these out loud on every boot, in the log stream and in
-# #scout-system. Those warnings are correct here and must not be silenced.
-#
-# To get an always-on Scout with durable storage: set `plan: starter`
-# (0.5 CPU / 512 MB), restore the `disk:` block with mountPath /var/data, and
-# set DATABASE_PATH back to /var/data/scout.db.
-# ─────────────────────────────────────────────────────────────────────────────
+# The database lives on a persistent disk. Without one, every deploy would wipe
+# the processed-post set and Scout would repost recent history on boot.
 
 services:
   - type: web
     name: scout
     runtime: node
-    # 0.1 CPU / 512 MB. On Render 0.1 CPU is ONLY available as the free
-    # instance type, so this is that — chosen deliberately, with the costs
-    # below accepted. Revert with `plan: starter` (0.5 CPU) and restore the
-    # disk block to get an always-on Scout with durable storage back.
-    plan: free
+    plan: starter # NOT free — free instances sleep, and Scout must not
     region: oregon
     # Must name a branch that actually exists on the remote, or the blueprint
     # fails before it builds. This repo has no `main` yet.
@@ -65,17 +40,16 @@ services:
     startCommand: npm start
     healthCheckPath: /health
 
-    # NO DISK. Free instances cannot mount one, so there is nowhere durable to
-    # put the database. See the header for what that costs.
+    disk:
+      name: scout-data
+      mountPath: /var/data
+      sizeGB: 1
 
     envVars:
       - key: NODE_VERSION
         value: "22"
-      # Ephemeral, because there is no disk to point at. /tmp exists, so Scout
-      # boots; it warns on every start that this storage does not survive a
-      # restart, which is accurate and should not be silenced.
       - key: DATABASE_PATH
-        value: /tmp/scout.db
+        value: /var/data/scout.db
       - key: PORT
         value: "10000"
       - key: LOG_LEVEL
@@ -173,7 +147,7 @@ services:
 #  - type: cron
 #    name: scout-sprout-replay
 #    runtime: node
-#    plan: starter   # cron jobs are a paid instance type on Render
+#    plan: starter
 #    schedule: "*/5 * * * *"
 #    buildCommand: npm ci
 #    startCommand: >-

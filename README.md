@@ -617,24 +617,12 @@ Every pass logs the six counts an operator needs:
 
 ## Deployment
 
-`render.yaml` is a working blueprint. As shipped it targets the **free instance
-type** (0.1 CPU / 512 MB) by explicit choice, and you should understand what
-that costs before pointing trading channels at it:
+`render.yaml` is a working blueprint. Two things it will not let you get wrong:
 
-- **Free instances sleep on idle.** Scout is an always-on worker holding two
-  Discord gateway connections and several timers. News breaking during a
-  spin-down is not delayed, it is missed.
-- **Free instances cannot mount a persistent disk**, so the database sits on
-  ephemeral storage and every restart wipes the processed-post set, the
-  delivery log and the calendar-fired keys. `storage.durability` will read
-  `UNPROVEN` forever, and the two-deploy check below cannot pass.
-
-Scout says both of these out loud on every boot and in `#scout-system`.
-
-**For a deployment you intend to trade on**, set `plan: starter`
-(0.5 CPU / 512 MB), restore the `disk:` block with `mountPath: /var/data`, and
-set `DATABASE_PATH=/var/data/scout.db`. The blueprint carries the exact values
-in a comment.
+- **Not the free instance type.** Free instances sleep on idle, and a wire that
+  is asleep at 3am is precisely the failure this design exists to prevent.
+- **A persistent disk for the database.** Without one, every deploy would wipe
+  the processed-post set and Scout would repost recent history on boot.
 
 Set `DATABASE_PATH` to a path on the mounted disk, point `healthCheckPath` at
 `/health`, and put every credential in the dashboard rather than in the file.
@@ -721,9 +709,6 @@ Order matters — each step depends on the one before it.
    `curl -s https://<scout-domain>/metrics | jq .storage`. `boots` must read 2 or
    more and `durability` must read `PERSISTENT`. Still `1`? The disk is not
    attached, and every step below this one is built on sand — fix it first.
-   *(On the free instance type this check cannot pass, because free instances
-   have no disk. That is expected there, and it is also why the free tier is
-   not a configuration to trade on.)*
 3. Enable the **Message Content** intent for the bot in the Discord developer
    portal. Without it the relay path only sees links Discord expanded into an
    embed. The webhook path does not need it.
