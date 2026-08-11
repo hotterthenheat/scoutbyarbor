@@ -180,8 +180,6 @@ export function assessMarketImpact(input: MarketImpactInput): MarketImpactVerdic
     );
     if (majorPowers.length > 0) {
       setRelevance('broad', `geopolitical involving ${majorPowers.join('/')}`);
-    } else {
-      setRelevance('sector', 'geopolitical, no major power named');
     }
   }
 

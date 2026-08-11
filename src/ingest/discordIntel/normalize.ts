@@ -129,7 +129,7 @@ function cleanText(text: string): string {
   }
 
   // 2. Remove Discord timestamp tags and time prefixes, e.g. <T:1786435278:T> - or 11:01 AM -
-  cleaned = cleaned.replace(/<t:\d+:[a-zA-Z]>\s*[-—–:]?\s*/gi, '');
+  cleaned = cleaned.replace(/<t:\d+(?::[a-zA-Z])?>\s*[-—–:]?\s*/gi, '');
   cleaned = cleaned.replace(/\b\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-—–:]\s*/gi, '');
 
   // 3. Remove leading/trailing asterisks, hyphens, and whitespace
@@ -173,7 +173,7 @@ export function toRawPost(input: NormalizeInput): RawPost {
     sourceId: channel.sourceId,
     sourcePostId: canonicalDiscordId(envelope.messageId),
     originalUrl: relay?.origin.url ?? discordMessageUrl(envelope),
-    author: byline,
+    author: cleanText(byline),
     text,
     // Orders the pipeline, so it must always be a real timestamp. Falls back to
     // receipt time by design — which is exactly why publishedAt below does not.
