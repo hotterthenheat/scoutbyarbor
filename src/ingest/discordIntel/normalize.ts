@@ -134,7 +134,13 @@ function cleanText(text: string): string {
   cleaned = cleaned.replace(/<t:\d+(?::[a-zA-Z])?>\s*[-—–:]?\s*/gi, '');
   cleaned = cleaned.replace(/\b\d{1,2}:\d{2}\s*(?:AM|PM)?\s*[-—–:]\s*/gi, '');
 
-  // 3. Remove leading/trailing asterisks, hyphens, and whitespace
+  // 3. Remove Twitter post boilerplate from relayer bots
+  cleaned = cleaned.replace(/Twitter post link:\s*↩\s*(?:\[\s*\(@[a-zA-Z0-9_]+\)\s*\]\(\s*\)\s*)?(?:\[@[a-zA-Z0-9_]+\]\(\s*\)\s*)?/gi, '');
+  
+  // 4. Remove engagement metrics at the end of the relayed message (e.g. **[❤️]( ) 1 71 ** _* *_)
+  cleaned = cleaned.replace(/\*\*\[.*?\]\(\s*\).*?\*\*\s*_\*\s*\*_\s*$/g, '');
+
+  // 5. Remove leading/trailing asterisks, hyphens, and whitespace
   cleaned = cleaned.replace(/^[\s*:-]+|[\s*:-]+$/g, '');
 
   return cleaned.trim();

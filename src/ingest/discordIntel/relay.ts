@@ -184,6 +184,8 @@ const TEXT_HEADERS: Array<{ re: RegExp; author: number; channel: number | null }
   { re: /^\s*\*{2}([^\n*]{1,60})\*{2}\s*[:—-]\s+(?=\S)/, author: 1, channel: null },
   // @DeItaone: headline
   { re: /^\s*(@[A-Za-z0-9_.]{2,60})\s*[:—-]\s+/, author: 1, channel: null },
+  // unusual_whales_crier:** headline
+  { re: /^\s*([A-Za-z0-9_.-]{2,60})\s*:\*{2}\s+(?=\S)/, author: 1, channel: null },
 ];
 
 /**
