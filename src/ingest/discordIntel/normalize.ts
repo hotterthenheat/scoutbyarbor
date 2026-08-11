@@ -127,7 +127,7 @@ export function toRawPost(input: NormalizeInput): RawPost {
   // Custom fallback: extract python bot author from the text body, if present,
   // since the embed approach may not have been used or captured correctly.
   // Using /im to match even if preceded by other lines (e.g., "GEOPOLITICAL ALERT\n")
-  const headerMatch = /^\s*\*{0,2}([a-zA-Z0-9_\s]{1,60})\s*:?\s*\*{0,2}\s*(?:(?:<t:\d+:[a-zA-Z]>|\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-—–:]\s*)?/im.exec(text);
+  const headerMatch = /^\s*\*{0,2}([a-zA-Z0-9_\s]{1,60})\s*(?::\s*\*{0,2}\s*(?:(?:<t:\d+:[a-zA-Z]>|\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-—–:]\s*)?|\s*\*{0,2}\s*(?:<t:\d+:[a-zA-Z]>|\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-—–:]\s*)/im.exec(text);
   if (headerMatch && headerMatch[1]) {
     const extractedAuthor = headerMatch[1].trim();
     // Remove ONLY the matched header prefix part from the text, preserving any preceding lines
