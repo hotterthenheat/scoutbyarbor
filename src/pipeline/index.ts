@@ -206,6 +206,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       isEcho: post.isEcho,
       sourceQuality: source.qualityScore,
       filterProfile: source.filterProfile,
+      channelId: (raw.meta?.sourceChannelId as string | undefined) ?? null,
     });
     signals.push(...noise.signals);
 

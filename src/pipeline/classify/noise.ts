@@ -24,6 +24,7 @@ export interface NoiseClassifierInput {
   isEcho: boolean;
   sourceQuality: number;
   filterProfile: 'standard' | 'strict';
+  channelId?: string | null;
 }
 
 export interface NoiseClassifier {
