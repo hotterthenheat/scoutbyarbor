@@ -175,6 +175,25 @@ export function toRawPost(input: NormalizeInput): RawPost {
   // So if it's a relayed message without an explicit origin URL, do not fallback to the discordMessageUrl.
   const originalUrl = relay?.origin.url ?? (relayed ? null : discordMessageUrl(envelope));
 
+  const unwantedText = [
+    "Sent via Icarus | Arbor Capital — For information and data display only. Trade at your own risk.",
+    "Sent via Icarus | Arbor Capital — For information and data display only.",
+    "Scout by Arbor Capital",
+    "signal, not noise",
+    "OpenBB Bot",
+    "Owls Clanker",
+    "clanker",
+    "Unusual Whales Crier",
+    "OwlsKeyLevelsBot",
+    "APP —"
+  ];
+
+  for (const unwanted of unwantedText) {
+    const regex = new RegExp(unwanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    text = text.replace(regex, '');
+  }
+  text = text.trim();
+
   return {
     sourceId: channel.sourceId,
     sourcePostId: canonicalDiscordId(envelope.messageId),
