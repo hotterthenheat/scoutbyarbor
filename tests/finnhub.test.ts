@@ -64,6 +64,7 @@ function adapterReturning(body: unknown, status = 200) {
         ok: status >= 200 && status < 300,
         status,
         json: async () => body,
+        text: async () => '',
       } as Response;
     }) as unknown as typeof fetch,
   });

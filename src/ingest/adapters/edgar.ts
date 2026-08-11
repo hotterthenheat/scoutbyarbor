@@ -48,10 +48,14 @@ export function createEdgarAdapter(deps: EdgarAdapterDeps): IngestAdapter {
   }
 
   /** Fetches and reads the body under a single deadline. */
-  async function requestText(url: string): Promise<{ ok: boolean; status: number; statusText: string; text: string }> {
+  async function requestText(url: string) {
     const response = await request(url);
+    if (!response.ok) {
+      await response.text().catch(() => {}); // Consume body to free socket
+      return { ok: false, status: response.status, statusText: response.statusText, text: '' };
+    }
     const text = await response.text();
-    return { ok: response.ok, status: response.status, statusText: response.statusText, text };
+    return { ok: true, status: response.status, statusText: response.statusText, text };
   }
 
   async function request(url: string): Promise<Response> {

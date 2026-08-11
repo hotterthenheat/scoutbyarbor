@@ -106,17 +106,20 @@ export function createFinnhubAdapter(deps: FinnhubAdapterDeps): IngestAdapter {
         headers: { accept: 'application/json' },
       });
 
-      if (res.status === 401 || res.status === 403) {
-        // A bad key is not a transient failure and retrying will not fix it.
-        // The message says so plainly rather than surfacing as "poll failed".
-        throw new Error(
-          `Finnhub rejected the API key (HTTP ${res.status}). Check FINNHUB_API_KEY.`,
-        );
+      if (!res.ok) {
+        await res.text().catch(() => {}); // Consume body to free socket
+        if (res.status === 401 || res.status === 403) {
+          // A bad key is not a transient failure and retrying will not fix it.
+          // The message says so plainly rather than surfacing as "poll failed".
+          throw new Error(
+            `Finnhub rejected the API key (HTTP ${res.status}). Check FINNHUB_API_KEY.`,
+          );
+        }
+        if (res.status === 429) {
+          throw new Error('Finnhub rate limit reached (HTTP 429); backing off until the next poll');
+        }
+        throw new Error(`HTTP ${res.status} from Finnhub /news`);
       }
-      if (res.status === 429) {
-        throw new Error('Finnhub rate limit reached (HTTP 429); backing off until the next poll');
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status} from Finnhub /news`);
 
       const body: unknown = await res.json();
       if (!Array.isArray(body)) throw new Error('Finnhub /news did not return an array');
