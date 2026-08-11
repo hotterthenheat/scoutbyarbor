@@ -44,6 +44,35 @@ broke seconds ago.
     pip install -U discord.py
     python relay.py
 
+── PER-SOURCE ROUTING AND FILTERING ─────────────────────────────────────────
+
+One source forwarded wholesale, another filtered down to a single bot and a
+single keyword:
+
+    export SCOUT_RELAY_ROUTES='[
+      {"source": 1081082844807434292, "dest": 1512892264752349305},
+      {"source": 1337165306858049546, "dest": 1512892264752349305,
+       "author": "owls capital clanker", "contains": "NEWS ALERT"}
+    ]'
+
+`author` and `contains` are case-insensitive substring matches, and `contains`
+searches the embeds as well as the content — a headline bot puts "NEWS ALERT"
+in an embed title as often as in message.content.
+
+── THE LIMIT WORTH KNOWING BEFORE YOU START ─────────────────────────────────
+
+A bot reads channels it has been INVITED to and no others. If a source server
+has not added this bot, nothing in this file can reach it, and no amount of
+code changes that — the fix is the server owner adding the bot, or someone in
+that server forwarding into a channel you control.
+
+The alternative people reach for is a user token with a browser User-Agent,
+driving a personal account through the private client API. That is account
+termination under Discord's terms, and the account it terminates is the one
+holding your servers, your intake channel and Scout's own bot — so the failure
+mode is not "the relay stops", it is "everything stops at once, permanently".
+This file does not do that, and there is no flag to make it.
+
 If the source channel is an ANNOUNCEMENT channel, do not run this at all —
 Discord's own "Follow" mirrors it into your server automatically, with better
 attribution and nothing to keep running.
@@ -51,6 +80,7 @@ attribution and nothing to keep running.
 
 import os
 import sys
+import json
 import logging
 
 import discord
@@ -60,6 +90,74 @@ log = logging.getLogger("scout-relay")
 # ── Configuration ────────────────────────────────────────────────────────────
 
 TOKEN = os.environ.get("SCOUT_RELAY_TOKEN", "")
+
+# Per-source routing, when one target and no filtering is not enough.
+#
+#   SCOUT_RELAY_ROUTES='[
+#     {"source": 1081082844807434292, "dest": 1512892264752349305},
+#     {"source": 1337165306858049546, "dest": 1512892264752349305,
+#      "author": "owls capital clanker", "contains": "NEWS ALERT"}
+#   ]'
+#
+# `author` matches the display name case-insensitively as a substring, and
+# `contains` requires the text somewhere in the message OR its embeds — a
+# headline bot puts "NEWS ALERT" in an embed title as often as in the content,
+# and matching only message.content silently forwards nothing.
+#
+# Omit both and every message in that source is forwarded. Omit the variable
+# entirely and SCOUT_RELAY_SOURCE_CHANNELS/SCOUT_RELAY_TARGET_CHANNEL apply
+# unchanged.
+ROUTES_JSON = os.environ.get("SCOUT_RELAY_ROUTES", "").strip()
+
+
+class Route:
+    __slots__ = ("source", "dest", "author", "contains")
+
+    def __init__(self, source: int, dest: int, author: str | None, contains: str | None):
+        self.source = source
+        self.dest = dest
+        self.author = (author or "").strip().lower() or None
+        self.contains = (contains or "").strip().lower() or None
+
+    def accepts(self, author_name: str, haystack: str) -> bool:
+        if self.author and self.author not in author_name.lower():
+            return False
+        if self.contains and self.contains not in haystack.lower():
+            return False
+        return True
+
+    def describe(self) -> str:
+        bits = []
+        if self.author:
+            bits.append(f'author~"{self.author}"')
+        if self.contains:
+            bits.append(f'contains "{self.contains}"')
+        return f"{self.source} → {self.dest}" + (f" [{', '.join(bits)}]" if bits else "")
+
+
+def _parse_routes(raw: str) -> list[Route]:
+    try:
+        entries = json.loads(raw)
+    except json.JSONDecodeError as err:
+        sys.exit(f"SCOUT_RELAY_ROUTES is not valid JSON: {err}")
+    if not isinstance(entries, list):
+        sys.exit("SCOUT_RELAY_ROUTES must be a JSON array of route objects")
+
+    routes: list[Route] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            sys.exit(f"SCOUT_RELAY_ROUTES entry is not an object: {entry!r}")
+        try:
+            source = int(entry["source"])
+            dest = int(entry["dest"])
+        except (KeyError, TypeError, ValueError):
+            sys.exit(f'SCOUT_RELAY_ROUTES entry needs numeric "source" and "dest": {entry!r}')
+        # A source that is also a destination relays its own output back into
+        # itself, forever.
+        if source == dest:
+            sys.exit(f"SCOUT_RELAY_ROUTES route {source} forwards a channel into itself")
+        routes.append(Route(source, dest, entry.get("author"), entry.get("contains")))
+    return routes
 
 
 def _channel_ids(name: str) -> list[int]:
@@ -77,6 +175,30 @@ def _channel_ids(name: str) -> list[int]:
 
 SOURCE_CHANNEL_IDS = set(_channel_ids("SCOUT_RELAY_SOURCE_CHANNELS"))
 TARGET_CHANNEL_IDS = _channel_ids("SCOUT_RELAY_TARGET_CHANNEL")
+
+# Explicit routes win. Otherwise every source fans out to every target, which
+# is the original behaviour.
+if ROUTES_JSON:
+    ROUTES = _parse_routes(ROUTES_JSON)
+else:
+    ROUTES = [
+        Route(source, target, None, None)
+        for source in SOURCE_CHANNEL_IDS
+        for target in TARGET_CHANNEL_IDS
+    ]
+
+ROUTES_BY_SOURCE: dict[int, list[Route]] = {}
+for _route in ROUTES:
+    ROUTES_BY_SOURCE.setdefault(_route.source, []).append(_route)
+
+# A channel that is both a source and a destination relays its own output.
+_destinations = {r.dest for r in ROUTES}
+for _source in ROUTES_BY_SOURCE:
+    if _source in _destinations:
+        sys.exit(
+            f"channel {_source} is configured as both a source and a destination — "
+            "the relay would forward its own messages back into itself"
+        )
 
 # Discord rejects a message with more than 10 embeds. One is ours.
 MAX_FORWARDED_EMBEDS = 9
@@ -113,6 +235,21 @@ def _truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"
+
+
+def _searchable_text(message: discord.Message) -> str:
+    """Content plus every embed field a filter might reasonably match on."""
+    parts = [message.content or ""]
+    for embed in message.embeds:
+        parts.extend(
+            str(x) for x in (embed.title, embed.description, getattr(embed.author, "name", None))
+            if x
+        )
+        for field in embed.fields:
+            parts.extend(str(x) for x in (field.name, field.value) if x)
+        if embed.footer and embed.footer.text:
+            parts.append(str(embed.footer.text))
+    return "\n".join(parts)
 
 
 def _origin_footer(message: discord.Message) -> str:
@@ -157,11 +294,22 @@ async def on_message(message: discord.Message) -> None:
     if message.author == client.user:
         return
 
-    if message.channel.id not in SOURCE_CHANNEL_IDS:
+    routes = ROUTES_BY_SOURCE.get(message.channel.id)
+    if not routes:
         return
 
     # Bots are NOT skipped: a market-alert bot is usually the thing worth
     # relaying. Only this relay's own messages are excluded, above.
+
+    # Filters read the embeds as well as the content. A headline bot puts
+    # "NEWS ALERT" in an embed title at least as often as in message.content,
+    # and matching content alone forwards nothing while looking configured.
+    author_name = message.author.display_name
+    haystack = _searchable_text(message)
+
+    matched = [r for r in routes if r.accepts(author_name, haystack)]
+    if not matched:
+        return
 
     embeds = [_attribution_embed(message)]
     # The original embeds, forwarded rather than dropped. This is where a
@@ -176,7 +324,7 @@ async def on_message(message: discord.Message) -> None:
             MAX_FORWARDED_EMBEDS,
         )
 
-    for target_id in TARGET_CHANNEL_IDS:
+    for target_id in {r.dest for r in matched}:
         target = client.get_channel(target_id)
         if target is None:
             log.error("target channel %s is unavailable; dropped %s", target_id, message.id)
