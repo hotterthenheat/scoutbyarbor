@@ -35,6 +35,8 @@ export async function startRelayBot() {
 
     const rules = ROUTES[message.channel.id];
     if (!rules) return;
+    
+    console.log(`[Relay Bot] Detected message in ${message.channel.id} from ${message.author.username}`);
 
     const authorName = message.author.globalName || message.author.username;
     const content = message.content;
@@ -42,6 +44,7 @@ export async function startRelayBot() {
     // Filter 1: Check Author Name
     if (rules.target_author) {
       if (!authorName.toLowerCase().includes(rules.target_author.toLowerCase())) {
+        console.log(`[Relay Bot] Message rejected: author ${authorName} did not match target ${rules.target_author}`);
         return;
       }
     }
@@ -53,11 +56,17 @@ export async function startRelayBot() {
         .join(' ');
       const combinedText = `${content} ${embedText}`.toLowerCase();
       if (!combinedText.includes(rules.required_text.toLowerCase())) {
+        console.log(`[Relay Bot] Message rejected: content did not match target text ${rules.required_text}`);
         return;
       }
     }
 
-    const destChannel = await client.channels.fetch(DEST_CHANNEL_ID).catch(() => null) as import('discord.js').TextChannel | null;
+    console.log(`[Relay Bot] Message passed filters, fetching destination channel ${DEST_CHANNEL_ID}...`);
+    const destChannel = await client.channels.fetch(DEST_CHANNEL_ID).catch((err) => {
+      console.log(`[Relay Bot] Error fetching destination channel:`, err);
+      return null;
+    }) as import('discord.js').TextChannel | null;
+    
     if (destChannel) {
       const card = new EmbedBuilder()
         .setDescription(content || '*[Attachment / Embed Data]*')
@@ -78,8 +87,12 @@ export async function startRelayBot() {
         }
       }
 
-      await destChannel.send({ embeds: [card] });
-      console.log(`[ROUTED] Successfully forwarded data from ${authorName}`);
+      await destChannel.send({ embeds: [card] }).catch(err => {
+        console.log(`[Relay Bot] Failed to send to destination channel:`, err);
+      });
+      console.log(`[Relay Bot] Successfully forwarded data from ${authorName}`);
+    } else {
+      console.log(`[Relay Bot] Destination channel ${DEST_CHANNEL_ID} could not be resolved or fetched.`);
     }
   });
 
