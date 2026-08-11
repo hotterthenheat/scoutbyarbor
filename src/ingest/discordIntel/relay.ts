@@ -415,7 +415,27 @@ export function parseRelay(candidate: RelayCandidate): RelayParse {
   }
 
   // ── A textual header ───────────────────────────────────────────────────────
-  const header = parseTextHeader(candidate.content);
+  let header = parseTextHeader(candidate.content);
+  let headerSource: 'content' | 'description' | 'title' = 'content';
+  let embedIndex = 0;
+  
+  if (!header && candidate.embeds.length > 0) {
+    const firstEmbed = candidate.embeds[0];
+    if (firstEmbed) {
+      let matched = parseTextHeader(firstEmbed.description || '');
+      if (matched) {
+        headerSource = 'description';
+        header = matched;
+      } else {
+        matched = parseTextHeader(firstEmbed.title || '');
+        if (matched) {
+          headerSource = 'title';
+          header = matched;
+        }
+      }
+    }
+  }
+
   if (header) {
     const link = findMessageLink(candidate.content, candidate.embeds);
     const origin: RelayOrigin = {
@@ -427,7 +447,20 @@ export function parseRelay(candidate: RelayCandidate): RelayParse {
       messageId: link?.[3] ?? null,
       url: link?.[0] ?? null,
     };
-    notes.push('original author read from the relayed message header');
+    notes.push('original author read from the relayed message ' + headerSource);
+
+    const newEmbeds = [...candidate.embeds];
+    let newContent = candidate.content;
+
+    if (headerSource === 'content') {
+      newContent = header.rest;
+    } else if (headerSource === 'description' && newEmbeds[0]) {
+      newEmbeds[0] = { ...newEmbeds[0] }; // clone
+      newEmbeds[0].description = header.rest;
+    } else if (headerSource === 'title' && newEmbeds[0]) {
+      newEmbeds[0] = { ...newEmbeds[0] }; // clone
+      newEmbeds[0].title = header.rest;
+    }
 
     return {
       attribution: {
@@ -439,10 +472,8 @@ export function parseRelay(candidate: RelayCandidate): RelayParse {
         relayedAt: candidate.relayedAt,
         notes,
       },
-      // The header is not part of the story. Left in, it would become the
-      // headline — the normalizer reads the first line as one.
-      content: header.rest,
-      embeds: candidate.embeds,
+      content: newContent,
+      embeds: newEmbeds,
       attachments: candidate.attachments,
     };
   }
