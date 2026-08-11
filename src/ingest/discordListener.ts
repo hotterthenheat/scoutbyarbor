@@ -108,6 +108,14 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
     // that holds even if a channel id is one day pasted into the wrong field.
     if (isOwnMessage(message.author?.id, client?.user?.id)) return;
 
+    if (message.content.trim().startsWith('/joke ')) {
+      const jokeText = message.content.trim().slice(6).trim();
+      if (jokeText && deps.onJoke) {
+        deps.onJoke(jokeText);
+      }
+      return;
+    }
+
     if (message.channelId === '1512892264752349305') {
       (async () => {
         try {
@@ -123,14 +131,6 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
           logger.warn('Failed to instantly forward message', { err });
         }
       })();
-    }
-
-    if (message.content.trim().startsWith('/joke ')) {
-      const jokeText = message.content.trim().slice(6).trim();
-      if (jokeText && deps.onJoke) {
-        deps.onJoke(jokeText);
-      }
-      return;
     }
 
     message.content = (message.content || '').replace(/<t:\d+:[a-zA-Z]>/gi, '').trim();
