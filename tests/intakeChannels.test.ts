@@ -88,9 +88,41 @@ describe('declaring an intake channel from the environment', () => {
     expect(() => withEnvIntakeChannels(EMPTY, [id])).toThrow(/publish an alert there/i);
   });
 
-  it('keeps the shipped intake channel working', () => {
+  it('keeps the shipped intake channels working', () => {
     const merged = withEnvIntakeChannels(loadDiscordSources(), []);
     expect(merged.channels.some((c) => c.intake && c.enabled)).toBe(true);
+  });
+});
+
+/**
+ * The two channels Scout reads: the direct intake channel, and the drop
+ * channel a forwarding bot posts into.
+ */
+describe('the shipped source channels', () => {
+  const channels = loadDiscordSources().channels;
+  const byId = new Map(channels.map((c) => [c.id, c]));
+
+  it('reads the relay drop channel', () => {
+    const relay = byId.get('1512892264752349305');
+    expect(relay, 'the relay drop channel is not configured').toBeDefined();
+    expect(relay?.enabled).toBe(true);
+    expect(relay?.intake, 'configured but not actually read').toBe(true);
+  });
+
+  it('gives it its own source id, so the two do not corroborate as one', () => {
+    // Two channels agreeing must count as two sources. Sharing a source id
+    // would let one story relayed into both look like two confirmations.
+    const ids = channels.filter((c) => c.intake).map((c) => c.sourceId);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('never reads a channel it publishes into', () => {
+    const destinations = new Set(Object.values(loadDiscordSources().destinations));
+    for (const channel of channels) {
+      expect(destinations.has(channel.id), `${channel.id} is both a source and a destination`).toBe(
+        false,
+      );
+    }
   });
 });
 

@@ -690,16 +690,26 @@ describe('the config file', () => {
    * reads from and what Arbor reads — a silent edit to either is a silent
    * change to where trading intelligence goes.
    */
-  it('allowlists exactly the configured source channel', () => {
+  it('allowlists exactly the configured source channels', () => {
     const { channels } = loadDiscordSources();
+    const byId = new Map(channels.map((c) => [c.id, c]));
 
-    expect(channels).toHaveLength(1);
-    expect(channels[0]?.id).toBe('1081082844807434292');
-    expect(channels[0]?.sourceId).toBe('discord:arbor-intel');
-    expect(channels[0]?.enabled).toBe(true);
-    // Read by Scout's own bot over the gateway once it is invited to that
-    // server. The webhook bridge remains available for the same channel.
-    expect(channels[0]?.intake).toBe(true);
+    // Two, and only these two. The allowlist is the security boundary: a
+    // channel that appears here without being intended is an intelligence
+    // source nobody configured, feeding the trading channels.
+    expect(channels).toHaveLength(2);
+
+    // The direct source, read once Scout's bot is invited to that server. The
+    // webhook bridge remains available for the same channel.
+    expect(byId.get('1081082844807434292')?.sourceId).toBe('discord:arbor-intel');
+    expect(byId.get('1081082844807434292')?.enabled).toBe(true);
+    expect(byId.get('1081082844807434292')?.intake).toBe(true);
+
+    // The drop channel inside Arbor that a forwarding bot posts into — the
+    // route that works when Scout cannot be invited to the source server.
+    expect(byId.get('1512892264752349305')?.sourceId).toBe('discord:arbor-relay');
+    expect(byId.get('1512892264752349305')?.enabled).toBe(true);
+    expect(byId.get('1512892264752349305')?.intake).toBe(true);
   });
 
   it('declares all three destinations', () => {

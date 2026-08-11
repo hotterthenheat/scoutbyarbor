@@ -133,6 +133,36 @@ channels:
     # to narrow it — see the format below.
     authors: []
 
+  # The relay drop channel.
+  #
+  # A private channel inside Arbor that a forwarding bot posts into. Scout's own
+  # bot reads it exactly like the entry above — same gateway, same permissions,
+  # same pipeline. This is the route that works when Scout cannot be invited to
+  # a source server: somebody who IS in that server forwards here, and Scout
+  # reads the forward.
+  #
+  # Attribution survives the hop or is recorded as missing. A relay that stamps
+  # the original account on its embed author line gets that account as the
+  # byline; a native Discord forward carries content and timestamp but not the
+  # author, and is recorded "unattributed via <bot>" rather than credited to
+  # whoever moved it. The carrier is never the byline.
+  #
+  # Scored slightly below the direct intake channel: a relayed message has taken
+  # a hop, and the hop can lose things. It is the same six-component scorer
+  # either way — this cannot bypass classification, the noise filters or the
+  # market-impact test.
+  - id: "1512892264752349305"
+    sourceId: discord:arbor-relay
+    name: Arbor Relay Drop
+    enabled: true
+    intake: true
+    qualityScore: 75
+    noiseScore: 35
+    filterProfile: standard
+    # Empty accepts every author. Narrow it here if the channel ever carries
+    # chat alongside the relay — a forwarding bot's name is the natural entry.
+    authors: []
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Adding more channels. Format:
 #
