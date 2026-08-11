@@ -190,7 +190,7 @@ services:
       - key: SPROUT_MAX_AGE_MINUTES
         value: "30"
       - key: SCOUT_BRAND_FOOTER
-        value: "Scout by slayer terminal · cut through the noise"
+        value: "Scout by Arbor Capital · cut through the noise"
       - key: MAX_PUBLISH_AGE_MINUTES
         value: "20"
       - key: MIN_PUBLISH_SCORE
