@@ -110,6 +110,40 @@ export function createNoiseClassifier(taxonomy: TaxonomyFile): NoiseClassifier {
       };
     }
 
+    const ENGLISH_STOP_WORDS = new Set([
+      'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i',
+      'it', 'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at',
+      'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+      'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what',
+      'is', 'are', 'was', 'were', 'has', 'had', 'been', 'about', 'out', 'up'
+    ]);
+
+    const FOREIGN_STOP_WORDS = new Set([
+      'de', 'la', 'el', 'en', 'los', 'del', 'se', 'las', 'por', 'un', 'para', 'con', 'una', 'su', 'al', 'lo', 'como', 'más', // Spanish
+      'le', 'et', 'les', 'des', 'est', 'il', 'qui', 'ne', 'qu', 'dans', 'pour', 'pas', 'sur', 'ce', 'une', // French
+      'der', 'die', 'und', 'den', 'von', 'zu', 'das', 'mit', 'sich', 'auf', 'für', 'ist', 'im', 'dem', 'nicht', 'ein', 'eine' // German
+    ]);
+
+    if (input.tokens.length >= 6) {
+      let englishCount = 0;
+      let foreignCount = 0;
+      for (const token of input.tokens) {
+        const lower = token.toLowerCase();
+        if (ENGLISH_STOP_WORDS.has(lower)) englishCount++;
+        if (FOREIGN_STOP_WORDS.has(lower)) foreignCount++;
+      }
+      
+      // If there are clear foreign stop words and ZERO English stop words, it's definitely non-English
+      if (foreignCount >= 2 && englishCount === 0) {
+        return {
+          isNoise: true,
+          reason: 'NOISE_FOREIGN_LANGUAGE',
+          confidence: 0.95,
+          signals: ['noise:language'],
+        };
+      }
+    }
+
     // Emoji density is its own meme signal, independent of the word list.
     const emoji = (input.text.match(/\p{Extended_Pictographic}/gu) ?? []).length;
     const words = input.tokens.length || 1;
