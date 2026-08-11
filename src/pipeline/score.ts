@@ -90,7 +90,7 @@ export function scoreEvent(input: ScoreInput): ScoreBreakdown {
   const assetExposure = scoreAssetExposure(input, notes);
   const credibility = scoreCredibility(input, notes);
 
-  const total = clamp(
+  let total = clamp(
     sourceQuality * SCORE_WEIGHTS.sourceQuality +
       marketRelevance * SCORE_WEIGHTS.marketRelevance +
       novelty * SCORE_WEIGHTS.novelty +
@@ -100,6 +100,13 @@ export function scoreEvent(input: ScoreInput): ScoreBreakdown {
     0,
     100,
   );
+
+  // A curated/manual source gets an automatic bump to ensure it clears the threshold,
+  // since a human operator explicitly chose to relay it.
+  if (input.source.sourceType === 'manual') {
+    total = Math.max(total, 70);
+    notes.push('curated-source bump');
+  }
 
   notes.push(`novelty ${Math.round(novelty)}`);
 

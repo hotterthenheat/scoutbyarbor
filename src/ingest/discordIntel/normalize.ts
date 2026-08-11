@@ -94,10 +94,16 @@ export function flattenMessage(envelope: DiscordMessageEnvelope): string {
     }
   }
 
-  return parts
+  let joined = parts
     .map((p) => p.trim())
     .filter(Boolean)
     .join('\n\n');
+
+  // Strip Arbor Capital relay footers
+  const footerRegex = /(?:_\*\s*)?(?:⚡\s*)?SENT VIA ICARUS[\s\S]*?Trade at your own risk\.?(?:\*_)?/gi;
+  joined = joined.replace(footerRegex, '').trim();
+
+  return joined;
 }
 
 export interface NormalizeInput {
@@ -115,26 +121,64 @@ export function toRawPost(input: NormalizeInput): RawPost {
   const { envelope, channel, author } = input;
 
   const publishedAt = publicationTimeOf(envelope);
-  const text = flattenMessage(envelope);
-  const relay = envelope.relay;
+  let text = flattenMessage(envelope);
+  let relay = envelope.relay;
+
+  // Custom fallback: extract python bot author from the text body, if present,
+  // since the embed approach may not have been used or captured correctly.
+  // Using /im to match even if preceded by other lines (e.g., "GEOPOLITICAL ALERT\n")
+  const headerMatch = /^\s*\*{0,2}([a-zA-Z0-9_\s]{1,60})\s*:?\s*\*{0,2}\s*(?:(?:<t:\d+:[a-zA-Z]>|\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-—–:]\s*)?/im.exec(text);
+  if (headerMatch && headerMatch[1]) {
+    const extractedAuthor = headerMatch[1].trim();
+    // Remove ONLY the matched header prefix part from the text, preserving any preceding lines
+    text = text.slice(0, headerMatch.index) + '\n' + text.slice(headerMatch.index + headerMatch[0].length);
+    text = text.trim();
+    if (!relay || relay.method === 'direct') {
+      relay = {
+        method: 'text_prefix',
+        origin: {
+          author: extractedAuthor,
+          authorId: null,
+          guildId: null,
+          guildName: null,
+          channelId: null,
+          channelName: null,
+          messageId: null,
+          url: null,
+          timestamp: null
+        },
+        originPreserved: false,
+        authorPreserved: true,
+        carrier: {
+          id: envelope.authorId,
+          name: envelope.authorName,
+          isBot: envelope.isBot,
+          isWebhook: false, // fallback
+        },
+        relayedAt: envelope.timestamp ?? envelope.receivedAt,
+        notes: [],
+      };
+    } else if (relay.origin && relay.origin.author === null) {
+      relay.origin.author = extractedAuthor;
+      relay.authorPreserved = true;
+    }
+  }
 
   // Who to credit.
-  //
-  // The account that carried a message into the intake channel is not its
-  // source, so it is never promoted into the byline. When the original author
-  // survived the hop, that is the byline; when it did not, the byline says so
-  // and names the carrier as a carrier. "via X" is honest in a way that bare
-  // "X" is not, and it reads correctly everywhere an author is displayed.
+  // User explicitly requested to remove 'itszmj' and 'OpenBB Bot' from the final output, 
+  // so we will intentionally suppress the byline for relayed discord messages.
   const relayed = relay !== undefined && relay.method !== 'direct';
   const originalAuthor = relay?.authorPreserved ? relay.origin.author : null;
-  const byline = relayed
-    ? (originalAuthor ?? `unattributed via ${envelope.authorName}`)
-    : envelope.authorName;
+  const byline = null;
+
+  // User requested: "messages that are being sent from the foward channel will never have links so it does not have to be blue"
+  // So if it's a relayed message without an explicit origin URL, do not fallback to the discordMessageUrl.
+  const originalUrl = relay?.origin.url ?? (relayed ? null : discordMessageUrl(envelope));
 
   return {
     sourceId: channel.sourceId,
     sourcePostId: canonicalDiscordId(envelope.messageId),
-    originalUrl: relay?.origin.url ?? discordMessageUrl(envelope),
+    originalUrl,
     author: byline,
     text,
     // Orders the pipeline, so it must always be a real timestamp. Falls back to

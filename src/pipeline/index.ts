@@ -173,7 +173,11 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
         ctx.cluster = cluster;
       }
       db.sources.bumpStat(source.id, 'duplicates');
-      return reject(ctx, dup.reason ?? 'DUPLICATE_TEXT', db, config);
+
+      const isCurated = source.sourceType === 'manual';
+      if (!isCurated) {
+        return reject(ctx, dup.reason ?? 'DUPLICATE_TEXT', db, config);
+      }
     }
 
     // ── CLASSIFY (§4, §25) ──────────────────────────────────────────────────
@@ -185,6 +189,7 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       tokens: post.tokens,
       entities,
       sourceCategory: source.category,
+      isCurated: source.sourceType === 'manual',
     });
 
     if (!verdict) {
@@ -205,7 +210,9 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
     signals.push(...noise.signals);
 
     if (noise.isNoise) {
-      return reject(ctx, noise.reason ?? 'NOISE_COMMENTARY', db, config);
+      if (source.sourceType !== 'manual') {
+        return reject(ctx, noise.reason ?? 'NOISE_COMMENTARY', db, config);
+      }
     }
 
     const factuality = factualityClassifier.classify({
@@ -218,7 +225,9 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
 
     // §8: on accounts that mix reporting with opinion, commentary does not pass.
     if (source.filterProfile === 'strict' && factuality.verdict === 'COMMENTARY') {
-      return reject(ctx, 'NOISE_COMMENTARY', db, config);
+      if (source.sourceType !== 'manual') {
+        return reject(ctx, 'NOISE_COMMENTARY', db, config);
+      }
     }
 
     // ── ENRICH: earnings (§15) and filings (§16) ────────────────────────────
@@ -348,8 +357,10 @@ export function createPipeline(deps: PipelineDeps): Pipeline {
       const ageMs = startedAt.getTime() - Date.parse(statedAt);
       if (Number.isFinite(ageMs) && ageMs > maxAgeMinutes * 60_000) {
         signals.push(`published ${Math.round(ageMs / 60_000)}m ago, limit ${maxAgeMinutes}m`);
-        ctx.category = category;
-        return reject(ctx, 'NOISE_OLD_NEWS', db, config, score);
+        if (source.sourceType !== 'manual') {
+          ctx.category = category;
+          return reject(ctx, 'NOISE_OLD_NEWS', db, config, score);
+        }
       }
     }
 

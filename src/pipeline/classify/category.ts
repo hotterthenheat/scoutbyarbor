@@ -22,6 +22,7 @@ export interface CategoryClassifierInput {
   tokens: string[];
   entities: ExtractedEntities;
   sourceCategory: Category | 'MIXED';
+  isCurated?: boolean;
 }
 
 export interface CategoryClassifier {
@@ -167,12 +168,22 @@ export function createCategoryClassifier(taxonomy: TaxonomyFile): CategoryClassi
       .filter((r) => r.score > 0)
       .sort((a, b) => b.score - a.score || precedenceOf(a.category) - precedenceOf(b.category));
 
-    const winner = ranked[0];
-    if (!winner || winner.score < FALLBACK_EVIDENCE) return null;
+    let winner = ranked[0];
+
+    // For curated sources, if the text didn't hit ANY keywords but human curation
+    // says it's news, give it a baseline MACRO score so it isn't discarded.
+    if (!winner && input.isCurated) {
+      winner = { category: 'MACRO', score: 0.1, signals: ['category:curated-fallback'] };
+    }
+
+    const requiredEvidence = input.isCurated ? 0 : FALLBACK_EVIDENCE;
+    if (!winner || winner.score < requiredEvidence) return null;
 
     const weak = winner.score < MIN_EVIDENCE;
     // A thin call needs a market entity to stand on. See FALLBACK_EVIDENCE.
-    if (weak && !hasMarketEntity(input.entities)) return null;
+    // Curated sources (like human-forwarded Discord channels) bypass this:
+    // human judgement has already decided it is market-relevant.
+    if (weak && !input.isCurated && !hasMarketEntity(input.entities)) return null;
 
     // Resolve a near-tie toward the more specific category.
     let chosen = winner;
