@@ -96,6 +96,10 @@ export function createNoiseClassifier(taxonomy: TaxonomyFile): NoiseClassifier {
     // "here\u2019s" match the same phrase entry.
     const lower = foldApostrophes(input.text.toLowerCase());
 
+    if (input.channelId === '1512892264752349305') {
+      return { isNoise: false, reason: null, confidence: 0, signals: ['whitelist:channel'] };
+    }
+
     if (input.isEcho) {
       return {
         isNoise: true,

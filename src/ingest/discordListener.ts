@@ -116,16 +116,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
       return;
     }
 
-    if (message.channelId === '1512892264752349305') {
-      return; // Ignore ingestion on this channel per user request
-    }
-
     message.content = (message.content || '').replace(/<t:\d+:[a-zA-Z]>/gi, '').trim();
-
-    // Drop multi-headline roundups that cross-contaminate keywords and trigger false alerts
-    if (/(?:am|pm)\s*-\s*\*\*/i.test(message.content)) {
-      return;
-    }
 
     if (intakeChannels.has(message.channelId)) {
       if (!deps.onIntake) return;

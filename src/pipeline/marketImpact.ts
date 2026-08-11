@@ -150,6 +150,16 @@ const MATERIAL_CORPORATE_ACTIONS = [
 ];
 
 export function assessMarketImpact(input: MarketImpactInput): MarketImpactVerdict {
+  // A multi-headline roundup cross-contaminates keywords and is fundamentally not a single coherent market-moving event.
+  if (/(?:am|pm)\s*-\s*\*\*/i.test(input.text)) {
+    return {
+      marketMoving: false,
+      relevance: 'none',
+      macro: false,
+      reasons: ['multi-headline roundup'],
+    };
+  }
+
   const reasons: string[] = [];
   const lower = input.text.toLowerCase();
 
