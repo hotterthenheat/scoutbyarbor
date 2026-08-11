@@ -108,6 +108,23 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
     // that holds even if a channel id is one day pasted into the wrong field.
     if (isOwnMessage(message.author?.id, client?.user?.id)) return;
 
+    if (message.channelId === '1512892264752349305') {
+      (async () => {
+        try {
+          const destChannel = await client?.channels.fetch('1513342006342979635');
+          if (destChannel && destChannel.isTextBased() && 'send' in destChannel) {
+            await destChannel.send({
+              content: message.content || undefined,
+              embeds: message.embeds,
+              files: Array.from(message.attachments.values())
+            });
+          }
+        } catch (err) {
+          logger.warn('Failed to instantly forward message', { err });
+        }
+      })();
+    }
+
     if (message.content.trim().startsWith('/joke ')) {
       const jokeText = message.content.trim().slice(6).trim();
       if (jokeText && deps.onJoke) {
