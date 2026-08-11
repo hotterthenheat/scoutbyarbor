@@ -1052,7 +1052,7 @@ sources:
     sourceType: truthsocial
     category: GEOPOLITICAL
     priority: 92
-    enabled: true
+    enabled: false
     official: true
     qualityScore: 88
     noiseScore: 45
