@@ -129,6 +129,8 @@ export interface ScoutEnv {
     rawChannelEnabled: boolean;
     /** Emit the per-category channels alongside the three primary ones. */
     categoryChannelsEnabled: boolean;
+    /** Channels Scout's own bot reads in full. Added to discord-sources.yaml. */
+    intakeChannelIds: string[];
     /** Discord channels Scout watches for X post URLs. */
     newsSourceChannelIds: string[];
     truthSocialChannelIds: string[];

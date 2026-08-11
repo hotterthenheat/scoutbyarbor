@@ -98,6 +98,16 @@ services:
       - key: FINNHUB_API_KEY
         sync: false
 
+      # ── Channels Scout's own bot READS IN FULL — where a forwarding bot
+      # drops news. Comma-separated ids. Added to config/discord-sources.yaml;
+      # a channel described in both keeps its config entry.
+      #
+      # Needs View Channel + Read Message History on the channel and the
+      # MESSAGE CONTENT intent in the developer portal. A channel Scout
+      # publishes into may not also be read, and boot fails if it is. ──
+      - key: DISCORD_INTAKE_CHANNEL_IDS
+        sync: false
+
       # ── Truth Social via Scrape Creators. REQUIRED on Render: the public
       # Truth Social endpoints return HTTP 403 to datacenter IPs, so without
       # this every Truth Social source sits DISCONNECTED.

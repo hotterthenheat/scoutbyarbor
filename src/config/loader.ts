@@ -367,6 +367,83 @@ export function loadDiscordSources(
   return { version: parsed.version, channels, destinations };
 }
 
+/** Defaults for a channel declared in the environment rather than in config. */
+const ENV_CHANNEL_QUALITY = 70;
+const ENV_CHANNEL_NOISE = 30;
+
+/**
+ * Adds intake channels declared in `DISCORD_INTAKE_CHANNEL_IDS`.
+ *
+ * Adding a channel Scout reads used to mean editing `discord-sources.yaml` and
+ * shipping a commit, while the channels Scout WRITES to are settable from the
+ * environment. That asymmetry has no justification: on a hosted deployment the
+ * common case is "I made a private channel, point the bot at it", and that
+ * should not require a code change.
+ *
+ * Config still wins. An id already declared in `discord-sources.yaml` keeps its
+ * sourceId, scores, filter profile and author list — the environment only adds
+ * channels that were not described anywhere, with neutral defaults.
+ *
+ * The source/destination overlap check is re-run over the merged set, because
+ * an env-added channel that happens to be an output channel would create the
+ * same feedback loop, and it must fail at boot rather than at 09:31.
+ */
+export function withEnvIntakeChannels(
+  file: DiscordSourcesFile,
+  channelIds: string[],
+): DiscordSourcesFile {
+  const wanted = channelIds.map((id) => id.trim()).filter(Boolean);
+  if (wanted.length === 0) return file;
+
+  const known = new Set(file.channels.map((c) => c.id));
+  const added: DiscordChannelConfig[] = [];
+
+  for (const id of wanted) {
+    if (known.has(id)) continue;
+    known.add(id);
+    added.push({
+      id,
+      // Distinct per channel, because each Discord source is its own org for
+      // corroboration: two channels agreeing must count as two.
+      sourceId: `discord:intake-${id.slice(-6)}`,
+      name: `Discord intake ${id}`,
+      enabled: true,
+      intake: true,
+      qualityScore: ENV_CHANNEL_QUALITY,
+      noiseScore: ENV_CHANNEL_NOISE,
+      filterProfile: 'standard',
+      authors: [],
+    });
+  }
+
+  if (added.length === 0) return file;
+  const channels = [...file.channels, ...added];
+
+  const destinationIds = new Map<string, string>([
+    ...(file.destinations.general
+      ? ([[file.destinations.general, 'the news channel']] as const)
+      : []),
+    ...(file.destinations.spxMacro
+      ? ([[file.destinations.spxMacro, 'the SPX/macro channel']] as const)
+      : []),
+    ...(file.destinations.tickers
+      ? ([[file.destinations.tickers, 'the tickers channel']] as const)
+      : []),
+  ]);
+
+  for (const channel of added) {
+    const role = destinationIds.get(channel.id);
+    if (!role) continue;
+    throw new Error(
+      `DISCORD_INTAKE_CHANNEL_IDS lists ${channel.id}, which is also ${role}. Scout would ` +
+        'publish an alert there and read it straight back in as intelligence. Use a separate ' +
+        'channel for intake.',
+    );
+  }
+
+  return { ...file, channels };
+}
+
 /** Config entry → the Source row shape, so Discord channels score like anything else. */
 export function toDiscordSource(channel: DiscordChannelConfig, now: string): Source {
   return {

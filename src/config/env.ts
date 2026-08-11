@@ -59,6 +59,10 @@ const schema = z.object({
   DISCORD_CHANNEL_SYSTEM: z.string().default(''),
 
   CATEGORY_CHANNELS_ENABLED: bool(false),
+  // Channels Scout's own bot READS in full — a forwarding bot's destination,
+  // typically a private channel in your own server. Added to whatever
+  // discord-sources.yaml declares; config wins for an id described in both.
+  DISCORD_INTAKE_CHANNEL_IDS: list(),
   NEWS_SOURCE_CHANNEL_IDS: list(),
   TRUTH_SOCIAL_CHANNEL_IDS: list(),
   ADMIN_INPUT_CHANNEL_IDS: list(),
@@ -229,6 +233,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       },
       rawChannelEnabled: parsed.RAW_CHANNEL_ENABLED,
       categoryChannelsEnabled: parsed.CATEGORY_CHANNELS_ENABLED,
+      intakeChannelIds: parsed.DISCORD_INTAKE_CHANNEL_IDS,
       newsSourceChannelIds: parsed.NEWS_SOURCE_CHANNEL_IDS,
       truthSocialChannelIds: parsed.TRUTH_SOCIAL_CHANNEL_IDS,
       adminInputChannelIds: parsed.ADMIN_INPUT_CHANNEL_IDS,

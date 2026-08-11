@@ -5,6 +5,7 @@ import {
   loadSecurityMaster,
   toSource,
   loadDiscordSources,
+  withEnvIntakeChannels,
   toDiscordSource,
 } from './config/loader.js';
 import { openDatabase } from './db/index.js';
@@ -144,7 +145,14 @@ export async function main(): Promise<void> {
   // Discord intelligence channels are sources too, so the six-component scorer
   // treats them exactly like an X account or an RSS feed. Nothing about being a
   // Discord message grants or denies an event anything.
-  const discordSources = loadDiscordSources();
+  //
+  // Config plus anything the deployment names in DISCORD_INTAKE_CHANNEL_IDS,
+  // so pointing Scout at a new private channel is an environment change rather
+  // than a commit.
+  const discordSources = withEnvIntakeChannels(
+    loadDiscordSources(),
+    cfg.discord.intakeChannelIds,
+  );
   if (discordSources.channels.length > 0) {
     db.sources.upsertMany(discordSources.channels.map((c) => toDiscordSource(c, now)));
   }
