@@ -12,6 +12,7 @@ import { openDatabase } from './db/index.js';
 import { databaseExistsAt, recordBoot, formatStorageLine } from './db/storage.js';
 import { resolve as resolvePath } from 'node:path';
 import { createPipeline } from './pipeline/index.js';
+import { startRelayBot } from './relay.js';
 import { createIngestManager } from './ingest/manager.js';
 import { createRssAdapter } from './ingest/adapters/rss.js';
 import { createEdgarAdapter } from './ingest/adapters/edgar.js';
@@ -1231,6 +1232,11 @@ export async function main(): Promise<void> {
       return false;
     }
   }
+
+  // Start the newly added Relay Bot
+  startRelayBot().catch((err) => {
+    log.error('relay bot failed to start', { err: err as Error });
+  });
 
   await server.start();
 
