@@ -764,6 +764,6 @@ describe('the config file', () => {
     expect(source.id).toBe('discord:flow-alerts');
     expect(source.qualityScore).toBe(85);
     // Pushed, not polled — Scout never fetches these.
-    expect(source.sourceType).toBe('manual');
+    expect(source.sourceType).toBe('social');
   });
 });

@@ -203,7 +203,7 @@ describe('the shipped configuration', () => {
     const entry = loadSourcesFile().sources.find((s) => s.id === 'truth:realdonaldtrump');
     expect(entry?.sourceType).toBe('truthsocial');
     expect(entry?.handle).toBe('@realDonaldTrump');
-    expect(entry?.enabled).toBe(true);
+    expect(entry?.enabled).toBe(false);
   });
 });
 
@@ -238,7 +238,7 @@ describe('the cable-news accounts', () => {
     expect(byId.get('truth:foxnews')?.enabled).toBe(false);
     expect(byId.get('truth:newsmax')?.enabled).toBe(false);
     expect(byId.get('truth:realdonaldtrump')?.enabled, 'the primary account was left off').toBe(
-      true,
+      false,
     );
   });
 

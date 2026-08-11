@@ -117,7 +117,7 @@ export function attributionFrom(input: {
     const preserved = meta.attributionPreserved !== false;
     const relayedBy = str(meta.carrierName);
     const author = preserved
-      ? (str(meta.originAuthor) ?? (meta.relayed ? undefined : str(meta.authorName)) ?? str(input.author))
+      ? (str(meta.originAuthor) ?? str(meta.authorName) ?? str(input.author))
       : undefined;
     // The origin's channel and server, not Scout's mailbox.
     const channel = str(meta.originChannel) ?? str(meta.channelName) ?? str(meta.channelId);

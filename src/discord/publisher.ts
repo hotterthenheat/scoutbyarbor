@@ -236,28 +236,7 @@ export function createPublisher(deps: PublisherDeps): Publisher {
     // the outlet behind an aggregator, the account behind a relay — and reads
     // "CNBC + Reuters" when two of them reported the same story.
     const label = outcome.raw.provenance.label?.trim();
-    if (!label || label === 'UNKNOWN') return null;
-
-    const unwanted = [
-      "Sent via Icarus | Arbor Capital — For information and data display only. Trade at your own risk.",
-      "Sent via Icarus | Arbor Capital — For information and data display only.",
-      "Scout by Arbor Capital",
-      "signal, not noise",
-      "OpenBB Bot",
-      "Owls Clanker",
-      "clanker",
-      "Unusual Whales Crier",
-      "OwlsKeyLevelsBot",
-      "APP —",
-      "itszmj"
-    ];
-
-    const lowerLabel = label.toLowerCase();
-    for (const text of unwanted) {
-      if (lowerLabel.includes(text.toLowerCase())) return null;
-    }
-
-    return label;
+    return label && label !== 'UNKNOWN' ? label : null;
   }
 
   function recordLatency(outcome: PipelineOutcome): void {

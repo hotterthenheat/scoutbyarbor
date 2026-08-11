@@ -453,7 +453,7 @@ export function toDiscordSource(channel: DiscordChannelConfig, now: string): Sou
     url: null,
     // Pushed, not polled — the same category the Discord URL relay uses. Scout
     // never fetches these; an authorized bridge delivers them.
-    sourceType: 'manual',
+    sourceType: channel.sourceId === 'discord:arbor-relay' ? 'manual' : 'social',
     category: 'MARKET',
     priority: Math.round(channel.qualityScore),
     enabled: channel.enabled,
