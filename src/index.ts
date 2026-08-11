@@ -708,9 +708,9 @@ export async function main(): Promise<void> {
       try {
         const embed = renderAlertEmbed({
           alert: {
-            banner: 'JOKE',
-            headline: 'Scout Joke',
-            body: joke,
+            banner: 'BREAKING NEWS',
+            headline: joke,
+            body: '',
             timestamp: new Date().toISOString(),
           },
           brandFooter: cfg.pipeline.brandFooter,

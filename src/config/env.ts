@@ -78,7 +78,7 @@ const schema = z.object({
 
   SCOUT_BRAND_FOOTER: z
     .string()
-    .default('Scout by Arbor Capital · signal, not noise'),
+    .default('Scout by slayer terminal · cut through the noise'),
   /**
    * How stale a story may be, measured from ITS OWN publication time, and still
    * go out as an alert.

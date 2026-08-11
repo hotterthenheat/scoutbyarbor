@@ -105,8 +105,10 @@ export function flattenMessage(envelope: DiscordMessageEnvelope): string {
 const UNWANTED_TEXT = [
   "Sent via Icarus | Arbor Capital — For information and data display only. Trade at your own risk.",
   "Sent via Icarus | Arbor Capital — For information and data display only.",
-  "Scout by Arbor Capital",
+  "scout by arbor capital",
+  "scout by slayer terminal",
   "signal, not noise",
+  "cut through the noise",
   "OpenBB Bot",
   "Owls Clanker",
   "clanker",
