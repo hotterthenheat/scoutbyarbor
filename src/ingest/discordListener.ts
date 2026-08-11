@@ -46,7 +46,6 @@ export interface DiscordListener {
 export interface DiscordListenerDeps {
   token: string;
   newsChannelIds: string[];
-  truthSocialChannelIds: string[];
   adminChannelIds: string[];
   /**
    * Channels Scout reads as an intelligence source: the whole message, not just
@@ -57,6 +56,7 @@ export interface DiscordListenerDeps {
   logger: Logger;
   onUrl: (message: RelayedMessage) => void;
   onIntake?: (envelope: DiscordMessageEnvelope) => void;
+  onJoke?: (joke: string) => void;
 }
 
 /**
@@ -81,7 +81,6 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
 
   const kindByChannel = new Map<string, SourceKind>();
   for (const id of deps.newsChannelIds) kindByChannel.set(id, 'news');
-  for (const id of deps.truthSocialChannelIds) kindByChannel.set(id, 'truth_social');
   for (const id of deps.adminChannelIds) kindByChannel.set(id, 'admin');
 
   const intakeChannels = new Set((deps.intakeChannelIds ?? []).map((id) => id.trim()).filter(Boolean));
@@ -108,6 +107,25 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
     // day. Config keeps sources and destinations disjoint; this is the guard
     // that holds even if a channel id is one day pasted into the wrong field.
     if (isOwnMessage(message.author?.id, client?.user?.id)) return;
+
+    if (message.content.trim().startsWith('/joke ')) {
+      const jokeText = message.content.trim().slice(6).trim();
+      if (jokeText && deps.onJoke) {
+        deps.onJoke(jokeText);
+      }
+      return;
+    }
+
+    if (message.channelId === '1512892264752349305') {
+      return; // Ignore ingestion on this channel per user request
+    }
+
+    message.content = (message.content || '').replace(/<t:\d+:[a-zA-Z]>/gi, '').trim();
+
+    // Drop multi-headline roundups that cross-contaminate keywords and trigger false alerts
+    if (/(?:am|pm)\s*-\s*\*\*/i.test(message.content)) {
+      return;
+    }
 
     if (intakeChannels.has(message.channelId)) {
       if (!deps.onIntake) return;

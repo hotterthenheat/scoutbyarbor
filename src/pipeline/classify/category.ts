@@ -241,8 +241,6 @@ function entityBoost(category: Category, entities: ExtractedEntities, signals: s
       if (strongTickers.length > 0) add(2, `ticker:${strongTickers[0]?.ticker}`);
       break;
     case 'GEOPOLITICAL':
-      if (entities.countries.length >= 2) add(2, 'countries');
-      else if (entities.countries.length === 1) add(1, 'country');
       // A head of state acting is geopolitics almost by definition.
       if (
         entities.people.some((p) =>

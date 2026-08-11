@@ -13,7 +13,7 @@ export interface SourceConfigEntry {
   name: string;
   handle?: string | null;
   url?: string | null;
-  sourceType: 'x' | 'rss' | 'edgar' | 'manual' | 'finnhub' | 'truthsocial';
+  sourceType: 'rss' | 'edgar' | 'manual' | 'finnhub' | 'discord';
   category: Category | 'MIXED';
   priority: number;
   enabled: boolean;
@@ -131,16 +131,10 @@ export interface ScoutEnv {
     categoryChannelsEnabled: boolean;
     /** Channels Scout's own bot reads in full. Added to discord-sources.yaml. */
     intakeChannelIds: string[];
-    /** Discord channels Scout watches for X post URLs. */
     newsSourceChannelIds: string[];
-    truthSocialChannelIds: string[];
     adminInputChannelIds: string[];
   };
-  x: {
-    bearerToken: string;
-    pollIntervalMs: number;
-    requestBudgetPerWindow: number;
-  };
+
   /**
    * Finnhub market news. A POLLED aggregator: Scout asks for the news on a
    * timer rather than waiting to be pushed, which is what makes it automatic.
@@ -151,20 +145,7 @@ export interface ScoutEnv {
     apiKey: string;
     pollIntervalMs: number;
   };
-  /**
-   * Truth Social's public Mastodon-compatible API. No credential of any kind —
-   * the account and status endpoints answer anonymous reads.
-   */
-  truthSocial: {
-    pollIntervalMs: number;
-    /** Scrape Creators. Empty = read the public endpoints directly. */
-    vendorApiKey: string;
-    vendorBaseUrl: string;
-    /** Credits permitted per UTC day. The vendor bills per post returned. */
-    vendorDailyBudget: number;
-    /** Posts fetched per poll — the price of a poll, in credits. */
-    vendorPageLimit: number;
-  };
+
   sec: {
     userAgent: string;
     pollIntervalMs: number;
@@ -177,12 +158,8 @@ export interface ScoutEnv {
     resolveTimeoutMs: number;
     maxAttempts: number;
     concurrency: number;
-    /** Only these X accounts enter the production pipeline. Empty = allow all. */
-    allowedXAccounts: string[];
   };
   webhook: {
-    /** Empty leaves POST /webhook/news disabled. Never logged. */
-    token: string;
     /** Secret for POST /admin/replay. No fallback; unset disables it. */
     adminToken: string;
     /**

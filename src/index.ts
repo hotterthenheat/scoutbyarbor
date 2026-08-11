@@ -9,16 +9,15 @@ import {
   toDiscordSource,
 } from './config/loader.js';
 import { openDatabase } from './db/index.js';
+import { renderAlertEmbed } from './render/alert.js';
 import { databaseExistsAt, recordBoot, formatStorageLine } from './db/storage.js';
 import { resolve as resolvePath } from 'node:path';
 import { createPipeline } from './pipeline/index.js';
 import { createIngestManager } from './ingest/manager.js';
 import { createRssAdapter } from './ingest/adapters/rss.js';
 import { createEdgarAdapter } from './ingest/adapters/edgar.js';
-import { createTwitterAdapter } from './ingest/adapters/twitter.js';
 import { createManualAdapter } from './ingest/adapters/manual.js';
 import { createFinnhubAdapter } from './ingest/adapters/finnhub.js';
-import { createTruthSocialAdapter } from './ingest/adapters/truthSocial.js';
 import { createCreditBudget } from './ingest/adapters/creditBudget.js';
 import { createDiscordListener } from './ingest/discordListener.js';
 import { createJobQueue, parseRelayPayload } from './ingest/queue.js';
@@ -551,20 +550,8 @@ export async function main(): Promise<void> {
         const payload = parseRelayPayload(db.jobs.relayPayload(url.canonicalId));
         return payload ? { rawMessage: payload.rawMessage } : null;
       }),
-      createXApiResolver({
-        bearerToken: cfg.x.bearerToken,
-        timeoutMs: cfg.ingestion.resolveTimeoutMs,
-        logger: log.child('resolver'),
-      }),
     ],
     log.child('resolver'),
-  );
-
-  // An absent X credential is a normal configuration, not a fault.
-  log.info(
-    cfg.x.bearerToken
-      ? 'X API: CONFIGURED (polling + fallback resolver) — URL/RELAY INGESTION: ENABLED'
-      : 'X API: NOT CONFIGURED (no polling; X arrives by webhook/relay) — URL/RELAY INGESTION: ENABLED',
   );
 
   let urlWorkerRef: ReturnType<typeof createUrlWorker> | null = null;
@@ -577,7 +564,7 @@ export async function main(): Promise<void> {
     maxAttempts: cfg.ingestion.maxAttempts,
     // One queue, two sources. Both get the same retry schedule, the same
     // restart recovery and the same durable payload; only the shape of what
-    // arrives differs. The X path below is untouched by the Discord branch.
+    // arrives differs.
     handler: async (job) => {
       if (job.sourceKind === 'discord') {
         const worker = discordIntelRef;
@@ -621,7 +608,7 @@ export async function main(): Promise<void> {
    *
    * Feeds `trackPost` — the same entry point the URL relay, RSS, EDGAR and X
    * timelines use — so a Discord message is deduped, classified, scored and
-   * routed by exactly the code that handles an X post. Nothing here can put a
+   * routed by exactly the code that handles a post. Nothing here can put a
    * message into #trading-floor; only the market-impact test can do that.
    */
   const discordIntel = createDiscordIntelWorker({
@@ -685,7 +672,6 @@ export async function main(): Promise<void> {
     queue,
     resolver,
     logger: log.child('url-worker'),
-    allowedAccounts: cfg.ingestion.allowedXAccounts,
     relaySourceId: RELAY_SOURCE_ID,
     onPost: async (post) => {
       // Feed the health monitor so a relay that goes quiet is distinguishable
@@ -696,30 +682,12 @@ export async function main(): Promise<void> {
   });
   urlWorkerRef = urlWorker;
 
-  // An empty allowlist admits every account, which means anyone who can post in
-  // a watched channel can put a URL into the trading channels. That is §13's
-  // failure exactly, and it is silent — the wire looks healthy while its input
-  // is open. Not fatal, because a locked-down private channel is a legitimate
-  // setup, but it must never be something you discover afterwards.
   // Intake channels count here too: a post URL pasted into one is routed to
-  // the relay path, so the account allowlist governs it exactly as it governs a
-  // dedicated relay channel. Leaving them out would make the warning silent for
-  // the very setup most likely to be open.
+  // the relay path.
   const watchedChannelCount =
     cfg.discord.newsSourceChannelIds.length +
-    cfg.discord.truthSocialChannelIds.length +
     cfg.discord.adminInputChannelIds.length +
     discordSources.channels.filter((c) => c.enabled && c.intake).length;
-
-  if (watchedChannelCount > 0 && cfg.ingestion.allowedXAccounts.length === 0) {
-    const warning =
-      'ALLOWED_X_ACCOUNTS is empty while URL ingestion is watching ' +
-      `${watchedChannelCount} channel(s). Every account is currently accepted, so anyone who ` +
-      'can post in a watched channel can put a link into #trading-floor and #spx-trading. ' +
-      'Set ALLOWED_X_ACCOUNTS to the handles your relay actually posts.';
-    log.warn('INGESTION ALLOWLIST IS OPEN', { warning, watchedChannels: watchedChannelCount });
-    await publisher.publishSystem(`INGESTION ALLOWLIST IS OPEN\n\n${warning}`);
-  }
 
   // Channels Scout's own bot reads directly. Ordinary permissions on a server
   // the operator controls — no bridge, no credential beyond the bot token.
@@ -730,30 +698,34 @@ export async function main(): Promise<void> {
   const listener = createDiscordListener({
     token: cfg.discord.token,
     newsChannelIds: cfg.discord.newsSourceChannelIds,
-    truthSocialChannelIds: cfg.discord.truthSocialChannelIds,
     adminChannelIds: cfg.discord.adminInputChannelIds,
     intakeChannelIds,
     logger: log.child('listener'),
     onUrl: (message) => {
       urlWorker.submit(message);
     },
+    onJoke: async (joke) => {
+      try {
+        const embed = renderAlertEmbed({
+          alert: {
+            banner: 'JOKE',
+            headline: 'Scout Joke',
+            body: joke,
+            timestamp: new Date().toISOString(),
+          },
+          brandFooter: cfg.pipeline.brandFooter,
+        }) as any;
+        await discord.sendToId('1510553508351311922', '', embed);
+        log.info('joke sent successfully', { length: joke.length });
+      } catch (err) {
+        log.error('failed to send joke', { err: err as Error });
+      }
+    },
     // Durably queue and return. The gateway callback must not wait for
     // classification, Discord or Sprout — exactly as the webhook does not.
     onIntake: (envelope) => {
       const intakeLog = log.child('intake');
 
-      // An X post pasted or forwarded into the intake channel is an X POST,
-      // not a Discord message that happens to contain a link.
-      //
-      // Routing it to the relay path gives it the identity it deserves:
-      // `x:<postId>` rather than `discord:<messageId>`, so the same post
-      // arriving later by webhook collapses into one event instead of two;
-      // provenance that names the account rather than the channel; and the
-      // relay resolver, which reads the text Discord expanded alongside the
-      // link and therefore needs no X credential at all.
-      //
-      // This is the free X route. It was already built and the intake channel
-      // simply never reached it.
       const text = flattenMessage(envelope);
       const urls = detectPostUrls(text);
 
@@ -820,130 +792,12 @@ export async function main(): Promise<void> {
   // ── Polling ingestion (RSS / EDGAR / X timelines) ─────────────────────────
   const manual = createManualAdapter();
 
-  // The X polling adapter is registered ONLY when a credential exists.
-  //
-  // Without one it reports every X source as a failed poll on every tick —
-  // correct when a token was expected and is missing, and wrong here, where its
-  // absence is the architecture. Twenty-odd accounts on a 90s interval would
-  // otherwise emit ~20,000 warning lines a day and eventually drive every X
-  // source to BROKEN in the health monitor, burying a real feed outage in noise
-  // about feeds nobody intended to poll.
-  //
-  // The source rows stay enabled and are NOT wasted: they carry the quality,
-  // noise and org values the scorer and the provenance layer read when the same
-  // account reaches Scout through the webhook or the Discord relay. Being
-  // unpollable and being unused are different things.
-  const xPollingEnabled = Boolean(cfg.x.bearerToken);
-
-  // Say how many sources that silently removes.
-  //
-  // Without a bearer token the X adapter is never registered, so every X source
-  // in sources.yaml is inert — not broken, not quiet, simply never polled. It
-  // still counts toward "sources active" on the dashboard, which is how a
-  // deployment reports 60-odd live sources while half the list, including the
-  // two highest-priority squawk feeds Scout is built around, does nothing at
-  // all. An absent optional credential is a configuration rather than a fault,
-  // but its cost should not be invisible.
-  const xSources = db.sources.enabled().filter((s) => s.sourceType === 'x').length;
-  if (!xPollingEnabled && xSources > 0) {
-    log.warn(
-      `X: NOT CONFIGURED — ${xSources} enabled X source(s) will never be polled. ` +
-        'Set X_BEARER_TOKEN to poll them, or disable them in config/sources.yaml so ' +
-        'the source count reflects what actually runs.',
-      { inertSources: xSources },
-    );
-  }
-
-  // Same rule as the X adapter: registered ONLY when a credential exists.
-  // Without one it would report every Finnhub source as a failed poll forever,
-  // and an absent optional key is a configuration, not a fault.
   const finnhubEnabled = Boolean(cfg.finnhub.apiKey);
-  log.info(
-    finnhubEnabled
-      ? 'FINNHUB: CONFIGURED — polled market news every ' +
-          Math.round(cfg.finnhub.pollIntervalMs / 1000) +
-          's'
-      : 'FINNHUB: NOT CONFIGURED (set FINNHUB_API_KEY to poll market news)',
-  );
-
-  // Truth Social's public endpoints refuse datacenter IPs, so on a hosted
-  // deployment the vendor transport is the only one that works. It bills per
-  // request, which makes the runway a startup-time fact worth stating: a wire
-  // that goes quiet at noon because a balance ran out should not be a mystery.
-  const truthVendorEnabled = Boolean(cfg.truthSocial.vendorApiKey);
-  const truthBudget = truthVendorEnabled
-    ? createCreditBudget({
-        db,
-        vendor: 'scrapecreators',
-        limit: cfg.truthSocial.vendorDailyBudget,
-      })
-    : undefined;
-
-  if (truthVendorEnabled && truthBudget) {
-    const accounts = db.sources.enabled().filter((s) => s.sourceType === 'truthsocial').length;
-    const pollsPerDay = Math.floor(86_400_000 / cfg.truthSocial.pollIntervalMs);
-    // Per POST, not per request: one poll costs a whole page.
-    const creditsPerHour =
-      accounts * Math.floor(3_600_000 / cfg.truthSocial.pollIntervalMs) * cfg.truthSocial.vendorPageLimit;
-    const minutesOfRunway =
-      creditsPerHour > 0 ? Math.round((truthBudget.remaining() / creditsPerHour) * 60) : 0;
-
-    log.info('TRUTH SOCIAL: VENDOR TRANSPORT (Scrape Creators)', {
-      accounts,
-      pollIntervalSec: Math.round(cfg.truthSocial.pollIntervalMs / 1000),
-      pageLimit: cfg.truthSocial.vendorPageLimit,
-      creditsPerDayAtThisCadence: accounts * pollsPerDay * cfg.truthSocial.vendorPageLimit,
-      dailyBudget: truthBudget.limit,
-      spentToday: truthBudget.spent(),
-      minutesOfRunway,
-    });
-
-    // The budget stopping polling is not a failure, but a wire that dies at
-    // noon because a balance ran out should never be a mystery. Stated at boot
-    // because the alternative is discovering it from an empty channel.
-    log.warn(
-      'truth social is on a metered feed billed per post. At this cadence the daily ' +
-        'budget buys roughly the runway shown, after which polling stops until the UTC ' +
-        'day rolls over. Slow TRUTH_POLL_INTERVAL_MS, cut SCRAPECREATORS_PAGE_LIMIT, ' +
-        'disable accounts, or top up the balance.',
-      { creditsPerHour, remainingToday: truthBudget.remaining(), minutesOfRunway },
-    );
-  } else {
-    log.info('TRUTH SOCIAL: DIRECT TRANSPORT (no vendor key; public endpoints only)');
-  }
-
   const ingest = createIngestManager({
     db,
     adapters: [
       createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 25_000, logger: log.child('rss') }),
       createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 25_000, logger: log.child('edgar') }),
-      ...(xPollingEnabled
-        ? [
-            createTwitterAdapter({
-              bearerToken: cfg.x.bearerToken,
-              requestBudgetPerWindow: cfg.x.requestBudgetPerWindow,
-              logger: log.child('x'),
-            }),
-          ]
-        : []),
-      // Always registered — the direct transport needs no credential, so unlike
-      // the X and Finnhub adapters there is nothing that could be missing. A
-      // vendor key only changes HOW it reads, never whether it runs.
-      createTruthSocialAdapter({
-        userAgent: cfg.sec.userAgent,
-        timeoutMs: 25_000,
-        logger: log.child('truth'),
-        ...(truthVendorEnabled
-          ? {
-              vendor: {
-                apiKey: cfg.truthSocial.vendorApiKey,
-                baseUrl: cfg.truthSocial.vendorBaseUrl,
-                pageLimit: cfg.truthSocial.vendorPageLimit,
-                budget: truthBudget,
-              },
-            }
-          : {}),
-      }),
       ...(finnhubEnabled
         ? [
             createFinnhubAdapter({
@@ -963,9 +817,7 @@ export async function main(): Promise<void> {
     intervals: {
       rss: cfg.rss.pollIntervalMs,
       edgar: cfg.sec.pollIntervalMs,
-      x: cfg.x.pollIntervalMs,
       finnhub: cfg.finnhub.pollIntervalMs,
-      truthsocial: cfg.truthSocial.pollIntervalMs,
       manual: 5_000,
     },
     onPosts: async (posts) => {
@@ -1110,22 +962,11 @@ export async function main(): Promise<void> {
 
     /**
      * Hand-submitted events from the dashboard.
-     *
-     * The point of this is that it needs NO credential from anyone else. With
-     * no X API key and no bot in a source server, pasting a post here is a
-     * complete ingestion route on its own — and it feeds the same pipeline, so
-     * a hand-submitted event is deduped, classified, scored and routed exactly
-     * like one that arrived by webhook. Nothing about being typed in by a human
-     * lets it skip a filter.
      */
     ingest: cfg.webhook.adminToken
       ? {
           token: cfg.webhook.adminToken,
           submit: ({ url, text }) => {
-            // A post URL takes the relay path, so the event carries the
-            // account's identity — `x:<postId>` — rather than being anonymous
-            // free text. The pasted text rides along as the post's content,
-            // which is what makes this work with no X credential.
             const detected = url ? detectPostUrls(url) : [];
             const post = detected[0];
             if (post) {
@@ -1143,7 +984,7 @@ export async function main(): Promise<void> {
               return {
                 ok: false,
                 id: '',
-                error: `not a recognisable X or Truth Social post URL: ${url}`,
+                error: `not a recognisable post URL: ${url}`,
               };
             }
 
@@ -1158,48 +999,7 @@ export async function main(): Promise<void> {
           },
         }
       : undefined,
-    webhook: cfg.webhook.token
-      ? {
-          token: cfg.webhook.token,
-          // Persist, queue, return. Nothing here awaits Discord, Sprout,
-          // classification or any external call — the upstream source is
-          // acknowledged as soon as the event is durable.
-          accept: (event, key) => {
-            const now = isoNow();
 
-            db.posts.upsert({
-              postId: event.canonicalId,
-              author: event.upstreamSource,
-              authorHandle: event.handle,
-              text: event.text,
-              // Exactly as supplied, including null. The receipt time below is
-              // a separate column and is never promoted into this one.
-              publishedAt: event.publishedAt,
-              canonicalUrl: event.url,
-              media: [],
-              retrievalSource: 'webhook',
-              platform: event.platform,
-              upstreamSource: event.upstreamSource,
-              receivedAt: event.receivedAt,
-              discordReceivedAt: null,
-              createdAt: now,
-            });
-
-            const job = queue.enqueue({
-              postId: event.canonicalId,
-              url: event.url,
-              sourceChannel: `webhook:${key}`,
-              sourceKind: 'webhook',
-            });
-
-            return {
-              accepted: job !== null,
-              duplicate: job === null,
-              eventId: event.canonicalId,
-            };
-          },
-        }
-      : undefined,
     readiness: () => [
       { name: 'database', ok: databaseReachable(), detail: db.path },
       {
@@ -1240,7 +1040,7 @@ export async function main(): Promise<void> {
   log.info('scout is live', {
     watching: listener.watching().length,
     admin: cfg.webhook.adminToken ? 'enabled at POST /admin/replay' : 'not configured',
-    webhook: cfg.webhook.token ? 'enabled at POST /webhook/news' : 'not configured',
+
     // Two independent ways in, and reporting only the webhook would call the
     // Discord source "not configured" while an intake channel was feeding it.
     discordIntake:

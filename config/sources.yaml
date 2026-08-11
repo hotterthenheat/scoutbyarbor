@@ -1,289 +1,5 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# SCOUT — source watchlist (§29, §36)
-#
-# This file is the whole source list. Add or remove an account here and run
-# `npm run sources:sync` — no application code changes (§36).
-#
-# Curation rule (§5, §30): optimise for signal density, not account count. An
-# account posting 20 times a day with 18 useful posts beats one posting 100
-# times with 5. Anything whose primary function is telling people what to think
-# rather than reporting information does not belong in this file.
-#
-# `enabled: false` entries are staged but not polled. Run
-# `npm run sources:verify` to confirm every handle and feed URL actually
-# resolves before enabling it — do not trust a handle just because a list
-# somewhere claims it exists (§29).
-#
-# Scores are seeds. The pipeline updates useful_post_ratio and noise from
-# observed behaviour, and `npm run scout source:report` shows the drift (§28).
-# ─────────────────────────────────────────────────────────────────────────────
 version: 1
-
 sources:
-  # ══════════════════════════════════════════════════════════════════════════
-  # TIER 1 — CORE NEWSWIRE (§6)
-  # The highest-priority feeds. These are the accounts Scout is built around.
-  # ══════════════════════════════════════════════════════════════════════════
-  - id: x:deltaone
-    name: Walter Bloomberg
-    handle: "@DeItaone"
-    sourceType: x
-    category: MIXED
-    priority: 100
-    enabled: true
-    qualityScore: 98
-    noiseScore: 2
-    macroScore: 95
-    microScore: 90
-    geopoliticalScore: 85
-    filterProfile: standard
-    expectedIntervalMs: 900000
-    notes: >-
-      Breaking macro, Fed, geopolitical and corporate headlines. One of Scout's
-      highest-priority feeds. Note the handle uses a capital I, not an l.
-
-  - id: x:firstsquawk
-    name: First Squawk
-    handle: "@FirstSquawk"
-    sourceType: x
-    category: MIXED
-    priority: 100
-    enabled: true
-    qualityScore: 97
-    noiseScore: 3
-    macroScore: 95
-    microScore: 85
-    geopoliticalScore: 95
-    filterProfile: standard
-    expectedIntervalMs: 900000
-    notes: >-
-      Financial news service covering markets, macro, geopolitics and politics
-      across equities, commodities and fixed income. Use heavily.
-
-  - id: x:financialjuice
-    name: Financial Juice
-    handle: "@financialjuice"
-    sourceType: x
-    category: MIXED
-    priority: 95
-    enabled: true
-    qualityScore: 95
-    noiseScore: 5
-    macroScore: 96
-    microScore: 70
-    geopoliticalScore: 85
-    filterProfile: standard
-    expectedIntervalMs: 900000
-    notes: Macro, economic releases, central banks, geopolitics. Trader squawk source.
-
-  - id: x:livesquawk
-    name: LiveSquawk
-    handle: "@LiveSquawk"
-    sourceType: x
-    category: MIXED
-    priority: 95
-    enabled: true
-    qualityScore: 94
-    noiseScore: 6
-    macroScore: 94
-    microScore: 75
-    geopoliticalScore: 85
-    filterProfile: standard
-    expectedIntervalMs: 900000
-    notes: High-speed market-news layer.
-
-  - id: x:tier10k
-    name: db (tier10k)
-    handle: "@tier10k"
-    sourceType: x
-    category: MIXED
-    priority: 90
-    enabled: true
-    qualityScore: 92
-    noiseScore: 8
-    macroScore: 70
-    microScore: 95
-    geopoliticalScore: 60
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-    notes: SEC filings, earnings, corporate events. Filter hard on materiality.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # MAJOR FINANCIAL NEWSROOMS (§7)
-  # Reporting accounts only — never personality accounts.
-  # ══════════════════════════════════════════════════════════════════════════
-  - id: x:bloomberg-business
-    name: Bloomberg Business
-    handle: "@business"
-    sourceType: x
-    category: MIXED
-    priority: 85
-    enabled: true
-    qualityScore: 90
-    noiseScore: 12
-    macroScore: 85
-    microScore: 85
-    geopoliticalScore: 70
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-
-  - id: x:bloomberg-markets
-    name: Bloomberg Markets
-    handle: "@markets"
-    sourceType: x
-    category: MARKET
-    priority: 85
-    enabled: true
-    qualityScore: 90
-    noiseScore: 12
-    macroScore: 88
-    microScore: 80
-    geopoliticalScore: 60
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-
-  - id: x:bloomberg-economics
-    name: Bloomberg Economics
-    handle: "@economics"
-    sourceType: x
-    category: ECONOMIC
-    priority: 82
-    enabled: true
-    qualityScore: 89
-    noiseScore: 12
-    macroScore: 92
-    microScore: 40
-    geopoliticalScore: 55
-    filterProfile: standard
-    expectedIntervalMs: 3600000
-
-  - id: x:bloomberg-technology
-    name: Bloomberg Technology
-    handle: "@technology"
-    sourceType: x
-    category: EQUITY
-    priority: 75
-    enabled: true
-    qualityScore: 86
-    noiseScore: 16
-    macroScore: 25
-    microScore: 88
-    geopoliticalScore: 35
-    filterProfile: standard
-    expectedIntervalMs: 3600000
-
-  - id: x:bloomberg-politics
-    name: Bloomberg Politics
-    handle: "@politics"
-    sourceType: x
-    category: GEOPOLITICAL
-    priority: 70
-    enabled: false
-    qualityScore: 80
-    noiseScore: 25
-    macroScore: 40
-    microScore: 20
-    geopoliticalScore: 80
-    filterProfile: strict
-    expectedIntervalMs: 3600000
-    notes: >-
-      Staged, not enabled. Political coverage carries a high commentary ratio;
-      turn on only after reviewing the accept rate in #scout-raw.
-
-  - id: x:reuters
-    name: Reuters
-    handle: "@Reuters"
-    sourceType: x
-    category: MIXED
-    priority: 85
-    enabled: true
-    qualityScore: 92
-    noiseScore: 10
-    macroScore: 80
-    microScore: 75
-    geopoliticalScore: 92
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-
-  - id: x:reuters-business
-    name: Reuters Business
-    handle: "@ReutersBiz"
-    sourceType: x
-    category: MIXED
-    priority: 85
-    enabled: true
-    qualityScore: 91
-    noiseScore: 10
-    macroScore: 85
-    microScore: 88
-    geopoliticalScore: 60
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-
-  - id: x:ap
-    name: The Associated Press
-    handle: "@AP"
-    sourceType: x
-    category: GEOPOLITICAL
-    priority: 80
-    enabled: true
-    qualityScore: 90
-    noiseScore: 14
-    macroScore: 45
-    microScore: 35
-    geopoliticalScore: 92
-    filterProfile: standard
-    expectedIntervalMs: 1800000
-    notes: Geopolitics, government action, elections, wars, disasters.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # MACRO — HIGH SIGNAL BUT MIXED WITH COMMENTARY (§8)
-  # These run the strict filter profile: the factuality gate must return
-  # FACTUAL_NEWS or the post is dropped. Do not ingest these blindly.
-  # ══════════════════════════════════════════════════════════════════════════
-  - id: x:kobeissiletter
-    name: The Kobeissi Letter
-    handle: "@KobeissiLetter"
-    sourceType: x
-    category: MACRO
-    priority: 65
-    enabled: true
-    qualityScore: 76
-    noiseScore: 30
-    macroScore: 82
-    microScore: 45
-    geopoliticalScore: 40
-    filterProfile: strict
-    expectedIntervalMs: 3600000
-    notes: >-
-      Mixes reporting with commentary and chart-driven analysis. Strict profile
-      required — commentary must not reach the wire.
-
-  - id: x:zerohedge
-    name: ZeroHedge
-    handle: "@zerohedge"
-    sourceType: x
-    category: MACRO
-    priority: 55
-    enabled: true
-    qualityScore: 70
-    noiseScore: 42
-    macroScore: 78
-    microScore: 50
-    geopoliticalScore: 65
-    filterProfile: strict
-    expectedIntervalMs: 1800000
-    notes: >-
-      Fast on breaking headlines but heavy on opinion and framing. Strict
-      profile. Review the accept ratio monthly; drop below a 0.25 useful ratio
-      and this account should come out (§5, §28).
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # OFFICIAL DATA LAYER (§9)
-  # Primary sources, delivered by RSS rather than X. These are the authoritative
-  # release feeds — no intermediary, no commentary, highest credibility. They
-  # need no API key, so this layer works on day one.
-  # ══════════════════════════════════════════════════════════════════════════
   - id: rss:fed-press-all
     name: Federal Reserve — All Press Releases
     url: https://www.federalreserve.gov/feeds/press_all.xml
@@ -299,7 +15,6 @@ sources:
     microScore: 20
     geopoliticalScore: 10
     expectedIntervalMs: 86400000
-
   - id: rss:fed-monetary
     name: Federal Reserve — Monetary Policy
     url: https://www.federalreserve.gov/feeds/press_monetary.xml
@@ -316,7 +31,6 @@ sources:
     geopoliticalScore: 5
     expectedIntervalMs: 604800000
     notes: FOMC statements and implementation notes. Highest-priority feed in Scout.
-
   - id: rss:fed-speeches
     name: Federal Reserve — Speeches
     url: https://www.federalreserve.gov/feeds/speeches.xml
@@ -332,7 +46,6 @@ sources:
     microScore: 5
     geopoliticalScore: 5
     expectedIntervalMs: 604800000
-
   - id: rss:fed-testimony
     name: Federal Reserve — Testimony
     url: https://www.federalreserve.gov/feeds/testimony.xml
@@ -348,7 +61,6 @@ sources:
     microScore: 5
     geopoliticalScore: 5
     expectedIntervalMs: 2592000000
-
   - id: rss:bls-latest
     name: Bureau of Labor Statistics — Latest Releases
     url: https://www.bls.gov/feed/bls_latest.rss
@@ -365,7 +77,6 @@ sources:
     geopoliticalScore: 0
     expectedIntervalMs: 604800000
     notes: CPI, PPI, employment situation, JOLTS, real earnings.
-
   - id: rss:bea-news
     name: Bureau of Economic Analysis — News Releases
     url: https://www.bea.gov/rss.xml
@@ -373,10 +84,6 @@ sources:
     sourceType: rss
     category: ECONOMIC
     priority: 100
-    # DISABLED: this URL returned HTTP 404 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 100
@@ -386,7 +93,6 @@ sources:
     geopoliticalScore: 0
     expectedIntervalMs: 604800000
     notes: GDP, PCE, personal income and outlays.
-
   - id: rss:treasury-press
     name: U.S. Treasury — Press Releases
     url: https://home.treasury.gov/rss/press.xml
@@ -394,10 +100,6 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 92
-    # DISABLED: this URL returned HTTP 404 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 100
@@ -407,7 +109,6 @@ sources:
     geopoliticalScore: 60
     expectedIntervalMs: 604800000
     notes: Auctions, debt management, sanctions designations.
-
   - id: rss:sec-press
     name: SEC — Press Releases
     url: https://www.sec.gov/news/pressreleases.rss
@@ -423,10 +124,6 @@ sources:
     microScore: 90
     geopoliticalScore: 5
     expectedIntervalMs: 604800000
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # CENTRAL BANK LAYER (§10)
-  # ══════════════════════════════════════════════════════════════════════════
   - id: rss:ecb-press
     name: European Central Bank — Press
     url: https://www.ecb.europa.eu/rss/press.html
@@ -442,7 +139,6 @@ sources:
     microScore: 5
     geopoliticalScore: 20
     expectedIntervalMs: 604800000
-
   - id: rss:boe-news
     name: Bank of England — News
     url: https://www.bankofengland.co.uk/rss/news
@@ -458,7 +154,6 @@ sources:
     microScore: 5
     geopoliticalScore: 15
     expectedIntervalMs: 604800000
-
   - id: rss:boj-news
     name: Bank of Japan — What's New
     url: https://www.boj.or.jp/en/rss/whatsnew.xml
@@ -474,7 +169,6 @@ sources:
     microScore: 5
     geopoliticalScore: 15
     expectedIntervalMs: 604800000
-
   - id: rss:boc-press
     name: Bank of Canada — Press Releases
     url: https://www.bankofcanada.ca/content_type/press-releases/feed/
@@ -490,7 +184,6 @@ sources:
     microScore: 5
     geopoliticalScore: 10
     expectedIntervalMs: 604800000
-
   - id: rss:rba-media
     name: Reserve Bank of Australia — Media Releases
     url: https://www.rba.gov.au/rss/rss-cb-media-releases.xml
@@ -506,30 +199,6 @@ sources:
     microScore: 5
     geopoliticalScore: 10
     expectedIntervalMs: 604800000
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # CONTINUOUS FREE FEEDS
-  #
-  # The agency feeds above are authoritative and SLOW — a handful of releases a
-  # day, on a published schedule. On their own they leave the wire silent for
-  # hours, which reads like a broken bot rather than a quiet morning.
-  #
-  # Everything below publishes CONTINUOUSLY, needs no API key, and needs no
-  # permission from anyone. This is what makes Scout an automatic wire instead
-  # of something you have to feed.
-  #
-  # They are also noisier, and are scored honestly for it: a high noiseScore
-  # makes an item compete poorly, `filterProfile: strict` requires the
-  # factuality gate to return FACTUAL_NEWS before anything reaches the wire, and
-  # the market-impact test still decides the trading channels. A newswire
-  # publishing constantly does not get to flood #spx-trading.
-  #
-  # If one of these 404s it shows up as DISCONNECTED on the dashboard with the
-  # actual error, costs nothing, and can be deleted. A dead feed is a health
-  # warning; it is never a wrong alert.
-  # ══════════════════════════════════════════════════════════════════════════
-
-  # ── Corporate newswires — where earnings and M&A actually break ───────────
   - id: rss:businesswire
     name: Business Wire — All News
     url: https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeEFpRXQ==
@@ -547,7 +216,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Earnings releases, M&A, guidance. High volume; strict factuality gate.
-
   - id: rss:globenewswire
     name: GlobeNewswire — Public Companies
     url: https://www.globenewswire.com/RssFeed/orgclass/1/feedTitle/GlobeNewswire%20-%20News%20about%20Public%20Companies
@@ -565,7 +233,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Company releases. Same role as Business Wire, different issuers.
-
   - id: rss:prnewswire
     name: PR Newswire — News Releases
     url: https://www.prnewswire.com/rss/news-releases-list.rss
@@ -573,8 +240,6 @@ sources:
     sourceType: rss
     category: EQUITY
     priority: 76
-    # DISABLED: returned HTTP 404 in production. Business Wire and
-    # GlobeNewswire cover the same ground; a verified URL can re-enable it.
     enabled: false
     official: false
     qualityScore: 74
@@ -585,8 +250,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Highest volume of the three wires, and the most promotional.
-
-  # ── Market press — continuous coverage ────────────────────────────────────
   - id: rss:cnbc-top
     name: CNBC — Top News
     url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
@@ -604,7 +267,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 600000
     notes: Breaking market coverage. Mixes reporting with commentary, hence strict.
-
   - id: rss:cnbc-economy
     name: CNBC — Economy
     url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
@@ -622,7 +284,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Same org as cnbc-top, so the two count as ONE confirmation.
-
   - id: rss:marketwatch-top
     name: MarketWatch — Top Stories
     url: https://feeds.content.dowjones.io/public/rss/mw_topstories
@@ -640,7 +301,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 600000
     notes: Dow Jones newsroom. Fast on market-moving headlines.
-
   - id: rss:marketwatch-pulse
     name: MarketWatch — Market Pulse
     url: https://feeds.content.dowjones.io/public/rss/mw_marketpulse
@@ -658,7 +318,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 600000
     notes: Short factual market headlines — the closest free equivalent to a squawk.
-
   - id: rss:yahoo-finance
     name: Yahoo Finance — News
     url: https://finance.yahoo.com/news/rssindex
@@ -666,11 +325,6 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 70
-    # DISABLED: a re-publisher, not a wire. It carried the 38-unit franchisee
-    # bankruptcy that started this, and it reaches RSS minutes after the
-    # underlying story — so under a two-minute freshness window it mostly
-    # cannot clear the gate anyway. Its content arrives here first-hand from
-    # the primary sources and PR wires above.
     enabled: false
     official: false
     qualityScore: 66
@@ -681,7 +335,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 600000
     notes: Aggregator, so it repeats others. Dedupe collapses it against them.
-
   - id: rss:investing-news
     name: Investing.com — News
     url: https://www.investing.com/rss/news.rss
@@ -689,9 +342,6 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 68
-    # DISABLED: aggregator with heavy SEO and forecast content, which is what
-    # the clickbait and prediction filters spend their time on. Low unique
-    # signal per item.
     enabled: false
     official: false
     qualityScore: 64
@@ -702,8 +352,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 600000
     notes: Broad coverage including FX and commodities.
-
-  # ── Energy — inventories move crude within seconds ────────────────────────
   - id: rss:eia-today
     name: U.S. EIA — Today in Energy
     url: https://www.eia.gov/rss/todayinenergy.xml
@@ -720,7 +368,6 @@ sources:
     geopoliticalScore: 45
     expectedIntervalMs: 86400000
     notes: Official energy data. Petroleum status reports move crude directly.
-
   - id: rss:eia-press
     name: U.S. EIA — Press Releases
     url: https://www.eia.gov/rss/press_rss.xml
@@ -737,8 +384,6 @@ sources:
     geopoliticalScore: 45
     expectedIntervalMs: 604800000
     notes: Same body as eia-today — one organisation, one confirmation.
-
-  # ── Regulators and policy ─────────────────────────────────────────────────
   - id: rss:sec-litigation
     name: SEC — Litigation Releases
     url: https://www.sec.gov/rss/litigation/litreleases.xml
@@ -746,10 +391,6 @@ sources:
     sourceType: rss
     category: EQUITY
     priority: 74
-    # DISABLED: this URL returned HTTP 404 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 96
@@ -759,7 +400,6 @@ sources:
     geopoliticalScore: 10
     expectedIntervalMs: 86400000
     notes: Enforcement against named issuers. Single-name impact.
-
   - id: rss:cftc-press
     name: CFTC — Press Releases
     url: https://www.cftc.gov/RSS/RSSGP/rssgp.xml
@@ -776,7 +416,6 @@ sources:
     geopoliticalScore: 15
     expectedIntervalMs: 86400000
     notes: Derivatives and commodities regulation.
-
   - id: rss:federalregister-treasury
     name: Federal Register — Treasury Documents
     url: https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=treasury-department
@@ -793,9 +432,8 @@ sources:
     geopoliticalScore: 20
     filterProfile: strict
     expectedIntervalMs: 86400000
-    notes: Rules and notices. Mostly procedural — strict gate keeps routine filings out.
-
-  # ── International institutions ────────────────────────────────────────────
+    notes: Rules and notices. Mostly procedural — strict gate keeps routine filings
+      out.
   - id: rss:imf-news
     name: IMF — News
     url: https://www.imf.org/en/News/RSS?language=eng
@@ -803,10 +441,6 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 70
-    # DISABLED: this URL returned HTTP 403 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 94
@@ -816,7 +450,6 @@ sources:
     geopoliticalScore: 60
     expectedIntervalMs: 86400000
     notes: Global growth forecasts, country programmes, financial stability.
-
   - id: rss:worldbank-news
     name: World Bank — News
     url: https://www.worldbank.org/en/news/all?format=rss
@@ -824,9 +457,6 @@ sources:
     sourceType: rss
     category: MACRO
     priority: 60
-    # DISABLED: produced no item at all across the deployment, and development
-    # lending announcements rarely move a book. The IMF feed covers the
-    # market-relevant share of this beat.
     enabled: false
     official: true
     qualityScore: 90
@@ -837,8 +467,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 86400000
     notes: Development and emerging-market policy.
-
-  # ── U.S. policy ───────────────────────────────────────────────────────────
   - id: rss:whitehouse
     name: The White House — Briefing Room
     url: https://www.whitehouse.gov/feed/
@@ -846,10 +474,6 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 76
-    # DISABLED: this URL returned HTTP 404 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 92
@@ -859,8 +483,8 @@ sources:
     geopoliticalScore: 88
     filterProfile: strict
     expectedIntervalMs: 43200000
-    notes: Executive orders, tariffs, sanctions. Strict gate — much of it is ceremonial.
-
+    notes: Executive orders, tariffs, sanctions. Strict gate — much of it is
+      ceremonial.
   - id: rss:nyfed-news
     name: Federal Reserve Bank of New York — News
     url: https://www.newyorkfed.org/rss/news.xml
@@ -868,10 +492,6 @@ sources:
     sourceType: rss
     category: FED
     priority: 84
-    # DISABLED: this URL returned HTTP 403 in production. Left here with the
-    # dead URL visible rather than replaced by a guess — an unverified
-    # substitute is a coin flip, and a wrong one fails identically while
-    # looking fixed. Set a verified URL and flip this back to true.
     enabled: false
     official: true
     qualityScore: 98
@@ -880,23 +500,9 @@ sources:
     microScore: 15
     geopoliticalScore: 15
     expectedIntervalMs: 86400000
-    notes: >-
-      Open-market operations and the desk. org is `fed`, deliberately: the New
+    notes: "Open-market operations and the desk. org is `fed`, deliberately: the New
       York Fed and the Board are ONE body, so the pair counts as one
-      confirmation rather than inflating credibility on every Fed story.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # GEOPOLITICS AND POLICY — CONTINUOUS
-  #
-  # The fast statement-and-conflict headlines: sanctions, tariffs, strikes,
-  # negotiations, the things a squawk relays from Truth Social and the wires.
-  #
-  # Scored as the general news they are: a high noiseScore and a strict
-  # factuality gate, so a story has to be reported fact before it reaches the
-  # wire and has to pass the market-impact test before it reaches a trading
-  # channel. A football result from the same feed scores no category evidence
-  # at all and never leaves the classifier.
-  # ══════════════════════════════════════════════════════════════════════════
+      confirmation rather than inflating credibility on every Fed story."
   - id: rss:bbc-world
     name: BBC News — World
     url: https://feeds.bbci.co.uk/news/world/rss.xml
@@ -914,7 +520,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Conflict, sanctions, elections. One of the most stable feeds there is.
-
   - id: rss:bbc-business
     name: BBC News — Business
     url: https://feeds.bbci.co.uk/news/business/rss.xml
@@ -932,7 +537,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Same org as bbc-world — the pair counts as ONE confirmation.
-
   - id: rss:aljazeera
     name: Al Jazeera — All News
     url: https://www.aljazeera.com/xml/rss/all.xml
@@ -950,7 +554,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: Fast on Middle East developments, which move crude directly.
-
   - id: rss:guardian-business
     name: The Guardian — Business
     url: https://www.theguardian.com/uk/business/rss
@@ -958,9 +561,6 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 66
-    # DISABLED: general business journalism on a several-minute delay — it was
-    # sitting in the DELAYED list. Commentary and analysis rather than the
-    # first report of an event.
     enabled: false
     official: false
     qualityScore: 72
@@ -971,7 +571,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 900000
     notes: European market and policy coverage.
-
   - id: rss:state-dept
     name: U.S. State Department — Press Releases
     url: https://www.state.gov/rss-feed/press-releases/feed/
@@ -989,7 +588,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 43200000
     notes: Sanctions and designations — the primary source, not a report of one.
-
   - id: rss:defense-news
     name: U.S. Department of Defense — News
     url: https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945&max=20
@@ -1007,7 +605,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 43200000
     notes: Deployments and strikes. Much of it is routine; strict gate handles that.
-
   - id: rss:un-news
     name: UN News — All
     url: https://news.un.org/feed/subscribe/en/news/all/rss.xml
@@ -1015,9 +612,6 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 58
-    # DISABLED: mostly humanitarian and procedural, published well after the
-    # events it covers. Geopolitics that moves markets arrives faster through
-    # the State Department, Defense and wire feeds.
     enabled: false
     official: true
     qualityScore: 82
@@ -1028,109 +622,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 43200000
     notes: Ceasefires, resolutions, humanitarian declarations. Noisiest of this set.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # TRUTH SOCIAL — PUBLIC API, NO CREDENTIAL
-  #
-  # Truth Social runs a Mastodon-compatible server whose public account and
-  # status endpoints answer anonymous reads. Scout calls them directly: no key,
-  # no cost, and nothing that works around an access control.
-  #
-  # The published tooling for this routes every request through FlareSolverr, a
-  # Cloudflare-challenge solver. Scout does not, and will not: if these
-  # endpoints ever close, the right outcome is that this adapter stops working,
-  # not that it starts pretending to be a browser.
-  #
-  # Ids are `truth:<status id>` — the SAME scheme the webhook path derives — so
-  # a post seen here and pushed by a relay collapses into one event.
-  # ══════════════════════════════════════════════════════════════════════════
-  - id: truth:realdonaldtrump
-    name: Donald J. Trump — Truth Social
-    handle: "@realDonaldTrump"
-    url: https://truthsocial.com
-    org: trump
-    sourceType: truthsocial
-    category: GEOPOLITICAL
-    priority: 92
-    enabled: false
-    official: true
-    qualityScore: 88
-    noiseScore: 45
-    macroScore: 78
-    microScore: 40
-    geopoliticalScore: 96
-    filterProfile: standard
-    expectedIntervalMs: 21600000
-    notes: >-
-      Tariffs, sanctions, personnel and policy, stated first-hand. A sitting
-      president's own statements are primary source material, which is why the
-      quality seed is high — and the noise seed is not low, because plenty of
-      it is not market news and the filters have to earn their keep.
-
-  # Two news outlets on the same platform. Secondary reporting rather than
-  # first-hand statement, so both carry a lower quality seed than the account
-  # above and a much higher noise seed: most of what a cable-news account posts
-  # is politics, not market news, and the filters have to carry that weight.
-  # Separate orgs, so the two corroborating each other counts as two outlets —
-  # and neither corroborates @realDonaldTrump, whose statements they report.
-  - id: truth:foxnews
-    name: Fox News — Truth Social
-    handle: "@FoxNews"
-    url: https://truthsocial.com
-    org: foxnews
-    sourceType: truthsocial
-    category: GEOPOLITICAL
-    priority: 70
-    enabled: false
-    official: false
-    qualityScore: 72
-    noiseScore: 66
-    macroScore: 60
-    microScore: 35
-    geopoliticalScore: 82
-    filterProfile: strict
-    expectedIntervalMs: 3600000
-    notes: >-
-      High volume and mostly political. Strict gate; the market-relevant share is
-      tariffs, sanctions and personnel. DISABLED to conserve vendor credits: the
-      transport bills per post returned, so each enabled account multiplies the
-      hourly spend. Re-enable once the balance supports it.
-
-  - id: truth:newsmax
-    name: Newsmax — Truth Social
-    handle: "@newsmax"
-    url: https://truthsocial.com
-    org: newsmax
-    sourceType: truthsocial
-    category: GEOPOLITICAL
-    priority: 64
-    enabled: false
-    official: false
-    qualityScore: 66
-    noiseScore: 70
-    macroScore: 55
-    microScore: 30
-    geopoliticalScore: 80
-    filterProfile: strict
-    expectedIntervalMs: 3600000
-    notes: >-
-      Same role as the Fox entry, noisier still. DISABLED alongside it to
-      conserve vendor credits.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # FINNHUB — POLLED MARKET NEWS
-  #
-  # Scout ASKS for the news on a timer. Nothing has to be pasted, forwarded or
-  # pushed by anyone, which is what separates this from the webhook: a webhook
-  # sits waiting for a sender, and there is no free sender for X.
-  #
-  # Needs FINNHUB_API_KEY. Without it the adapter is not registered at all — no
-  # failing polls, no health noise — exactly as with an absent X token.
-  #
-  # Finnhub is a TRANSPORT. Each item names the outlet that actually reported
-  # it, and that outlet is what provenance shows and what corroboration counts.
-  # A story is never attributed to "Finnhub".
-  # ══════════════════════════════════════════════════════════════════════════
   - id: finnhub:general
     name: Finnhub — Market News
     sourceType: finnhub
@@ -1145,10 +636,8 @@ sources:
     geopoliticalScore: 40
     filterProfile: strict
     expectedIntervalMs: 1800000
-    notes: >-
-      General market wire, refreshed every poll. Strict factuality gate because
+    notes: General market wire, refreshed every poll. Strict factuality gate because
       an aggregator carries commentary alongside reporting.
-
   - id: finnhub:merger
     name: Finnhub — M&A
     sourceType: finnhub
@@ -1164,7 +653,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 86400000
     notes: Merger and acquisition headlines — single-name by definition.
-
   - id: finnhub:forex
     name: Finnhub — FX
     sourceType: finnhub
@@ -1179,10 +667,8 @@ sources:
     geopoliticalScore: 35
     filterProfile: strict
     expectedIntervalMs: 3600000
-    notes: >-
-      Off by default. Enable if you want currency coverage; it overlaps heavily
+    notes: Off by default. Enable if you want currency coverage; it overlaps heavily
       with the macro feeds and mostly repeats them.
-
   - id: finnhub:crypto
     name: Finnhub — Crypto
     sourceType: finnhub
@@ -1198,12 +684,6 @@ sources:
     filterProfile: strict
     expectedIntervalMs: 3600000
     notes: Off by default — high volume, low signal for an equities desk.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # SEC FILINGS ENGINE (§16)
-  # EDGAR "current events" atom feeds. Materiality is classified before
-  # anything reaches a channel — most filings never alert.
-  # ══════════════════════════════════════════════════════════════════════════
   - id: edgar:8k
     name: SEC EDGAR — 8-K Current Reports
     url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K&company=&dateb=&owner=include&count=100&output=atom
@@ -1219,7 +699,6 @@ sources:
     geopoliticalScore: 0
     expectedIntervalMs: 3600000
     notes: Material corporate events. Item codes drive the materiality classifier.
-
   - id: edgar:13d
     name: SEC EDGAR — SC 13D Activist Stakes
     url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=SC+13D&company=&dateb=&owner=include&count=100&output=atom
@@ -1234,7 +713,6 @@ sources:
     microScore: 95
     geopoliticalScore: 0
     expectedIntervalMs: 86400000
-
   - id: edgar:4
     name: SEC EDGAR — Form 4 Insider Transactions
     url: https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=4&company=&dateb=&owner=include&count=100&output=atom
@@ -1249,17 +727,9 @@ sources:
     microScore: 70
     geopoliticalScore: 0
     expectedIntervalMs: 3600000
-    notes: >-
-      Staged off by default. Form 4 volume is enormous and only large insider
+    notes: Staged off by default. Form 4 volume is enormous and only large insider
       transactions in priority names clear the materiality bar. Enable once the
       filings classifier has been tuned against real volume.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # RELAYED URLS (24/7 URL ingestion)
-  # Posts that arrive as X links in the watched Discord channels are attributed
-  # here. Routing is decided by the event, never by this source — the same relay
-  # produces a #scout-news-only post and an all-channels post minutes apart.
-  # ══════════════════════════════════════════════════════════════════════════
   - id: relay:discord-urls
     name: Relayed X Posts
     sourceType: manual
@@ -1273,285 +743,6 @@ sources:
     geopoliticalScore: 90
     filterProfile: standard
     expectedIntervalMs: 3600000
-    notes: >-
-      URLs detected in NEWS_SOURCE_CHANNEL_IDS / TRUTH_SOCIAL_CHANNEL_IDS /
+    notes: URLs detected in NEWS_SOURCE_CHANNEL_IDS / TRUTH_SOCIAL_CHANNEL_IDS /
       ADMIN_INPUT_CHANNEL_IDS. Constrain which accounts are accepted with
       ALLOWED_X_ACCOUNTS rather than by trusting whoever pasted the link.
-
-  # ══════════════════════════════════════════════════════════════════════════
-  # OFFICIAL SOURCES ON X — handles supplied and confirmed by the operator
-  #
-  # TIERED, because "official" means CREDIBLE, not IMPORTANT. @BLS_gov posting
-  # CPI is a trading event; @BLS_gov posting a hiring notice is not. Tier sets
-  # the sourceQuality seed and the priority; the category classifier, the noise
-  # filters and the market-impact test still decide every alert. No source in
-  # this file can put anything into a trading channel on its own.
-  #
-  #   TIER 1  direct market data — the release itself
-  #   TIER 2  macro / policy — matters, rarely instantaneous
-  #   TIER 3  context — credibility weight, seldom the alert
-  #
-  # `org` matters as much as the handle. Every feed of one body shares it, so
-  # the Fed's RSS feed and the Fed's X account are ONE confirmation rather than
-  # two. Without it every release would look independently corroborated by an
-  # agency agreeing with itself.
-  #
-  # NOTE ON POLLING: with X_BEARER_TOKEN unset these are not polled. They still
-  # score and attribute correctly when the same account reaches Scout through
-  # the Discord relay or the webhook. Direct polling needs a bearer token.
-  # ══════════════════════════════════════════════════════════════════════════
-
-  # ── TIER 1 — DIRECT MARKET DATA ───────────────────────────────────────────
-  - id: x:fed
-    name: Federal Reserve
-    handle: "@federalreserve"
-    org: federal-reserve
-    sourceType: x
-    category: FED
-    priority: 98
-    enabled: true
-    qualityScore: 99
-    noiseScore: 8
-    official: true
-    notes: FOMC decisions and statements. Same body as the rss:fed-* feeds.
-
-  - id: x:bls
-    name: Bureau of Labor Statistics
-    handle: "@BLS_gov"
-    org: bls
-    sourceType: x
-    category: ECONOMIC
-    priority: 97
-    enabled: true
-    qualityScore: 99
-    noiseScore: 12
-    official: true
-    notes: CPI, NFP, PPI, JOLTS. Often faster than the RSS feed it duplicates.
-
-  - id: x:bea
-    name: Bureau of Economic Analysis
-    handle: "@BEA_News"
-    org: bea
-    sourceType: x
-    category: ECONOMIC
-    priority: 95
-    enabled: true
-    qualityScore: 98
-    noiseScore: 12
-    official: true
-    notes: GDP, PCE, personal income and spending.
-
-  - id: x:treasury
-    name: US Treasury Department
-    handle: "@USTreasury"
-    org: treasury
-    sourceType: x
-    category: MACRO
-    priority: 90
-    enabled: true
-    qualityScore: 96
-    noiseScore: 15
-    official: true
-    notes: Fiscal policy, sanctions, debt issuance.
-
-  - id: x:opec
-    name: OPEC Secretariat
-    handle: "@OPECSecretariat"
-    org: opec
-    sourceType: x
-    category: COMMODITY
-    priority: 88
-    enabled: true
-    qualityScore: 95
-    noiseScore: 15
-    official: true
-    notes: Production decisions move crude and the whole energy complex.
-
-  - id: x:eia
-    name: US Energy Information Administration
-    handle: "@EIAgov"
-    org: eia
-    sourceType: x
-    category: COMMODITY
-    priority: 85
-    enabled: true
-    qualityScore: 95
-    noiseScore: 18
-    official: true
-    notes: Weekly inventories are a scheduled, market-moving release.
-
-  - id: x:ecb
-    name: European Central Bank
-    handle: "@ecb"
-    org: ecb
-    sourceType: x
-    category: MACRO
-    priority: 88
-    enabled: true
-    qualityScore: 97
-    noiseScore: 12
-    official: true
-
-  - id: x:boe
-    name: Bank of England
-    handle: "@bankofengland"
-    org: boe
-    sourceType: x
-    category: MACRO
-    priority: 80
-    enabled: true
-    qualityScore: 96
-    noiseScore: 14
-    official: true
-
-  # ── TIER 2 — MACRO / POLICY ───────────────────────────────────────────────
-  - id: x:census
-    name: US Census Bureau
-    handle: "@uscensusbureau"
-    org: census
-    sourceType: x
-    category: ECONOMIC
-    priority: 70
-    enabled: true
-    qualityScore: 92
-    noiseScore: 30
-    official: true
-    notes: Retail sales, housing starts, durable goods. Heavy non-market output.
-
-  - id: x:cbo
-    name: Congressional Budget Office
-    handle: "@USCBO"
-    org: cbo
-    sourceType: x
-    category: MACRO
-    priority: 60
-    enabled: true
-    qualityScore: 90
-    noiseScore: 32
-    official: true
-
-  - id: x:sec
-    name: US Securities and Exchange Commission
-    handle: "@SECgov"
-    org: sec
-    sourceType: x
-    category: EQUITY
-    priority: 68
-    enabled: true
-    qualityScore: 93
-    noiseScore: 30
-    official: true
-    notes: Enforcement and rulemaking. Same body as rss:sec-press and EDGAR.
-
-  - id: x:fdic
-    name: Federal Deposit Insurance Corporation
-    handle: "@FDICgov"
-    org: fdic
-    sourceType: x
-    category: MACRO
-    priority: 65
-    enabled: true
-    qualityScore: 92
-    noiseScore: 30
-    official: true
-    notes: Bank failures and banking-system stress.
-
-  - id: x:statedept
-    name: US Department of State
-    handle: "@StateDept"
-    org: state-dept
-    sourceType: x
-    category: GEOPOLITICAL
-    priority: 66
-    enabled: true
-    qualityScore: 88
-    noiseScore: 38
-    official: true
-    notes: High volume of routine diplomacy; the noise filters carry real weight here.
-
-  - id: x:iea
-    name: International Energy Agency
-    handle: "@IEA"
-    org: iea
-    sourceType: x
-    category: COMMODITY
-    priority: 62
-    enabled: true
-    qualityScore: 90
-    noiseScore: 32
-    official: true
-
-  - id: x:boc
-    name: Bank of Canada
-    handle: "@bankofcanada"
-    org: boc
-    sourceType: x
-    category: MACRO
-    priority: 58
-    enabled: true
-    qualityScore: 94
-    noiseScore: 18
-    official: true
-
-  - id: x:boj
-    name: Bank of Japan
-    handle: "@bank_of_japan_e"
-    org: boj
-    sourceType: x
-    category: MACRO
-    priority: 62
-    enabled: true
-    qualityScore: 94
-    noiseScore: 18
-    official: true
-
-  - id: x:snb
-    name: Swiss National Bank
-    handle: "@snbnews"
-    org: snb
-    sourceType: x
-    category: MACRO
-    priority: 52
-    enabled: true
-    qualityScore: 93
-    noiseScore: 20
-    official: true
-
-  - id: x:rbnz
-    name: Reserve Bank of New Zealand
-    handle: "@RBNZ"
-    org: rbnz
-    sourceType: x
-    category: MACRO
-    priority: 45
-    enabled: true
-    qualityScore: 92
-    noiseScore: 22
-    official: true
-
-  # ── TIER 3 — CONTEXT ──────────────────────────────────────────────────────
-  - id: x:fincen
-    name: Financial Crimes Enforcement Network
-    handle: "@FinCENnews"
-    org: fincen
-    sourceType: x
-    category: MACRO
-    priority: 42
-    enabled: true
-    qualityScore: 88
-    noiseScore: 40
-    official: true
-    notes: Sanctions and AML actions. Rarely instantaneous, occasionally decisive.
-
-  - id: x:cme
-    name: CME Group
-    handle: "@CMEGroup"
-    org: cme
-    sourceType: x
-    category: MARKET
-    priority: 40
-    enabled: true
-    qualityScore: 82
-    noiseScore: 48
-    official: false
-    notes: Market infrastructure. Mostly promotional; kept for halts and notices.

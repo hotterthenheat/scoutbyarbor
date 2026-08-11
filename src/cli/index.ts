@@ -2,7 +2,6 @@ import { env } from '../config/env.js';
 import { loadSourcesFile, loadTaxonomy, loadSecurityMaster, toSource } from '../config/loader.js';
 import { openDatabase } from '../db/index.js';
 import { createPipeline } from '../pipeline/index.js';
-import { createTwitterAdapter } from '../ingest/adapters/twitter.js';
 import { createRssAdapter } from '../ingest/adapters/rss.js';
 import { createEdgarAdapter } from '../ingest/adapters/edgar.js';
 import { parseXPostUrl } from '../ingest/adapters/manual.js';
@@ -149,11 +148,6 @@ async function sourcesVerify(path: string): Promise<void> {
   db.migrate();
 
   const adapters = [
-    createTwitterAdapter({
-      bearerToken: cfg.x.bearerToken,
-      requestBudgetPerWindow: cfg.x.requestBudgetPerWindow,
-      logger: log.child('x'),
-    }),
     createRssAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 20_000, logger: log.child('rss') }),
     createEdgarAdapter({ userAgent: cfg.sec.userAgent, timeoutMs: 20_000, logger: log.child('edgar') }),
   ];
@@ -161,19 +155,10 @@ async function sourcesVerify(path: string): Promise<void> {
   const results: SourceVerification[] = [];
   const skipped: Array<{ id: string; reason: string }> = [];
 
-  // An absent X credential is a normal configuration, not a failure. Verifying
-  // what cannot be verified would report every X source as broken and make the
-  // command look like a deployment blocker, which it is not.
-  const xConfigured = Boolean(cfg.x.bearerToken);
-
   for (const source of db.sources.all()) {
-    if (source.sourceType === 'manual') {
+    if (source.sourceType === 'manual' || source.sourceType === 'discord') {
       // Nothing remote to check: a relay source is fed by Discord, not polled.
       skipped.push({ id: source.id, reason: 'relay source, fed by Discord' });
-      continue;
-    }
-    if (source.sourceType === 'x' && !xConfigured) {
-      skipped.push({ id: source.id, reason: 'X_BEARER_TOKEN not configured' });
       continue;
     }
     const adapter = adapters.find((a) => a.type === source.sourceType);
@@ -201,12 +186,9 @@ async function sourcesVerify(path: string): Promise<void> {
   // Ingestion posture first: which paths are actually live.
   const relayChannels =
     cfg.discord.newsSourceChannelIds.length +
-    cfg.discord.truthSocialChannelIds.length +
     cfg.discord.adminInputChannelIds.length;
 
   process.stdout.write(
-    `\nX API verification: ${xConfigured ? 'ENABLED' : 'SKIPPED'}\n` +
-      (xConfigured ? '' : 'Reason: X_BEARER_TOKEN not configured\n') +
       `\nDiscord relay verification: ${relayChannels > 0 ? 'ENABLED' : 'NOT CONFIGURED'}\n` +
       (relayChannels > 0
         ? `  ${relayChannels} input channel(s) configured\n` +

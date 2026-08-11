@@ -49,7 +49,6 @@ export interface UrlWorkerDeps {
   queue: JobQueue;
   resolver: PostResolver;
   logger: Logger;
-  allowedAccounts: string[];
   /** Source id these posts are attributed to for scoring/health purposes. */
   relaySourceId: string;
   onPost: (post: RawPost, context: UrlPostContext) => Promise<void>;
@@ -76,15 +75,6 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
 
   function submit(message: RelayedMessage): void {
     const { url } = message;
-
-    // §13 — arbitrary URLs from arbitrary users must not become trading alerts.
-    if (!isAllowedAccount(url.username, deps.allowedAccounts)) {
-      logger.debug('url ignored, account not on the allowlist', {
-        handle: url.username,
-        postId: url.canonicalId,
-      });
-      return;
-    }
 
     // Already resolved in a previous run — the durable dedupe layer.
     if (db.posts.exists(url.canonicalId)) {

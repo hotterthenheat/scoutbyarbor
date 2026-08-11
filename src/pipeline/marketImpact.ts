@@ -142,6 +142,11 @@ const MATERIAL_CORPORATE_ACTIONS = [
   'antitrust',
   'investigation',
   'delisting',
+  'offering',
+  'prices upsized offering',
+  'senior notes',
+  'convertible notes',
+  'debt offering',
 ];
 
 export function assessMarketImpact(input: MarketImpactInput): MarketImpactVerdict {

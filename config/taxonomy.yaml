@@ -414,6 +414,11 @@ categories:
       - forecast
       - announces
       - announced
+      - offering
+      - prices upsized offering
+      - senior notes
+      - convertible notes
+      - debt offering
       - unveils
       - launches
       - recall
@@ -1394,7 +1399,7 @@ commodities:
   PALLADIUM: [palladium]
 
 countries:
-  US: [united states, u.s., USA, US, america, american, washington]
+  US: [united states, u.s., USA, US, washington]
   IR: [iran, iranian, tehran]
   IL: [israel, israeli, jerusalem, tel aviv]
   RU: [russia, russian, moscow, kremlin]

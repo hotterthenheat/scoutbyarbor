@@ -79,6 +79,7 @@ export interface ScoutDiscord {
    * an embed that fails to render never costs the alert its content.
    */
   send(channelKey: ChannelKey, content: string, embed?: unknown): Promise<SentMessage | null>;
+  sendToId(channelId: string, content: string, embed?: unknown): Promise<SentMessage | null>;
   edit(channelId: string, messageId: string, content: string): Promise<boolean>;
   ensureChannels(): Promise<Record<string, string>>;
   /**
@@ -227,6 +228,43 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
     return first;
   }
 
+  async function sendToId(
+    channelId: string,
+    content: string,
+    embed?: unknown,
+  ): Promise<SentMessage | null> {
+    if (dryRun) {
+      dryRunCounter += 1;
+      logger.info('dry-run sendToId', {
+        channelId,
+        preview: content.slice(0, 120),
+      });
+      return { channelId: `dry-${channelId}`, messageId: `dry-${dryRunCounter}` };
+    }
+
+    const channel = await resolveChannel(channelId);
+    if (!channel) return null;
+
+    if (embed) {
+      const sent = await withRetry(
+        () => channel.send({ embeds: [embed as never] }),
+        logger,
+        'sendToId',
+      );
+      return sent ? { channelId, messageId: sent.id } : null;
+    }
+
+    const chunks = splitForDiscord(content);
+    let first: SentMessage | null = null;
+
+    for (const chunk of chunks) {
+      const sent = await withRetry(() => channel.send({ content: chunk }), logger, 'sendToId');
+      if (!sent) return first;
+      if (!first) first = { channelId, messageId: sent.id };
+    }
+    return first;
+  }
+
   async function edit(channelId: string, messageId: string, content: string): Promise<boolean> {
     if (dryRun) {
       logger.info('dry-run edit', { channelId, messageId });
@@ -363,7 +401,7 @@ export function createDiscordClient(deps: DiscordDeps): ScoutDiscord {
     return out;
   }
 
-  return { start, stop, send, edit, ensureChannels, checkChannels, isReady: () => ready };
+  return { start, stop, send, sendToId, edit, ensureChannels, checkChannels, isReady: () => ready };
 }
 
 /**

@@ -64,35 +64,10 @@ const schema = z.object({
   // discord-sources.yaml declares; config wins for an id described in both.
   DISCORD_INTAKE_CHANNEL_IDS: list(),
   NEWS_SOURCE_CHANNEL_IDS: list(),
-  TRUTH_SOCIAL_CHANNEL_IDS: list(),
   ADMIN_INPUT_CHANNEL_IDS: list(),
 
-  X_BEARER_TOKEN: z.string().default(''),
   FINNHUB_API_KEY: z.string().default(''),
-  // Poll cadence is spent directly out of MAX_PUBLISH_AGE_MINUTES: an item is
-  // already up to one interval old by the time Scout first sees it. With a two
-  // minute budget, a 60s poll gives an upstream feed only 60s of slack, so the
-  // sources that carry breaking statements are polled at 30s.
-  //
-  // X stays slower because its cadence is governed by a request budget rather
-  // than by freshness, and polling it harder just exhausts the window earlier.
-  // Scrape Creators. Set the key and every Truth Social source reads through
-  // the vendor instead of the public endpoints, which is the only route that
-  // works from a datacenter IP. Unset = the free direct transport.
-  //
-  // METERED, so the budget is a required part of the configuration rather than
-  // a tuning knob: three accounts polled every 30s is 8,640 requests a day.
-  SCRAPECREATORS_API_KEY: z.string().default(''),
-  SCRAPECREATORS_BASE_URL: z.string().default('https://api.scrapecreators.com'),
-  // Counted in CREDITS, which the vendor bills per post returned — not per
-  // request. A page of 3 costs 3 credits every poll, seen posts included.
-  SCRAPECREATORS_DAILY_BUDGET: z.coerce.number().int().positive().default(90),
-  SCRAPECREATORS_PAGE_LIMIT: z.coerce.number().int().positive().default(3),
-
-  TRUTH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
   FINNHUB_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(30_000),
-  X_POLL_INTERVAL_MS: numeric(90_000),
-  X_REQUEST_BUDGET_PER_WINDOW: numeric(180),
 
   SEC_USER_AGENT: z.string().default('ArborCapital Scout (ops@example.com)'),
   SEC_POLL_INTERVAL_MS: numeric(30_000),
@@ -132,9 +107,7 @@ const schema = z.object({
   RESOLVE_TIMEOUT_SECONDS: numeric(10),
   RESOLVE_MAX_ATTEMPTS: numeric(4),
   INGEST_CONCURRENCY: numeric(4),
-  ALLOWED_X_ACCOUNTS: list(),
   SPROUT_MAX_AGE_MINUTES: numeric(30),
-  SCOUT_WEBHOOK_TOKEN: z.string().default(''),
   SPROUT_URL: z.string().default(''),
   SPROUT_TOKEN: z.string().default(''),
   SPROUT_TIMEOUT_MS: numeric(10_000),
@@ -235,26 +208,18 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       categoryChannelsEnabled: parsed.CATEGORY_CHANNELS_ENABLED,
       intakeChannelIds: parsed.DISCORD_INTAKE_CHANNEL_IDS,
       newsSourceChannelIds: parsed.NEWS_SOURCE_CHANNEL_IDS,
-      truthSocialChannelIds: parsed.TRUTH_SOCIAL_CHANNEL_IDS,
       adminInputChannelIds: parsed.ADMIN_INPUT_CHANNEL_IDS,
     },
     ingestion: {
       resolveTimeoutMs: parsed.RESOLVE_TIMEOUT_SECONDS * 1000,
       maxAttempts: parsed.RESOLVE_MAX_ATTEMPTS,
       concurrency: parsed.INGEST_CONCURRENCY,
-      allowedXAccounts: parsed.ALLOWED_X_ACCOUNTS.map((a) => a.replace(/^@/, '').toLowerCase()),
     },
     webhook: {
-      token: parsed.SCOUT_WEBHOOK_TOKEN,
-      // Deliberately NOT falling back to SCOUT_WEBHOOK_TOKEN. That token is
-      // handed to a third-party upstream relay so it can push news in; it must
-      // not also authorize an operational endpoint. Unset means POST
-      // /admin/replay is disabled, which is the right default now that the
+      // Unset means POST /admin/replay is disabled, which is the right default now that the
       // replay runs in-process and nothing external needs to trigger it.
       adminToken: parsed.SCOUT_ADMIN_TOKEN,
-      // Its own credential. The X webhook token goes to the X relay operator
-      // and the Discord token to whoever runs the Discord bridge; one secret
-      // for both would mean either party could push into the other's source.
+      // Its own credential. The Discord token goes to whoever runs the Discord bridge.
       discordIntelToken: parsed.DISCORD_INTEL_TOKEN,
     },
     replay: {
@@ -270,21 +235,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ScoutEnv {
       timeoutMs: parsed.SPROUT_TIMEOUT_MS,
     },
     port: parsed.PORT,
-    x: {
-      bearerToken: parsed.X_BEARER_TOKEN,
-      pollIntervalMs: parsed.X_POLL_INTERVAL_MS,
-      requestBudgetPerWindow: parsed.X_REQUEST_BUDGET_PER_WINDOW,
-    },
     finnhub: {
       apiKey: parsed.FINNHUB_API_KEY,
       pollIntervalMs: parsed.FINNHUB_POLL_INTERVAL_MS,
-    },
-    truthSocial: {
-      pollIntervalMs: parsed.TRUTH_POLL_INTERVAL_MS,
-      vendorApiKey: parsed.SCRAPECREATORS_API_KEY,
-      vendorBaseUrl: parsed.SCRAPECREATORS_BASE_URL,
-      vendorDailyBudget: parsed.SCRAPECREATORS_DAILY_BUDGET,
-      vendorPageLimit: parsed.SCRAPECREATORS_PAGE_LIMIT,
     },
     sec: {
       userAgent: parsed.SEC_USER_AGENT,
