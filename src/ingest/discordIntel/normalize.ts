@@ -121,7 +121,7 @@ const UNWANTED_TEXT = [
   "MACRO ALERT"
 ];
 
-function cleanText(text: string): string {
+export function cleanText(text: string): string {
   let cleaned = text;
 
   // 1. Remove exact unwanted strings

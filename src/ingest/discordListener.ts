@@ -4,6 +4,8 @@ import { detectPostUrls, type DetectedUrl } from './urls.js';
 import type { SourceKind } from './queue.js';
 import { envelopeFromMessage } from './discordIntel/intake.js';
 import type { DiscordMessageEnvelope } from './discordIntel/types.js';
+import { renderAlertEmbed } from '../render/alert.js';
+import { flattenMessage, cleanText } from './discordIntel/normalize.js';
 
 /**
  * Watches configured Discord channels — for X post URLs to resolve, and for
@@ -108,8 +110,8 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
     // that holds even if a channel id is one day pasted into the wrong field.
     if (isOwnMessage(message.author?.id, client?.user?.id)) return;
 
-    if (message.content.trim().startsWith('/joke ')) {
-      const jokeText = message.content.trim().slice(6).trim();
+    if (message.content.trim().startsWith('/joke')) {
+      const jokeText = message.content.trim().slice(5).trim();
       if (jokeText && deps.onJoke) {
         deps.onJoke(jokeText);
       }
@@ -121,11 +123,26 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
         try {
           const destChannel = await client?.channels.fetch('1513342006342979635');
           if (destChannel && destChannel.isTextBased() && 'send' in destChannel) {
-            await destChannel.send({
-              content: message.content || undefined,
-              embeds: message.embeds,
-              files: Array.from(message.attachments.values())
+            const envelope = envelopeFromMessage(message, { receivedAt: new Date().toISOString() });
+            const rawText = flattenMessage(envelope);
+            const clean = cleanText(rawText);
+            if (!clean) return;
+
+            const lines = clean.split('\n');
+            const headline = lines[0]!.substring(0, 500);
+            const body = lines.slice(1).join('\n').trim().substring(0, 1000);
+
+            const embed = renderAlertEmbed({
+              alert: {
+                banner: 'BREAKING NEWS',
+                headline,
+                body,
+                timestamp: new Date().toISOString(),
+              },
+              brandFooter: 'Scout by Arbor Capital',
             });
+
+            await destChannel.send({ embeds: [embed as any] });
           }
         } catch (err) {
           logger.warn('Failed to instantly forward message', { err });
