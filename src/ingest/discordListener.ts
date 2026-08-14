@@ -138,7 +138,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
               banner = headlineText.substring(6, endIdx).trim();
               headlineText = headlineText.substring(endIdx + 2).trim();
               if (!headlineText && lines.length > 1) {
-                headlineText = lines[1];
+                headlineText = lines[1] || '';
                 bodyText = lines.slice(2).join('\n').trim();
               }
             }
