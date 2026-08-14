@@ -544,6 +544,7 @@ export interface RenderableAlert {
   headline: string; // "NO NUCLEAR IRAN"
   timestamp: string; // "5:14 PM · May 24, 2026"
   body: string; // trimmed prose, may end in an ellipsis
+  imageUrl?: string; // Optional image payload
 }
 
 /** Everything the admin/debug channel may show (§27). */

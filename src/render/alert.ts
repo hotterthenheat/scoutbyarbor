@@ -208,10 +208,8 @@ export function renderAlertEmbed(input: AlertEmbedInput | RenderableAlert): unkn
     description: truncate(description, 3800),
     color: BANNER_COLOR[alert.banner] ?? 0x4a5568,
     ...(footer ? { footer: { text: footer } } : {}),
-    // Discord shows this in the reader's OWN timezone and as "20 minutes ago"
-    // on hover, which beats a string in one fixed zone — and it is the
-    // publication time, never the moment Scout posted.
     ...(Number.isFinite(publishedAt) ? { timestamp: new Date(publishedAt).toISOString() } : {}),
+    ...(alert.imageUrl ? { image: { url: alert.imageUrl } } : {}),
   };
 }
 

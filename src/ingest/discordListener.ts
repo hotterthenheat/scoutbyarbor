@@ -129,15 +129,38 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
             if (!clean) return;
 
             const lines = clean.split('\n');
-            const headline = lines[0]!.substring(0, 500);
-            const body = lines.slice(1).join('\n').trim().substring(0, 1000);
+            let headlineText = lines[0] || '';
+            let bodyText = lines.slice(1).join('\n').trim();
+
+            let banner = 'BREAKING NEWS';
+            if (headlineText.startsWith('>>> **') && headlineText.includes('**', 6)) {
+              const endIdx = headlineText.indexOf('**', 6);
+              banner = headlineText.substring(6, endIdx).trim();
+              headlineText = headlineText.substring(endIdx + 2).trim();
+              if (!headlineText && lines.length > 1) {
+                headlineText = lines[1];
+                bodyText = lines.slice(2).join('\n').trim();
+              }
+            }
+            
+            // Extract image URL if present
+            let imageUrl: string | undefined = undefined;
+            const urlMatch = bodyText.match(/https:\/\/\S+\.(?:png|jpg|jpeg|webp|gif)(?:\?\S*)?/i) || bodyText.match(/https:\/\/\S+/i);
+            if (urlMatch && banner.includes('CHART ALERTS')) {
+              imageUrl = urlMatch[0];
+              bodyText = bodyText.replace(imageUrl, '').trim();
+            }
+
+            const headline = headlineText.substring(0, 500);
+            const body = bodyText.substring(0, 1000);
 
             const embed = renderAlertEmbed({
               alert: {
-                banner: 'BREAKING NEWS',
+                banner,
                 headline,
                 body,
                 timestamp: new Date().toISOString(),
+                imageUrl
               },
               brandFooter: 'Scout by Arbor Capital',
             });
