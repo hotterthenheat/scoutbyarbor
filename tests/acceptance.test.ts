@@ -129,7 +129,6 @@ function buildScout(sent: Sent[], opts: { bearerToken?: string } = {}) {
     queue,
     resolver,
     logger: log,
-    allowedAccounts: [],
     relaySourceId: 'relay:discord-urls',
     onPost: async (post) => {
       const outcome = await pipeline.process(post);
@@ -306,24 +305,7 @@ https://x.com/DeItaone/status/2058552301120360940`);
     expect(sent.filter((s) => s.channel === 'news')).toHaveLength(1);
   });
 
-  it('handles a Truth Social relay through the identical path', async () => {
-    const sent: Sent[] = [];
-    const scout = buildScout(sent);
 
-    scout.relay(`Truth Social (@realDonaldTrump):
-
-WE WILL IMPOSE MAJOR NEW SANCTIONS ON RUSSIA EFFECTIVE IMMEDIATELY
-
-https://truthsocial.com/@realDonaldTrump/posts/113456789012345678`);
-    await scout.queue.drain();
-
-    expect(db.posts.byId('truth:113456789012345678')).toBeTruthy();
-    const channels = sent.map((s) => s.channel);
-    expect(channels).toContain('news');
-    // Macro reaches the index channel; the single-name channel is for company
-    // news. The invariant is that it does not stop at #scout-news.
-    expect(channels).toContain('spx');
-  });
 
   it('records FAILED_RETRIEVAL when the relay carried only a bare link', async () => {
     const sent: Sent[] = [];

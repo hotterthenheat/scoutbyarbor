@@ -124,7 +124,6 @@ function bootWorker(options: { failTimes?: number; maxAttempts?: number; backoff
     queue,
     resolver,
     logger: log,
-    allowedAccounts: [],
     relaySourceId: 'relay:discord-urls',
     onPost: async (post) => {
       const outcome = await pipeline.process(post);

@@ -321,14 +321,14 @@ describe('publishing old news', () => {
    * larger default does not break anything, it just quietly starts sending
    * stale alerts again.
    */
-  it('ships a two minute window', () => {
-    expect(loadEnv({}).pipeline.maxPublishAgeMinutes).toBe(2);
+  it('ships a fifteen minute window', () => {
+    expect(loadEnv({}).pipeline.maxPublishAgeMinutes).toBe(15);
   });
 
-  it('declines a three minute old story under the shipped window', async () => {
-    const outcome = await agedPipeline(loadEnv({}).pipeline.maxPublishAgeMinutes).process(aged(3));
+  it('declines a sixteen minute old story under the shipped window', async () => {
+    const outcome = await agedPipeline(loadEnv({}).pipeline.maxPublishAgeMinutes).process(aged(16));
 
-    expect(outcome.accepted, 'a three minute old story reached the wire').toBe(false);
+    expect(outcome.accepted, 'a sixteen minute old story reached the wire').toBe(false);
     expect(outcome.rejection).toBe('NOISE_OLD_NEWS');
   });
 

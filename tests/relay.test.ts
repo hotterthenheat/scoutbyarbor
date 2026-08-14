@@ -83,32 +83,3 @@ describe('usable content', () => {
     expect(hasUsableContent(parseRelayContent('FED CUTS RATES BY 25 BPS', url))).toBe(true);
   });
 });
-
-describe('Truth Social runs the same path', () => {
-  it('normalises a Truth Social URL', () => {
-    const parsed = parsePostUrl('https://truthsocial.com/@realDonaldTrump/posts/113456789012345678');
-    expect(parsed).toMatchObject({
-      platform: 'truthsocial',
-      username: 'realDonaldTrump',
-      postId: '113456789012345678',
-      canonicalId: 'truth:113456789012345678',
-    });
-  });
-
-  it('keeps X and Truth Social ids distinct', () => {
-    const found = detectPostUrls(
-      'https://x.com/a/status/12345 and https://truthsocial.com/@a/posts/12345',
-    );
-    expect(found.map((f) => f.canonicalId)).toEqual(['x:12345', 'truth:12345']);
-  });
-
-  it('parses a Truth Social relay identically', () => {
-    const tsUrl = parsePostUrl('https://truthsocial.com/@realDonaldTrump/posts/113456789012345678')!;
-    const parsed = parseRelayContent(
-      'Truth Social (@realDonaldTrump):\n\nWE WILL IMPOSE MAJOR NEW SANCTIONS ON RUSSIA',
-      tsUrl,
-    );
-    expect(parsed.authorHandle).toBe('@realDonaldTrump');
-    expect(parsed.text).toContain('SANCTIONS ON RUSSIA');
-  });
-});

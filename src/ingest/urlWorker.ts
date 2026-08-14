@@ -76,6 +76,9 @@ export function createUrlWorker(deps: UrlWorkerDeps): UrlWorker {
   function submit(message: RelayedMessage): void {
     const { url } = message;
 
+    // If there is no URL, this worker has nothing to fetch.
+    if (!url) return;
+
     // Already resolved in a previous run — the durable dedupe layer.
     if (db.posts.exists(url.canonicalId)) {
       logger.debug('url already processed', { postId: url.canonicalId });

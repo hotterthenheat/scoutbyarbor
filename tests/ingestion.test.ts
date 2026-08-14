@@ -365,7 +365,6 @@ describe('the URL worker', () => {
       queue,
       resolver,
       logger: log,
-      allowedAccounts: [],
       relaySourceId: 'relay:discord-urls',
       onPost: async (post) => {
         posts.push(post);
@@ -418,34 +417,6 @@ describe('the URL worker', () => {
     expect(db.posts.byId('x:999')?.discordReceivedAt).toBe('2026-08-09T18:05:00.000Z');
   });
 
-  it('ignores an account that is not on the allowlist', async () => {
-    const posts: RawPost[] = [];
-    const queue = createJobQueue({
-      db,
-      logger: log,
-      concurrency: 1,
-      maxAttempts: 2,
-      pollIntervalMs: 5,
-      handler: async () => {},
-    });
-    const worker = createUrlWorker({
-      db,
-      queue,
-      resolver: { name: 'x', available: () => true, resolve: async () => { throw new Error('unused'); } },
-      logger: log,
-      allowedAccounts: ['someoneelse'],
-      relaySourceId: 'relay:discord-urls',
-      onPost: async (p) => {
-        posts.push(p);
-      },
-    });
-
-    worker.submit(relayed());
-    await queue.drain();
-    expect(posts).toHaveLength(0);
-    expect(db.jobs.byPostId('x:999')).toBeNull();
-  });
-
   it('marks a permanently unresolvable post FAILED_RETRIEVAL rather than retrying forever', async () => {
     const queue = createJobQueue({
       db,
@@ -466,7 +437,6 @@ describe('the URL worker', () => {
         },
       },
       logger: log,
-      allowedAccounts: [],
       relaySourceId: 'relay:discord-urls',
       onPost: async () => {},
     });

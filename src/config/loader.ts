@@ -28,7 +28,7 @@ const sourceEntrySchema = z.object({
   name: z.string().min(1),
   handle: z.string().nullable().optional(),
   url: z.string().nullable().optional(),
-  sourceType: z.enum(['rss', 'edgar', 'manual', 'finnhub', 'discord']),
+  sourceType: z.enum(['rss', 'edgar', 'manual', 'finnhub', 'discord', 'x']),
   category: z.enum([...CATEGORIES, 'MIXED'] as [string, ...string[]]),
   priority: z.number().int().min(0).max(100),
   enabled: z.boolean(),
@@ -98,6 +98,8 @@ export function toSource(entry: SourceConfigEntry, now: string): Source {
  */
 function defaultIntervalFor(sourceType: SourceConfigEntry['sourceType']): number {
   switch (sourceType) {
+    case 'x':
+      return 900_000; // 15 minutes
     case 'edgar':
       return 3_600_000; // an hour
     case 'rss':

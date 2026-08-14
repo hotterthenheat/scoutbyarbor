@@ -14,7 +14,7 @@
  * came from.
  */
 
-export type Platform = 'discord'; // Placeholder since all others removed
+export type Platform = 'discord' | 'x';
 
 export interface DetectedUrl {
   platform: Platform;
@@ -25,9 +25,33 @@ export interface DetectedUrl {
   rawUrl: string;
 }
 
+const X_URL_RE =
+  /https?:\/\/(?:www\.|mobile\.)?(?:x|twitter|fxtwitter|vxtwitter|fixupx)\.com\/([A-Za-z0-9_]{1,15})\/status(?:es)?\/(\d{1,25})(?:\/[^\s]*)?/gi;
+
 /** Every supported post URL in a block of text, deduped by canonical id. */
 export function detectPostUrls(text: string): DetectedUrl[] {
-  return [];
+  if (!text) return [];
+  const found = new Map<string, DetectedUrl>();
+
+  for (const match of text.matchAll(X_URL_RE)) {
+    const username = match[1];
+    const postId = match[2];
+    if (!username || !postId) continue;
+
+    const canonicalId = `x:${postId}`;
+    if (found.has(canonicalId)) continue;
+
+    found.set(canonicalId, {
+      platform: 'x',
+      username,
+      postId,
+      canonicalId,
+      canonicalUrl: `https://x.com/${username}/status/${postId}`,
+      rawUrl: match[0],
+    });
+  }
+
+  return [...found.values()];
 }
 
 /** Single-URL form, for the CLI and for validating admin input. */
@@ -36,6 +60,7 @@ export function parsePostUrl(url: string): DetectedUrl | null {
 }
 
 export function canonicalIdFor(platform: Platform, postId: string): string {
+  if (platform === 'x') return `x:${postId}`;
   return `${platform}:${postId}`;
 }
 
