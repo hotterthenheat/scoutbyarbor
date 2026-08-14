@@ -9533,21 +9533,7 @@ sources:
     microScore: 5
     geopoliticalScore: 15
     expectedIntervalMs: 3600000
-  - id: rss:zerohedge
-    name: ZeroHedge
-    url: https://feeds.feedburner.com/zerohedge/feed
-    org: zerohedge
-    sourceType: rss
-    category: MARKET
-    priority: 85
-    enabled: true
-    official: false
-    qualityScore: 75
-    noiseScore: 30
-    macroScore: 80
-    microScore: 60
-    geopoliticalScore: 60
-    expectedIntervalMs: 3600000
+
   - id: rss:benzinga-news
     name: Benzinga — Market News
     url: https://www.benzinga.com/feed

@@ -97,8 +97,8 @@ const schema = z.object({
    * the "quiet" list on the dashboard. Losing them is the point: a wire that is
    * quiet is more useful than one that is behind.
    */
-  MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(2),
-  MIN_PUBLISH_SCORE: numeric(60),
+  MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(15),
+  MIN_PUBLISH_SCORE: numeric(40),
   MIN_BREAKING_SCORE: numeric(90),
   DEDUPE_WINDOW_MINUTES: numeric(90),
   CLUSTER_WINDOW_MINUTES: numeric(240),
