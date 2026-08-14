@@ -240,7 +240,7 @@ sources:
     sourceType: rss
     category: EQUITY
     priority: 76
-    enabled: false
+    enabled: true
     official: false
     qualityScore: 74
     noiseScore: 62
@@ -325,7 +325,7 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 70
-    enabled: false
+    enabled: true
     official: false
     qualityScore: 66
     noiseScore: 66
@@ -342,7 +342,7 @@ sources:
     sourceType: rss
     category: MARKET
     priority: 68
-    enabled: false
+    enabled: true
     official: false
     qualityScore: 64
     noiseScore: 68
@@ -746,3 +746,35 @@ sources:
     notes: URLs detected in NEWS_SOURCE_CHANNEL_IDS / TRUTH_SOCIAL_CHANNEL_IDS /
       ADMIN_INPUT_CHANNEL_IDS. Constrain which accounts are accepted with
       ALLOWED_X_ACCOUNTS rather than by trusting whoever pasted the link.
+  - id: rss:wsj-markets
+    name: Wall Street Journal — Markets
+    url: https://feeds.a.dj.com/rss/RSSMarketsMain.xml
+    org: wsj
+    sourceType: rss
+    category: MARKET
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 90
+    noiseScore: 40
+    macroScore: 70
+    microScore: 80
+    geopoliticalScore: 20
+    expectedIntervalMs: 600000
+    notes: WSJ Markets RSS feed.
+  - id: rss:zerohedge
+    name: ZeroHedge — Main
+    url: http://feeds.feedburner.com/zerohedge/feed
+    org: zerohedge
+    sourceType: rss
+    category: MARKET
+    priority: 80
+    enabled: true
+    official: false
+    qualityScore: 75
+    noiseScore: 50
+    macroScore: 85
+    microScore: 60
+    geopoliticalScore: 80
+    expectedIntervalMs: 300000
+    notes: Fast breaking financial and geopolitical news.
