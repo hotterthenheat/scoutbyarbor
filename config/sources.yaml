@@ -9563,3 +9563,97 @@ sources:
     microScore: 85
     geopoliticalScore: 10
     expectedIntervalMs: 1800000
+
+  # ==========================================================================
+  # ALTERNATIVE DATA & SECTOR SPECIFIC (CRYPTO, BIOTECH, COMMODITIES)
+  # ==========================================================================
+  - id: rss:coindesk
+    name: CoinDesk
+    url: https://www.coindesk.com/arc/outboundfeeds/rss/
+    org: coindesk
+    sourceType: rss
+    category: CRYPTO
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 90
+    noiseScore: 20
+    macroScore: 40
+    microScore: 90
+    geopoliticalScore: 10
+    expectedIntervalMs: 3600000
+  - id: rss:cointelegraph
+    name: CoinTelegraph
+    url: https://cointelegraph.com/rss
+    org: cointelegraph
+    sourceType: rss
+    category: CRYPTO
+    priority: 80
+    enabled: true
+    official: false
+    qualityScore: 85
+    noiseScore: 25
+    macroScore: 30
+    microScore: 85
+    geopoliticalScore: 5
+    expectedIntervalMs: 3600000
+  - id: rss:fda-recalls
+    name: FDA Recalls & Safety Alerts
+    url: https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml
+    org: fda
+    sourceType: rss
+    category: EQUITY
+    priority: 95
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 5
+    macroScore: 10
+    microScore: 95
+    geopoliticalScore: 5
+    expectedIntervalMs: 14400000
+  - id: rss:fda-press
+    name: FDA Press Releases
+    url: https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml
+    org: fda
+    sourceType: rss
+    category: EQUITY
+    priority: 90
+    enabled: true
+    official: true
+    qualityScore: 100
+    noiseScore: 5
+    macroScore: 20
+    microScore: 90
+    geopoliticalScore: 10
+    expectedIntervalMs: 14400000
+  - id: rss:oilprice
+    name: OilPrice.com
+    url: https://oilprice.com/rss/main
+    org: oilprice
+    sourceType: rss
+    category: COMMODITY
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 85
+    noiseScore: 30
+    macroScore: 60
+    microScore: 30
+    geopoliticalScore: 70
+    expectedIntervalMs: 7200000
+  - id: rss:ft-markets
+    name: Financial Times - Markets
+    url: https://www.ft.com/markets?format=rss
+    org: ft
+    sourceType: rss
+    category: MARKET
+    priority: 90
+    enabled: true
+    official: false
+    qualityScore: 95
+    noiseScore: 15
+    macroScore: 80
+    microScore: 50
+    geopoliticalScore: 50
+    expectedIntervalMs: 3600000
