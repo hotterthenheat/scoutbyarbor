@@ -76,7 +76,7 @@ export const SOURCE_HEALTH_STATES = [
 export type SourceHealthState = (typeof SOURCE_HEALTH_STATES)[number];
 
 /** Where a source's content comes from. Drives which adapter polls it. */
-export const SOURCE_TYPES = ['rss', 'edgar', 'manual', 'finnhub', 'discord'] as const;
+export const SOURCE_TYPES = ['rss', 'edgar', 'manual', 'finnhub', 'discord', 'x', 'truthsocial'] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
 /** Source tiers (§5). Derived from quality_score, stored for reporting. */

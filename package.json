@@ -19,6 +19,7 @@
     "sources:sync": "tsx src/cli/index.ts sources:sync",
     "sources:probe": "tsx src/cli/index.ts sources:probe",
     "db:migrate": "tsx src/cli/index.ts db:migrate",
+    "db:vacuum": "bash scripts/maintenance.sh",
     "discord:setup": "tsx src/cli/index.ts discord:setup",
     "replay": "tsx src/cli/index.ts replay",
     "deliveries:replay": "tsx src/cli/index.ts deliveries:replay",

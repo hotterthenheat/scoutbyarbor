@@ -13,7 +13,7 @@ export interface SourceConfigEntry {
   name: string;
   handle?: string | null;
   url?: string | null;
-  sourceType: 'rss' | 'edgar' | 'manual' | 'finnhub' | 'discord';
+  sourceType: 'rss' | 'edgar' | 'manual' | 'finnhub' | 'discord' | 'x' | 'truthsocial';
   category: Category | 'MIXED';
   priority: number;
   enabled: boolean;

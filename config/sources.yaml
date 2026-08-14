@@ -10079,3 +10079,55 @@ sources:
     noiseScore: 48
     official: false
     notes: Market infrastructure. Mostly promotional; kept for halts and notices.
+
+  - id: unusual_whales
+    name: Unusual Whales
+    handle: "@unusual_whales"
+    org: unusual_whales
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 95
+    enabled: true
+    qualityScore: 90
+    noiseScore: 10
+    official: false
+    notes: Top-tier options flow and dark pool prints.
+
+  - id: spotgamma
+    name: SpotGamma
+    handle: "@spotgamma"
+    org: spotgamma
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 95
+    enabled: true
+    qualityScore: 92
+    noiseScore: 8
+    official: false
+    notes: Advanced dealer positioning and gamma exposure insights.
+
+  - id: cheddar_flow
+    name: Cheddar Flow
+    handle: "@CheddarFlow"
+    org: cheddar_flow
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 92
+    enabled: true
+    qualityScore: 88
+    noiseScore: 15
+    official: false
+    notes: Real-time unusual options activity.
+
+  - id: tier11
+    name: Tier11
+    handle: "@Tier11_com"
+    org: tier11
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 88
+    enabled: true
+    qualityScore: 85
+    noiseScore: 20
+    official: false
+    notes: Market-maker levels and flow analysis.
