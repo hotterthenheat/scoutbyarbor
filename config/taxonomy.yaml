@@ -958,8 +958,21 @@ noise:
     - "will never have"
     - "will never be"
     - "best stocks"
-    - "top stocks"
+    - tells investors
+    - "stock of the day"
+    - "buy rating"
+    - "sell rating"
+    - "downgrades to"
+    - "upgrades to"
+    - "my thesis"
+    - "buy alert"
+    - "what to watch"
     - "stocks to buy"
+    - "stocks to sell"
+    - "could mean"
+    - "might happen"
+    - "is it time to buy"
+    - "should you buy"
     - "stocks to watch"
 
   meme:
@@ -1208,6 +1221,18 @@ magnitude:
     - strikes
     - killed
     - bankruptcy
+    - acquisition
+    - buyout
+    - merger
+    - delisted
+    - fda approval
+    - fda rejection
+    - phase 3
+    - spinoff
+    - fraud
+    - subpoena
+    - "chapter 11"
+    - "class action"
     - default
     - defaults
     - resigns

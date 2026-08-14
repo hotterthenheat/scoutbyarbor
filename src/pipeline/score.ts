@@ -155,7 +155,7 @@ function scoreMarketRelevance(input: ScoreInput, notes: string[]): number {
     input.entities.tickers.length > 0 ||
     input.entities.commodities.length > 0 ||
     /(?<![a-z])(?:treasury|yields?|dollar|bonds?|rates?)(?![a-z])/i.test(input.text);
-  if (namesAsset) value += 4;
+  if (namesAsset) value += 20; // Massive trading relevance bump
 
   return clamp(value, 0, 100);
 }
@@ -214,7 +214,7 @@ function scoreAssetExposure(input: ScoreInput, notes: string[]): number {
     if (!sec) continue;
     // Index membership is what makes a single name matter to the whole book.
     const indexWeight = sec.indices.includes('SPX') || sec.indices.includes('NDX') ? 25 : 0;
-    const candidate = sec.priority * 0.7 + indexWeight;
+    const candidate = sec.priority * 0.7 + indexWeight + 30; // MASSIVE TRADING BUMP
     if (candidate > best) {
       best = candidate;
       notes.push(`exposure ${sec.ticker} p${sec.priority}${indexWeight ? ' index' : ''}`);
