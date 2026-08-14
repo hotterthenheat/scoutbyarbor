@@ -37,6 +37,26 @@ RULES = {
 # Regex to match options contracts like 7780P, 472C, 48C, 44P
 OPTIONS_REGEX = re.compile(r'\b\d+\s*[PC]\b', re.IGNORECASE)
 
+SCRUB_PATTERNS = [
+    r'\(@WalterBloomberg\)',
+    r'@WalterBloomberg',
+    r'\bWALTER BLOOMBERG\b',
+    r'\bNoah_StrikeGexAPP\b',
+    r'\bNoah_StrikeGex\b',
+    r'\bOwlsKeyLevelsBot\b',
+    r'\bunusual_whales_crier\b',
+    r'\bOWLS Capital Clanker\b',
+    r'\bAPP\b',
+    r'Trade at your own risk',
+    r'For information and data display only',
+    r'signal, not noise',
+]
+
+def clean_text(text):
+    for pattern in SCRUB_PATTERNS:
+        text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+    return text.strip()
+
 IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
 
 def fetch_latest_message(session, channel_id):
@@ -142,7 +162,7 @@ def main():
                     if OPTIONS_REGEX.search(combined_text):
                         card_ui = (
                             f">>> **SkySPX Alert**\n"
-                            f"{combined_text}\n\n"
+                            f"{clean_text(combined_text)}\n\n"
                             f"`System: Information and Data Display Only`"
                         )
                         post_message(session, {"content": card_ui})
