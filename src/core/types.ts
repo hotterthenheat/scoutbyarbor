@@ -29,6 +29,8 @@ export const CATEGORIES = [
   'OPTIONS',
   'COMMODITY',
   'CRYPTO',
+  'POLITICS',
+  'ORDER_FLOW',
 ] as const;
 
 export type Category = (typeof CATEGORIES)[number];
@@ -45,6 +47,8 @@ export const CATEGORY_BANNER: Record<Category, string> = {
   OPTIONS: 'OPTIONS / FLOW ALERT',
   COMMODITY: 'COMMODITY ALERT',
   CRYPTO: 'CRYPTO ALERT',
+  POLITICS: 'POLITICS ALERT',
+  ORDER_FLOW: 'ORDER FLOW ALERT',
 };
 
 /**

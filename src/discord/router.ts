@@ -45,6 +45,8 @@ const CATEGORY_HOME: Record<Category, ChannelKey[]> = {
   OPTIONS: ['options'],
   COMMODITY: ['commodities'],
   CRYPTO: ['crypto'],
+  POLITICS: ['macro'],
+  ORDER_FLOW: ['markets'],
 };
 
 /** Categories that are about a company rather than the market as a whole. */

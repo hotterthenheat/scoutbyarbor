@@ -50,6 +50,8 @@ const CATEGORY_RELEVANCE: Record<Category, number> = {
   COMMODITY: 68,
   OPTIONS: 58,
   CRYPTO: 52,
+  POLITICS: 75,
+  ORDER_FLOW: 80,
 };
 
 /** The releases and decisions that move everything at once. */
@@ -106,6 +108,12 @@ export function scoreEvent(input: ScoreInput): ScoreBreakdown {
   if (input.source.sourceType === 'manual') {
     total = Math.max(total, 70);
     notes.push('curated-source bump');
+  }
+
+  // MOC/MOO and Dark Pool block trades are instantly critical.
+  if (input.category === 'ORDER_FLOW') {
+    total = Math.max(total, 100);
+    notes.push('order-flow override');
   }
 
   notes.push(`novelty ${Math.round(novelty)}`);
