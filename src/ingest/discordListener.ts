@@ -160,7 +160,7 @@ export function createDiscordListener(deps: DiscordListenerDeps): DiscordListene
                 headline,
                 body,
                 timestamp: new Date().toISOString(),
-                imageUrl
+                ...(imageUrl ? { imageUrl } : {})
               },
               brandFooter: 'Scout by Arbor Capital',
             });
