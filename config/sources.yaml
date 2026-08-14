@@ -9454,3 +9454,112 @@ sources:
     microScore: 85
     geopoliticalScore: 0
     expectedIntervalMs: 86400000
+
+  # ==========================================================================
+  # DEEP DIVE FEEDS (GEOPOLITICS, POLITICS, ORDER FLOW)
+  # ==========================================================================
+  - id: rss:reuters-world
+    name: Reuters — World News
+    url: https://www.reutersagency.com/feed/?best-topics=world-news&post_type=best
+    org: reuters
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 90
+    enabled: true
+    official: false
+    qualityScore: 95
+    noiseScore: 10
+    macroScore: 40
+    microScore: 5
+    geopoliticalScore: 100
+    expectedIntervalMs: 3600000
+  - id: rss:aljazeera-middleeast
+    name: Al Jazeera — Middle East
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    org: aljazeera
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 85
+    noiseScore: 15
+    macroScore: 10
+    microScore: 5
+    geopoliticalScore: 100
+    expectedIntervalMs: 3600000
+  - id: rss:defensenews
+    name: DefenseNews
+    url: https://www.defensenews.com/arc/outboundfeeds/rss/
+    org: defensenews
+    sourceType: rss
+    category: GEOPOLITICAL
+    priority: 80
+    enabled: true
+    official: false
+    qualityScore: 90
+    noiseScore: 5
+    macroScore: 20
+    microScore: 10
+    geopoliticalScore: 95
+    expectedIntervalMs: 7200000
+  - id: rss:politico
+    name: Politico — Top Stories
+    url: https://rss.politico.com/politics-news.xml
+    org: politico
+    sourceType: rss
+    category: POLITICS
+    priority: 90
+    enabled: true
+    official: false
+    qualityScore: 90
+    noiseScore: 15
+    macroScore: 40
+    microScore: 5
+    geopoliticalScore: 20
+    expectedIntervalMs: 3600000
+  - id: rss:thehill
+    name: The Hill — News
+    url: https://thehill.com/feed/
+    org: thehill
+    sourceType: rss
+    category: POLITICS
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 85
+    noiseScore: 20
+    macroScore: 30
+    microScore: 5
+    geopoliticalScore: 15
+    expectedIntervalMs: 3600000
+  - id: rss:zerohedge
+    name: ZeroHedge
+    url: https://feeds.feedburner.com/zerohedge/feed
+    org: zerohedge
+    sourceType: rss
+    category: MARKET
+    priority: 85
+    enabled: true
+    official: false
+    qualityScore: 75
+    noiseScore: 30
+    macroScore: 80
+    microScore: 60
+    geopoliticalScore: 60
+    expectedIntervalMs: 3600000
+  - id: rss:benzinga-news
+    name: Benzinga — Market News
+    url: https://www.benzinga.com/feed
+    org: benzinga
+    sourceType: rss
+    category: MARKET
+    priority: 95
+    enabled: true
+    official: false
+    qualityScore: 95
+    noiseScore: 10
+    macroScore: 70
+    microScore: 85
+    geopoliticalScore: 10
+    expectedIntervalMs: 1800000

@@ -256,6 +256,11 @@ categories:
       - houthi
       - syria
       - lebanon
+      - tehran
+      - irgc
+      - tel aviv
+      - idf
+      - drone swarm
       - venezuela
       - pentagon
       - kremlin
@@ -276,14 +281,62 @@ categories:
       - troops
       - militants
       - strikes
+      - retaliatory strike
+      - oil supply disruption
     subcategories:
-      CONFLICT: [military action, air strike, missile attack, invasion, war, ground invasion]
+      CONFLICT: [military action, air strike, missile attack, invasion, war, ground invasion, drone swarm, retaliatory strike]
       DIPLOMACY: [peace talks, ceasefire, peace deal, nuclear deal, prisoner swap, diplomatic relations]
       SANCTIONS: [sanctions, embargo, export controls, export restrictions]
       TRADE: [tariff, tariffs, trade restrictions]
-      SHIPPING: [strait of hormuz, red sea, suez canal, shipping disruption, blockade]
+      SHIPPING: [strait of hormuz, red sea, suez canal, shipping disruption, blockade, oil supply disruption]
       NUCLEAR: [nuclear program, nuclear weapons, enriched uranium]
       ALLIANCE: [nato, defense pact, arms deal, troop deployment]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  POLITICS:
+    weight: 0.95
+    phrases:
+      - donald trump
+      - joe biden
+      - white house
+      - executive order
+      - supreme court
+      - election results
+    keywords:
+      - trump
+      - biden
+      - harris
+      - congress
+      - senate
+      - veto
+      - election
+      - ballot
+      - voting
+    subcategories:
+      EXECUTIVE: [donald trump, joe biden, white house, executive order, trump, biden, harris]
+      LEGISLATURE: [congress, senate, veto]
+      ELECTION: [election results, election, ballot, voting]
+
+  # ══════════════════════════════════════════════════════════════════════════
+  ORDER_FLOW:
+    weight: 1.1
+    phrases:
+      - market on close
+      - market on open
+      - buy imbalance
+      - sell imbalance
+      - dark pool
+      - block trade
+      - institutional sweep
+    keywords:
+      - moc
+      - moo
+      - imbalance
+      - sweep
+      - block
+    subcategories:
+      IMBALANCE: [market on close, market on open, moc, moo, buy imbalance, sell imbalance, imbalance]
+      DARK_POOL: [dark pool, block trade, block, institutional sweep, sweep]
 
   # ══════════════════════════════════════════════════════════════════════════
   # MARKET only fires on genuine disruption, never on a daily move (§4).
