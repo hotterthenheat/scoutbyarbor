@@ -96,12 +96,6 @@ categories:
       - target range
       - federal funds rate
       - press conference
-      - european central bank
-      - bank of japan
-      - bank of england
-      - bank of canada
-      - reserve bank of australia
-      - people's bank of china
       - central bank
       - policy rate
       - yield curve control
@@ -110,17 +104,7 @@ categories:
       - fed
       - fomc
       - powell
-      - ecb
-      - boj
-      - boe
-      - pboc
     keywords:
-      - lagarde
-      - ueda
-      - bailey
-      - snb
-      - rba
-      - rbnz
       - hawkish
       - dovish
       - qt
@@ -142,7 +126,6 @@ categories:
       GUIDANCE: [forward guidance, policy guidance, dot plot, summary of economic projections]
       EMERGENCY: [emergency facility, emergency lending, emergency meeting, unscheduled meeting,
         discount window, intervention]
-      FOREIGN_CB: [european central bank, bank of japan, bank of england, bank of canada, pboc]
 
   # ══════════════════════════════════════════════════════════════════════════
   ECONOMIC:
@@ -242,10 +225,6 @@ categories:
       - red sea
       - suez canal
       - south china sea
-      - foreign policy
-      - diplomatic relations
-      - severs ties
-      - recalls ambassador
       - security council
       - regime change
       - coup attempt
