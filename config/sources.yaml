@@ -510,7 +510,7 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 74
-    enabled: true
+    enabled: false
     official: false
     qualityScore: 80
     noiseScore: 60
@@ -544,7 +544,7 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 70
-    enabled: true
+    enabled: false
     official: false
     qualityScore: 74
     noiseScore: 62
@@ -578,7 +578,7 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 76
-    enabled: true
+    enabled: false
     official: true
     qualityScore: 92
     noiseScore: 50
@@ -595,7 +595,7 @@ sources:
     sourceType: rss
     category: GEOPOLITICAL
     priority: 68
-    enabled: true
+    enabled: false
     official: true
     qualityScore: 90
     noiseScore: 58

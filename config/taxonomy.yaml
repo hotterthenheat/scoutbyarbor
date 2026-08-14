@@ -448,6 +448,12 @@ categories:
       - contract
       - deal
       - partnership
+      - rumor
+      - rumors
+      - considering
+      - weighing
+      - approached
+      - in talks
       - halts production
       - production halt
       - export restrictions
@@ -546,6 +552,11 @@ categories:
       - special dividend
       - price target
       - export license
+      - exploring a sale
+      - considering options
+      - weighing a sale
+      - in talks to acquire
+      - has approached
     keywords:
       - ceo
       - cfo
@@ -566,7 +577,14 @@ categories:
       - dividend
       - divestiture
       - restructuring
+      - share buyback
+      - special dividend
+      - stock split
+      - ipo
+      - rumor
+      - rumors
     subcategories:
+      RUMOR: [rumor, rumors, exploring a sale, considering options, weighing a sale, in talks to acquire, has approached, weighing, approached, in talks, considering]
       MNA: [merger agreement, definitive agreement, acquisition, takeover, buyout, hostile bid, all-cash deal]
       MANAGEMENT: [chief executive, names new ceo, steps down, resignation, chief financial officer, appoints]
       LEGAL: [sec investigation, doj investigation, antitrust probe, class action, lawsuit, settlement, fined]
