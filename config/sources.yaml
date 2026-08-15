@@ -10170,3 +10170,68 @@ sources:
     noiseScore: 15
     official: false
     notes: Fast breaking news and daily MOO/MOC prints.
+
+  - id: optionshawk
+    name: OptionsHawk
+    handle: "@OptionsHawk"
+    org: optionshawk
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 92
+    enabled: true
+    qualityScore: 90
+    noiseScore: 10
+    official: false
+    notes: Options flow, smart money prints.
+
+  - id: squeezemetrics
+    name: SqueezeMetrics
+    handle: "@SqueezeMetrics"
+    org: squeezemetrics
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 88
+    enabled: true
+    qualityScore: 95
+    noiseScore: 5
+    official: false
+    notes: Gamma exposure (GEX) and dark pool indicator (DIX).
+
+  - id: deitaone
+    name: DeItaone
+    handle: "@DeItaone"
+    org: deltaone_parody
+    sourceType: x
+    category: MARKET
+    priority: 85
+    enabled: true
+    qualityScore: 80
+    noiseScore: 25
+    official: false
+    notes: Aggregator for extremely fast rumors and news breaking.
+
+  - id: fxhedgers
+    name: FXHedgers
+    handle: "@Fxhedgers"
+    org: fxhedgers
+    sourceType: x
+    category: MARKET
+    priority: 85
+    enabled: true
+    qualityScore: 78
+    noiseScore: 30
+    official: false
+    notes: Breaking macro rumors and block trades.
+
+  - id: barchart
+    name: Barchart
+    handle: "@Barchart"
+    org: barchart
+    sourceType: x
+    category: ORDER_FLOW
+    priority: 85
+    enabled: true
+    qualityScore: 85
+    noiseScore: 30
+    official: false
+    notes: Unusual options activity alerts.
