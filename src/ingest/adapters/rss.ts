@@ -179,60 +179,68 @@ export function createRssAdapter(deps: RssAdapterDeps): IngestAdapter {
     async poll(sources: Source[]): Promise<IngestResult> {
       const result: IngestResult = { posts: [], outcomes: [] };
 
-      // Concurrency control: 50 feeds at a time.
-      const CONCURRENCY = 50;
-      for (let i = 0; i < sources.length; i += CONCURRENCY) {
-        const chunk = sources.slice(i, i + CONCURRENCY);
-        await Promise.allSettled(
-          chunk.map(async (source) => {
-            const started = Date.now();
+      // Shuffle sources to mix domains and avoid hammering one host (e.g. Yahoo) all at once
+      const shuffled = [...sources].sort(() => Math.random() - 0.5);
 
-            // A feed in backoff is skipped silently — no fetch, and no outcome, so
-            // the health monitor keeps reporting the failure that put it here
-            // rather than being told about a poll that never happened.
-            const backingOff = state.get(source.id)?.nextAttemptAt;
-            if (backingOff !== undefined && started < backingOff) return;
+      // Concurrency control: 10 workers to avoid triggering 429 Too Many Requests
+      const CONCURRENCY = 10;
+      let i = 0;
 
-            try {
-              const { posts, itemCount } = await pollOne(source);
-              result.posts.push(...posts);
-              const healthy = state.get(source.id);
-              if (healthy) {
-                healthy.failures = 0;
-                delete healthy.nextAttemptAt;
-              }
-              result.outcomes.push({
+      const worker = async () => {
+        while (i < shuffled.length) {
+          const source = shuffled[i++]!;
+          const started = Date.now();
+
+          // A feed in backoff is skipped silently — no fetch, and no outcome, so
+          // the health monitor keeps reporting the failure that put it here
+          // rather than being told about a poll that never happened.
+          const backingOff = state.get(source.id)?.nextAttemptAt;
+          if (backingOff !== undefined && started < backingOff) continue;
+
+          // Tiny stagger to avoid micro-bursts of requests
+          await new Promise((r) => setTimeout(r, 20 + Math.random() * 50));
+
+          try {
+            const { posts, itemCount } = await pollOne(source);
+            result.posts.push(...posts);
+            const healthy = state.get(source.id);
+            if (healthy) {
+              healthy.failures = 0;
+              delete healthy.nextAttemptAt;
+            }
+            result.outcomes.push({
+              sourceId: source.id,
+              ok: true,
+              itemCount,
+              latencyMs: Date.now() - started,
+            });
+          } catch (rawErr) {
+            const err = new Error(describeFetchError(rawErr, deps.timeoutMs));
+            const current = state.get(source.id) ?? { seeded: false };
+            current.failures = (current.failures ?? 0) + 1;
+            if (current.failures >= BACKOFF_AFTER_FAILURES) {
+              const wait = backoffMs(current.failures);
+              current.nextAttemptAt = Date.now() + wait;
+              deps.logger.warn('rss feed backing off after repeated failures', {
                 sourceId: source.id,
-                ok: true,
-                itemCount,
-                latencyMs: Date.now() - started,
-              });
-            } catch (rawErr) {
-              const err = new Error(describeFetchError(rawErr, deps.timeoutMs));
-              const current = state.get(source.id) ?? { seeded: false };
-              current.failures = (current.failures ?? 0) + 1;
-              if (current.failures >= BACKOFF_AFTER_FAILURES) {
-                const wait = backoffMs(current.failures);
-                current.nextAttemptAt = Date.now() + wait;
-                deps.logger.warn('rss feed backing off after repeated failures', {
-                  sourceId: source.id,
-                  failures: current.failures,
-                  retryInMinutes: Math.round(wait / 60_000),
-                });
-              }
-              state.set(source.id, current);
-              deps.logger.warn('rss poll failed', { sourceId: source.id, err: err as Error });
-              result.outcomes.push({
-                sourceId: source.id,
-                ok: false,
-                itemCount: 0,
-                error: (err as Error).message,
-                latencyMs: Date.now() - started,
+                failures: current.failures,
+                retryInMinutes: Math.round(wait / 60_000),
               });
             }
-          })
-        );
-      }
+            state.set(source.id, current);
+            deps.logger.warn('rss poll failed', { sourceId: source.id, err: err as Error });
+            result.outcomes.push({
+              sourceId: source.id,
+              ok: false,
+              itemCount: 0,
+              error: (err as Error).message,
+              latencyMs: Date.now() - started,
+            });
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: CONCURRENCY }).map(() => worker()));
       return result;
     },
 
