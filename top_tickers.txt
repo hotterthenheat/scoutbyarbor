@@ -1,0 +1,31 @@
+    "AVGO", "JPM", "UNH", "V", "XOM", "MA", "JNJ", "PG", "HD", "COST",
+    "MRK", "ABBV", "CVX", "CRM", "AMD", "NFLX", "PEP", "KO", "ADBE", "TMO",
+    "WMT", "BAC", "ACN", "LIN", "MCD", "CSCO", "ABT", "INTU", "QCOM", "WFC",
+    "DHR", "INTC", "CMCSA", "VZ", "TXN", "PFE", "AMAT", "NOW", "COP", "IBM",
+    "UNP", "PM", "SPGI", "BA", "HON", "AMGN", "GE", "NEE", "SYK", "LOW",
+    "CAT", "RTX", "GS", "ISRG", "ELV", "T", "PLD", "MDT", "AXP", "BLK",
+    "VRTX", "BKNG", "TJX", "SBUX", "C", "LRCX", "REGN", "MDLZ", "CB", "MMC",
+    "GILD", "ADI", "ADP", "PGR", "CVS", "ZTS", "BSX", "CI", "MU", "SCHW",
+    "FI", "BMY", "EOG", "KLAC", "SNPS", "CME", "CDNS", "SO", "DE", "DUK",
+    "SHW", "WM", "CSX", "ITW", "MO", "MCK", "ICE", "BDX", "AON", "NOC",
+    "APD", "PH", "MCO", "ECL", "APH", "TGT", "USB", "NXPI", "ROP", "SLB",
+    "ORLY", "PSX", "TDG", "FCX", "RSG", "PNC", "MAR", "EMR", "NSC", "PCAR",
+    "AEP", "VLO", "O", "MMM", "GD", "AZO", "LMT", "MPC", "DXCM", "FDX",
+    "SRE", "TRV", "EW", "GPN", "AJG", "D", "KMB", "MSI", "OXY", "WMB",
+    "PAYX", "COF", "MCHP", "HLT", "NEM", "HUM", "EXC", "ROST", "CTAS", "AIG",
+    "MNST", "TEL", "IQV", "AFL", "KMI", "DOW", "CNC", "A", "CCI", "SYY",
+    "MET", "PRU", "CTSH", "NUE", "IDXX", "YUM", "JCI", "STZ", "SPG", "ALL",
+    "ED", "AMP", "MS", "BIIB", "TRMB", "OTIS", "VRSK", "SNA", "FTV", "K",
+    "BKR", "DOV", "PPG", "PEG", "IFF", "AWK", "XYL", "DLTR", "ROK", "WBA",
+    "KDP", "TSCO", "CTVA", "CARR", "EIX", "ALB", "FAST", "CPRT", "LVS", "F",
+    "GM", "HAL", "MRO", "DAL", "UAL", "AAL", "LUV", "NKE", "EBAY", "PYPL",
+    "UBER", "LYFT", "SNOW", "PLTR", "HOOD", "COIN", "RBLX", "SQ", "SHOP", "ZM",
+    "DOCU", "CRWD", "DDOG", "NET", "MDB", "OKTA", "ZS", "U", "DKNG", "PTON",
+    "ROKU", "AFRM", "UPST", "OPEN", "LCID", "RIVN", "SOFI", "TOST", "GTLB", "HCP",
+    "ASTS", "NVST", "RDDT", "DJT", "MSTR", "SMCI", "ARM", "ALAB", "SYM", "ASTS",
+    "QDEL", "APP", "CVNA", "CHWY", "DKS", "LULU", "ANF", "CELH", "ELF", "CROX"
+    
+        
+    
+    
+    
