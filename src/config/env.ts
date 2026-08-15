@@ -98,8 +98,8 @@ const schema = z.object({
    * quiet is more useful than one that is behind.
    */
   MAX_PUBLISH_AGE_MINUTES: z.coerce.number().int().nonnegative().default(15),
-  MIN_PUBLISH_SCORE: numeric(40),
-  MIN_BREAKING_SCORE: numeric(90),
+  MIN_PUBLISH_SCORE: numeric(50),
+  MIN_BREAKING_SCORE: numeric(85),
   DEDUPE_WINDOW_MINUTES: numeric(90),
   CLUSTER_WINDOW_MINUTES: numeric(240),
   DEDUPE_SIMILARITY: numeric(0.82),

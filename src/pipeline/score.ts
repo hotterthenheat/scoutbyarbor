@@ -46,7 +46,7 @@ const CATEGORY_RELEVANCE: Record<Category, number> = {
   GEOPOLITICAL: 78,
   MARKET: 82,
   EARNINGS: 76,
-  EQUITY: 70,
+  EQUITY: 55,
   COMMODITY: 68,
   OPTIONS: 58,
   CRYPTO: 52,
@@ -163,7 +163,7 @@ function scoreMarketRelevance(input: ScoreInput, notes: string[]): number {
     input.entities.tickers.length > 0 ||
     input.entities.commodities.length > 0 ||
     /(?<![a-z])(?:treasury|yields?|dollar|bonds?|rates?)(?![a-z])/i.test(input.text);
-  if (namesAsset) value += 20; // Massive trading relevance bump
+  if (namesAsset) value += 10; // Reduced from 20 due to sheer volume of native ticker feeds
 
   return clamp(value, 0, 100);
 }
@@ -221,8 +221,8 @@ function scoreAssetExposure(input: ScoreInput, notes: string[]): number {
     const sec = byTicker.get(match.ticker);
     if (!sec) continue;
     // Index membership is what makes a single name matter to the whole book.
-    const indexWeight = sec.indices.includes('SPX') || sec.indices.includes('NDX') ? 25 : 0;
-    const candidate = sec.priority * 0.7 + indexWeight + 30; // MASSIVE TRADING BUMP
+    const indexWeight = sec.indices.includes('SPX') || sec.indices.includes('NDX') ? 15 : 0;
+    const candidate = sec.priority * 0.7 + indexWeight + 15; // Moderated trading bump
     if (candidate > best) {
       best = candidate;
       notes.push(`exposure ${sec.ticker} p${sec.priority}${indexWeight ? ' index' : ''}`);
