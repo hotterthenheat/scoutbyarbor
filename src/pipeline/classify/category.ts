@@ -237,8 +237,12 @@ function entityBoost(category: Category, entities: ExtractedEntities, signals: s
 
   switch (category) {
     case 'EQUITY':
-    case 'EARNINGS':
       if (strongTickers.length > 0) add(2, `ticker:${strongTickers[0]?.ticker}`);
+      break;
+    case 'EARNINGS':
+      if (strongTickers.length > 0 && signals.some(s => s.startsWith('EARNINGS:kw:') || s.startsWith('EARNINGS:phrase:'))) {
+        add(2, `ticker:${strongTickers[0]?.ticker}`);
+      }
       break;
     case 'GEOPOLITICAL':
       if (entities.countries.length >= 2) {

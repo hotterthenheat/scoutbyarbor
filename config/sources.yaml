@@ -22909,3 +22909,36 @@ sources:
   noiseScore: 0
   expectedIntervalMs: 2592000000
   notes: Material events and filings for YY
+
+- id: rss:benzinga-options
+  name: Benzinga Options
+  url: https://www.benzinga.com/markets/options/feed
+  org: benzinga
+  sourceType: rss
+  category: OPTIONS
+  priority: 85
+  enabled: true
+  official: false
+  qualityScore: 70
+  noiseScore: 40
+  macroScore: 0
+  microScore: 90
+  geopoliticalScore: 0
+  expectedIntervalMs: 3600000
+  notes: Free RSS feed for options news
+- id: rss:benzinga-rumors
+  name: Benzinga Rumors
+  url: https://www.benzinga.com/news/rumors/feed
+  org: benzinga
+  sourceType: rss
+  category: EQUITY
+  priority: 85
+  enabled: true
+  official: false
+  qualityScore: 60
+  noiseScore: 50
+  macroScore: 0
+  microScore: 90
+  geopoliticalScore: 0
+  expectedIntervalMs: 3600000
+  notes: Free RSS feed for M&A and market rumors
