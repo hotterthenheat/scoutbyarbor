@@ -50,7 +50,7 @@ const CATEGORY_HOME: Record<Category, ChannelKey[]> = {
 };
 
 /** Categories that are about a company rather than the market as a whole. */
-const SINGLE_NAME_CATEGORIES = new Set<Category>(['EQUITY', 'EARNINGS', 'OPTIONS']);
+const SINGLE_NAME_CATEGORIES = new Set<Category>(['EQUITY', 'EARNINGS', 'OPTIONS', 'ORDER_FLOW']);
 
 const RATE_MOVING = new Set([
   'CPI_RELEASE',
